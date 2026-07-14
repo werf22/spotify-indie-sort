@@ -74,6 +74,13 @@ class SpotifyClient:
             self._refresh()
         return self._access_token
 
+    # A short 429 (a few seconds) is normal API throttling — worth an
+    # automatic retry. Anything longer means Spotify has actually banned
+    # this app for a while (e.g. after hammering it too hard); silently
+    # sleeping for hours would hide that. Fail loudly instead so whoever's
+    # running this finds out immediately, not hours later.
+    MAX_AUTO_RETRY_WAIT_SECONDS = 120
+
     def request(self, method: str, path: str, **kwargs) -> requests.Response:
         url = path if path.startswith("http") else f"{API_BASE}{path}"
         for attempt in range(6):
@@ -82,6 +89,15 @@ class SpotifyClient:
             resp = requests.request(method, url, headers=headers, timeout=30, **kwargs)
             if resp.status_code == 429:
                 wait = int(resp.headers.get("Retry-After", "2")) + 1
+                if wait > self.MAX_AUTO_RETRY_WAIT_SECONDS:
+                    clear_at = time.strftime(
+                        "%Y-%m-%d %H:%M:%S %Z", time.localtime(time.time() + wait)
+                    )
+                    raise RuntimeError(
+                        f"Rate limited for {wait/3600:.1f}h (until ~{clear_at}) on "
+                        f"{method} {path} — this app/token is banned, not just "
+                        "throttled. Not waiting silently; re-run after that time."
+                    )
                 time.sleep(wait)
                 continue
             if resp.status_code == 401:
@@ -144,13 +160,6 @@ class SpotifyClient:
             f"/users/{user_id}/playlists",
             json={"name": name, "description": description, "public": public},
         ).json()
-
-    def playlist_track_uris(self, playlist_id: str) -> set[str]:
-        return {
-            item["track"]["uri"]
-            for item in self.playlist_tracks(playlist_id)
-            if item.get("track")
-        }
 
     def add_tracks(self, playlist_id: str, uris: list[str]) -> None:
         for i in range(0, len(uris), 100):

@@ -1,5 +1,28 @@
 # HANDOFF
 
+## Snapshot (2026-07-14, ~10:15, mid-morning update)
+
+**Blocked on a Spotify rate-limit ban until ~14:57 Bratislava time today.**
+Root cause: the overnight duplicate-process bug (see below) hammered the
+Spotify API hard enough that it returned `429` with `Retry-After: 17421`
+(4.8 hours) on a plain `GET /me/playlists` call — confirmed via a direct
+curl test with verbose output, not a guess. This isn't normal throttling,
+it's an extended ban on the app/token used by `dj-set-spotify` /
+`spotify-tidal-sync` / this project (they share one Client ID).
+
+What I did about it:
+- Confirmed via `ps aux` that no process is currently running or sleeping
+  against the API (nothing will silently retry and extend the ban).
+- Fixed `spotify_client.py` to fail loudly instead of sleeping through long
+  `Retry-After` values (`MAX_AUTO_RETRY_WAIT_SECONDS = 120` — beyond that it
+  raises immediately with the exact clear time, instead of blocking silently
+  for hours like it just did twice).
+- **DO NOT run `export.py`, `classify.py`, `build_playlist.py`, or anything
+  else that hits `api.spotify.com` / `accounts.spotify.com` before
+  ~14:57 Bratislava time (2026-07-14).** Re-check with a plain curl first
+  (see README or just retry `GET /v1/me` with a fresh token) before running
+  the real pipeline again, in case the ban extended further somehow.
+
 ## Snapshot (2026-07-14, ~00:50, overnight autonomous run)
 
 Owner said: don't ask anything more tonight, work autonomously, want the
