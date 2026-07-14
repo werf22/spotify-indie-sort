@@ -5,11 +5,23 @@ Edit KEEP_EXAMPLES or the boundary description below to shift what counts as
 """
 
 # Confirmed 2026-07-13 with the owner, calibrated against 8 reference tracks.
+# Extended 2026-07-14 after a classifier run surfaced ~800 solfeggio/frequency
+# "healing" tracks (artist "Hz Frequency Zone" and similar) that don't match
+# afro/organic/shamanic house literally but are the same kind of functional,
+# non-listening audio the owner is sorting out — added as its own clause
+# rather than stretched to fit the house-music wording.
 BOUNDARY_DESCRIPTION = """
 EXCLUDE: functional dancefloor / ceremonial groove music — afro house, organic
 house, shamanic house, ecstatic-dance journeys, tribal/world-percussion
 instrumentals. This is music built for a DJ set or a movement/dance ritual:
 long, repetitive, groove-first, usually no traditional song structure.
+
+ALSO EXCLUDE: solfeggio / binaural-beat / chakra / "432Hz" / "528Hz" frequency-
+healing content, meditation drones, singing-bowl or sound-bath recordings, and
+similar generic wellness/relaxation audio (often content-mill artist names
+like "Hz Frequency Zone", "Solfeggio Healing", "Meditation Sounds"). Same
+reasoning as the house-music exclusion — functional/ambient-utility audio,
+not something anyone sits down to actually listen to as a song.
 
 KEEP: song-form or melodic listening music — indie rock/folk/pop, alternative,
 dream pop, trip-hop, ambient/downtempo, IDM, singer-songwriter, and yes
