@@ -1,5 +1,42 @@
 # HANDOFF
 
+## Snapshot (2026-07-14, ~11:40, BLOCKED on account spend limit)
+
+**Hard stop, needs the owner's action — not something I can route around.**
+Export succeeded fully (63,213 unique tracks in `data/library_export.json`,
+split into 80 classification batches of ~800 in `data/batches/`). Dispatched
+all 80 as parallel Claude Code subagents. Only **7 completed** (batch_010,
+014, 018, 022, 024, 026, 030 — results in `data/results/`) before every
+other one failed identically with: *"You've hit your monthly spend limit ·
+raise it at claude.ai/settings/usage"*. Confirmed via `ls data/results/` —
+exactly 7 files, not a fluke or a partial-write issue.
+
+**Do not retry classification until the owner raises the limit or it resets
+monthly** — retrying now just fails again immediately and burns nothing
+productive. Once unblocked, re-dispatch only the missing 73 batches (diff
+`data/batches/` against `data/results/` by filename) — do NOT re-run the 7
+that already succeeded.
+
+**Also found mid-run:** the boundary in `genre_line.py` had a real gap —
+~800 tracks from "Hz Frequency Zone" (solfeggio/binaural/frequency-healing
+content) don't match the literal afro/organic/shamanic house wording but are
+the same kind of functional non-listening audio. Fixed in `genre_line.py`
+(commit `fix: exclude solfeggio/frequency-healing content from the
+boundary`), but since batches ran with a MIX of old/new boundary versions
+(async completion order is unpredictable), **apply a deterministic
+post-merge override** rather than trusting any individual batch's call on
+this: at merge time, force `decision="exclude"` for any track whose artist
+name matches `hz\s*frequency|solfeggio|binaural|chakra|sound\s*bath|singing\s*bowl|meditat`
+(case-insensitive), regardless of what the batch file says. This sidesteps
+needing to know which batches ran under which boundary version.
+
+**Also learned:** dispatching all 80 subagents in tight back-to-back waves
+(12 at a time, minimal spacing) is what triggered a cascade of "Server is
+temporarily limiting requests" failures even before the spend limit hit
+(batches 057, 070, 017, 044, 032 failed this way first). When resuming,
+space dispatches out more (e.g. smaller waves, brief pauses between) rather
+than firing everything as fast as possible.
+
 ## Snapshot (2026-07-14, ~10:15, mid-morning update)
 
 **Blocked on a Spotify rate-limit ban until ~14:57 Bratislava time today.**
