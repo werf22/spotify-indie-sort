@@ -26,6 +26,16 @@ The local Essentia and rhythm labels are intentionally disabled. Do not enable
 them during cloud production unless the owner explicitly requests an offline
 fallback.
 
+Two more labels exist as installed `.plist` files but are also intentionally
+disabled (D-024, found and retired 2026-07-19): `com.jakub.music-db-cloud-prep`
+(pre-full-track duplicate of `music-db-cloud-full-prep`; its output directory
+`data/cloud_production/` is dead — nothing reads it) and
+`com.jakub.music-db-runpod-pilot` (the old standalone pilot script, polling
+every 120s; its own pilot already completed, but it has an independent
+pod-creation path outside the production orchestrator). Do not re-enable
+either without a documented reason — they duplicate work or risk an untracked
+pod, the same class of problem as D-023.
+
 Do not launch a script manually when its LaunchAgent already owns it.
 
 ## Standard status

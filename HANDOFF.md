@@ -71,6 +71,8 @@ The following LaunchAgents were running when this handoff was written:
 | `com.jakub.music-db-rhythm-full` | **Disabled**; preserved only as an offline fallback |
 | `com.jakub.music-db-cloud-production` | Build/run/import bounded RunPod rhythm + MAEST + Essentia + CLAP shards |
 | `com.jakub.music-library-sync-menu` | Menu-bar status and pause/resume control |
+| `com.jakub.music-db-cloud-prep` | **Disabled 2026-07-19 (D-024)**; pre-full-track duplicate prep worker, dead output |
+| `com.jakub.music-db-runpod-pilot` | **Disabled 2026-07-19 (D-024)**; old standalone pilot poll, independent pod-creation path |
 
 At the last detailed database snapshot:
 

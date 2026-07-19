@@ -230,3 +230,29 @@ assistant is not permitted to run directly (blocked by the coding
 environment's own safety classifier for actions against paid external
 infrastructure) — the owner deleted it manually. See `docs/OPERATIONS.md`
 "Duplicate/orphaned pod after a cleanup failure" for the recovery steps.
+
+## D-024 — Retire stale pre-full-track LaunchAgents left running
+
+**Decision:** Disabled and stopped two installed LaunchAgents that predate
+the current design and were never cleaned up: `com.jakub.music-db-cloud-prep`
+and `com.jakub.music-db-runpod-pilot`
+(`launchctl disable` + `launchctl bootout`, same mechanism already used for
+`essentia-full`/`rhythm-full` under D-020). Their `.plist` source files stay
+in the repo root for history; only the installed copies under
+`~/Library/LaunchAgents/` were disabled.
+
+**Why:** Found live on 2026-07-19 while auditing "is everything running."
+`com.jakub.music-db-cloud-prep` runs `prepare_cloud_audio_pilot.py` with 4
+workers and no `--full-track`, writing to `data/cloud_production/` — the
+pre-D-008 45-second-clip pipeline. Nothing in the codebase reads that
+directory; it was pure duplicate CPU/disk work competing with the real
+single-worker full-track prep agent (`music-db-cloud-full-prep`) for the same
+machine resources, on every reboot, indefinitely. `com.jakub.music-db-runpod-
+pilot` runs the standalone `runpod_pilot.py` every 120 seconds
+(`StartInterval`); its own pilot already reached its 300-result completion
+target on 2026-07-18, so it had been silently no-op-ing on every run — but it
+retains its own independent pod-creation path, so if `data/cloud_pilot/
+runpod-results.jsonl` were ever touched or lost, it would start creating pods
+on its own schedule, outside anything the production orchestrator (or D-023's
+fix) tracks. Neither agent was documented in `HANDOFF.md` or
+`docs/OPERATIONS.md`, which is how they went unnoticed.
