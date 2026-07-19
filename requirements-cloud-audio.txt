@@ -1,0 +1,12 @@
+# Install a CUDA-enabled torch/torchaudio build first (RunPod's PyTorch image
+# already includes it). Keep these aligned with the validated local pipeline.
+transformers>=5.0,<6
+librosa>=0.11,<0.12
+beat-this>=1.1,<2
+numpy>=2.0,<3
+scipy>=1.15,<2
+soundfile>=0.13,<0.15
+safetensors>=0.6,<1
+# Current RunPod template uses Python 3.11; pin the last validated wheel with
+# TensorFlow-enabled Discogs-EffNet inference for supervised mood/instrument heads.
+essentia-tensorflow==2.1b6.dev1389

@@ -1,0 +1,141 @@
+# Status snapshot
+
+Captured on **2026-07-18** in Europe/Bratislava while all workers were left
+running. Values will change. Re-run the commands at the end instead of treating
+this file as a live dashboard.
+
+## Catalog and coverage
+
+| Metric | Count | Coverage |
+|---|---:|---:|
+| Tracks | 68,075 | 100% |
+| Spotify legacy artist genres | 47,927 | 70.40% |
+| Any genre tag | 64,025 | 94.05% |
+| Any tag | 66,256 | 97.33% |
+| Mood | 51,665 | 75.89% |
+| Instrument | 4,962 | 7.29% |
+| Voice | 48,153 | 70.74% |
+| BPM | 53,806 | 79.04% |
+| Key | 54,842 | 80.56% |
+| Energy | 55,310 | 81.25% |
+| Danceability | 58,263 | 85.59% |
+| Valence/happiness | 54,050 | 79.40% |
+| Label | 24,860 | 36.52% |
+| Release date | 26,344 | 38.70% |
+| ISRC | 52,835 | 77.61% |
+| MusicBrainz ID | 8,284 | 12.17% |
+
+## Provider queues
+
+- FreqBlog: 13,541 success; 239 queued; 230 processing; 5 failed;
+  659 quota-wait; 874 review; 7,181 not-found; 45,346 untouched.
+- FreqBlog tracked calls: 33,134 of the 150,000 monthly Starter allowance.
+- ReccoBeats: 49,863 exact Spotify-ID successes; 18,212 not-found; no untouched.
+- OneTagger/Discogs v2: 1,677 success; 6,917 no-match; 59,481 untouched.
+- Deezer: 24,634 success; 839 not-found; 243 failed; 42,359 untouched.
+
+## Local-library and acquisition inventory
+
+- locally matched unique Spotify tracks: 5,394;
+- deep-verified at the cited sync snapshot: 340;
+- acquisition queue: 333 complete, 4,767 verify-local, 7,172 locate-existing,
+  55,803 needs-source;
+- Spotify-only blindspots exported to four playlists: 26,142;
+- current safety floor: 50 GiB free;
+- free disk during documentation: approximately 422 GiB.
+
+The current dedicated full-audio target is **5,394** matched tracks. Preparation
+is resumable and the manifest is replaced atomically while it grows.
+
+## Database size and rows
+
+At capture time:
+
+| Table | Rows |
+|---|---:|
+| `tracks` | 68,075 |
+| `audio_features` | 100,891 |
+| `tags` | 1,607,265 |
+| `track_attributes` | 2,479,898 |
+| `audio_files` | 11,171 |
+| `local_audio_analysis` | 726 |
+| `audio_embeddings` | 787 |
+| `audio_temporal_features` | 3,506 |
+| `audio_analysis_artifacts` | 206 |
+| `stream_events` | 32,241 |
+| `traktor_entries` | 93,842 |
+| `audio_verification` | 3,010 |
+| `acquisition_queue` | 68,075 |
+
+`data/music.db` was about 1.8 GiB plus a live WAL. Never copy only the main DB
+file while writers are active; use SQLite backup or checkpoint safely first.
+
+## Audio-production state at capture
+
+- full-track Opus preparation and manifest growth: running;
+- local Essentia follower: disabled (cloud-only heavy inference);
+- local Beat This/rhythm follower: disabled (cloud-only heavy inference);
+- cloud production orchestrator: running;
+- first cloud shard: 250/250 MAEST + 250/250 CLAP imported, pod deleted;
+- repaired shard continuation: 178 missing rhythm pairs only, RTX 3090,
+  USD 0.22/hour, bounded stop/termination deadlines;
+- RunPod credit after the first production shard and benchmark: approximately
+  USD 9.69;
+- full-track smoke: 3 tracks x 4 stages = 12/12 successes; pod deleted;
+- measured mean smoke times: rhythm 20.94 s, MAEST 7.97 s,
+  Essentia 7.91 s, CLAP 9.07 s per track.
+- separate RTX 3090 benchmark: rhythm 25.41 s (cold-start skewed), MAEST
+  7.04 s, Essentia 4.58 s, CLAP 6.50 s; pod deleted.
+
+The first production attempt exposed two packaging defects before any valid
+results were accepted: remote manifest clip paths pointed to the preparation
+directory and `musicdb.py` was omitted from the inference bundle. Both failed
+pods were deleted. `build_cloud_full_shard.py` now writes remote-safe paths,
+includes the dependency and supports `--repair`. A preflight then passed
+both MAEST and CLAP on a complete 399-second track (40 windows each) before
+cloud production was restarted. Historical error rows are not counted as
+success and were replaced by downloaded remote results.
+
+The cloud production path runs rhythm + MAEST + Essentia + CLAP. Essentia runs
+on pod CPU concurrently with the GPU lane. A bounded three-track RTX 3090
+benchmark measured mean stage times of 25.41 s rhythm, 7.04 s MAEST, 4.58 s
+Essentia and 6.50 s CLAP; the rhythm mean includes cold model startup. The
+first complete 100-track all-stage shard is the cost gate before any second
+parallel pod. Production must remain within existing credit.
+
+## Live checks
+
+```bash
+cd "/Users/jakub/Appky Claude/spotify-indie-sort"
+
+./.venv/bin/python coverage_report.py
+./.venv/bin/python sync_status.py
+./.venv/bin/python audio_enrichment_status.py
+
+cat data/cloud_full_shards/orchestrator_status.json
+cat data/cloud_full_shards/shard-0001/runpod_state.json
+
+~/.local/bin/runpodctl user
+~/.local/bin/runpodctl pod list
+
+for label in \
+  com.jakub.local-dj-enrichment \
+  com.jakub.music-db-cloud-full-prep \
+  com.jakub.music-db-essentia-full \
+  com.jakub.music-db-rhythm-full \
+  com.jakub.music-db-cloud-production; do
+  launchctl print "gui/$(id -u)/$label" | grep -E 'state =|pid =|last exit code'
+done
+```
+
+## Truth caveats
+
+- `sync_status.py` shows the earlier per-model local pipeline; the new full
+  pipeline uses `audio_analysis_artifacts` stages `rhythm_full`, `maest_full`,
+  `essentia_full` and `clap_full`.
+- Manifest lines can temporarily trail clip files because manifest replacement
+  is atomic and batched.
+- Local result JSONL can be ahead of imported DB counts while an importer is
+  waiting on SQLite contention.
+- A local RunPod state saying `terminated` is not sufficient proof. Always
+  query RunPod itself.

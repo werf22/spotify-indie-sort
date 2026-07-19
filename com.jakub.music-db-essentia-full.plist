@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.jakub.music-db-essentia-full</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/jakub/Appky Claude/spotify-indie-sort/.essentia-venv/bin/python</string>
+    <string>/Users/jakub/Appky Claude/spotify-indie-sort/follow_local_essentia.py</string>
+    <string>--manifest</string>
+    <string>/Users/jakub/Appky Claude/spotify-indie-sort/data/cloud_full/manifest.csv</string>
+    <string>--output</string>
+    <string>/Users/jakub/Appky Claude/spotify-indie-sort/data/cloud_full/local-essentia-results.jsonl</string>
+    <string>--state</string>
+    <string>/Users/jakub/Appky Claude/spotify-indie-sort/data/cloud_full/local-essentia-import-state.json</string>
+    <string>--expected</string><string>5155</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/jakub/Appky Claude/spotify-indie-sort</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>StandardOutPath</key>
+  <string>/Users/jakub/Appky Claude/spotify-indie-sort/data/essentia_full.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/jakub/Appky Claude/spotify-indie-sort/data/essentia_full.error.log</string>
+</dict>
+</plist>

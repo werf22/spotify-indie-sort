@@ -1,0 +1,12 @@
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/anstyle-1e576e5d9020bb0f.d: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/macros.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/color.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/effect.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/reset.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/style.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libanstyle-1e576e5d9020bb0f.rlib: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/macros.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/color.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/effect.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/reset.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/style.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libanstyle-1e576e5d9020bb0f.rmeta: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/macros.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/color.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/effect.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/reset.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/style.rs
+
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/lib.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/macros.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/color.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/effect.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/reset.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-1.0.14/src/style.rs:

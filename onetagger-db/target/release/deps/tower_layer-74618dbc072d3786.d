@@ -1,0 +1,11 @@
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/tower_layer-74618dbc072d3786.d: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/identity.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/layer_fn.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/stack.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/tuple.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libtower_layer-74618dbc072d3786.rlib: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/identity.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/layer_fn.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/stack.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/tuple.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libtower_layer-74618dbc072d3786.rmeta: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/identity.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/layer_fn.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/stack.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/tuple.rs
+
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/lib.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/identity.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/layer_fn.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/stack.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/tower-layer-0.3.3/src/tuple.rs:

@@ -1,0 +1,11 @@
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/simd_abstraction-322bd671f1625d6f.d: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/tools.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/traits.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/ascii.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/hex.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libsimd_abstraction-322bd671f1625d6f.rlib: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/tools.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/traits.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/ascii.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/hex.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libsimd_abstraction-322bd671f1625d6f.rmeta: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/tools.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/traits.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/ascii.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/hex.rs
+
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/lib.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/tools.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/traits.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/ascii.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/simd-abstraction-0.7.1/src/hex.rs:

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.jakub.music-db-cloud-full-prep</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/jakub/Appky Claude/spotify-indie-sort/.venv/bin/python</string>
+    <string>/Users/jakub/Appky Claude/spotify-indie-sort/prepare_cloud_audio_pilot.py</string>
+    <string>--limit</string><string>100000</string>
+    <string>--codec</string><string>opus</string>
+    <string>--workers</string><string>1</string>
+    <string>--full-track</string>
+    <string>--output</string>
+    <string>/Users/jakub/Appky Claude/spotify-indie-sort/data/cloud_full</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/jakub/Appky Claude/spotify-indie-sort</string>
+  <key>RunAtLoad</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>KeepAlive</key>
+  <dict><key>SuccessfulExit</key><false/></dict>
+  <key>StandardOutPath</key>
+  <string>/Users/jakub/Appky Claude/spotify-indie-sort/data/cloud_full_prep.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/jakub/Appky Claude/spotify-indie-sort/data/cloud_full_prep.error.log</string>
+</dict>
+</plist>

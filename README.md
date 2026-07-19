@@ -1,50 +1,73 @@
-# Spotify Indie Sort
+# Spotify DJ Music Intelligence Database
 
-Sorts everything in your owned Spotify playlists + Liked Songs into one
-playlist: everything that ISN'T afro house / organic house / shamanic house /
-ecstatic-dance groove music. The taste line (what counts as "keep") lives in
-`genre_line.py` — edit it any time your definition of "Indie" shifts.
+Local, resumable, multi-source music database for the user's complete Spotify
+library and DJ workflow. It currently contains **68,075 tracks** and combines
+Spotify identity/history, catalog APIs, detailed tags, audio features,
+full-track temporal analysis and semantic embeddings.
 
-## Pipeline
+The original repository began as `Spotify Indie Sort`; that playlist tooling
+still exists, but the database/synchronization system is now the primary project.
 
+## New agent start here
+
+Read [HANDOFF.md](HANDOFF.md). It contains the current mission, live services,
+cost limits, quality decisions, continuation checklist and links to the full
+[documentation package](docs/README.md).
+
+Important owner rules:
+
+- never add funds, buy credits or upgrade a plan;
+- preserve at least 50 GiB free disk space;
+- keep background work resumable across outages/restarts;
+- preserve provider provenance and raw/conflicting observations;
+- use full-track temporal coverage for quality-critical audio analysis;
+- never expose or commit credentials.
+
+## Current architecture
+
+- SQLite/WAL: `data/music.db`.
+- General enrichment: Spotify, FreqBlog, ReccoBeats, Last.fm, MusicBrainz,
+  Deezer, TheAudioDB, OneTagger/Discogs/Bandcamp and public datasets.
+- Local full-track analysis: Essentia supervised heads and Beat This + DSP.
+- Bounded RunPod analysis: Beat This, MAEST Discogs400, Essentia and CLAP in
+  resumable 100-track shards.
+- Search: weighted BPM/key/features/tags/rhythm plus MAEST/CLAP embeddings.
+- Sync: Spotify, Traktor, Missing Tracks, local file index and verification.
+- UX: menu-bar status and pause/resume app.
+
+## Status
+
+```bash
+./.venv/bin/python coverage_report.py
+./.venv/bin/python sync_status.py
+./.venv/bin/python audio_enrichment_status.py
+cat data/cloud_full_shards/orchestrator_status.json
 ```
-export.py        -> data/library_export.json   (your library, deduped, with artist genres)
-classify.py       -> data/classification.json   (keep/exclude per track, via Claude)
-build_playlist.py -> writes the real playlist, data/state.json, data/run_log.json
+
+See [docs/STATUS.md](docs/STATUS.md) for the latest timestamped snapshot and
+[docs/OPERATIONS.md](docs/OPERATIONS.md) before restarting any worker.
+
+## Search
+
+```bash
+./.venv/bin/python query_music.py "indie folk"
+./.venv/bin/python find_similar.py "SPOTIFY_TRACK_URL" --limit 30
 ```
 
-Run all three: `./run.sh`. Safe to re-run any time — `state.json` remembers
-the playlist id and which tracks are already in it, so re-runs only add new
-ones (newly liked songs, new playlists) instead of duplicating.
+## Original Indie Sort pipeline
 
-## Setup
+```text
+export.py -> data/library_export.json
+classify.py / merge_classification.py -> data/classification.json
+build_playlist.py -> Spotify playlist + data/state.json + data/run_log.json
+```
 
-1. `cp .env.example .env`, fill in `SPOTIFY_CLIENT_ID`/`SECRET` — the same
-   Client ID/Secret already used by `dj-set-spotify` / `spotify-tidal-sync`
-   work fine, no new Spotify app needed.
-2. **Token bootstrap** — this tool needs a refresh token in `data/token.json`
-   as `{"refresh_token": "..."}`. Easiest way to get one: the sibling
-   `spotify-mcp-server` project already has a working `npm run auth` flow —
-   run that once (it needs `http://127.0.0.1:8888/callback` added as a
-   redirect URI on your Spotify app), then copy the `refreshToken` field
-   from its `spotify-config.json` into this project's `data/token.json`.
-3. For `classify.py` specifically: set `ANTHROPIC_API_KEY` in `.env` (get one
-   at console.anthropic.com). Without it, `classify.py` exits with a clear
-   error — `export.py` and `build_playlist.py` don't need it.
-4. `./run.sh`
+`genre_line.py` defines the calibrated Indie/adjacent boundary. The final
+playlist contains 1,805 tracks; the Liked Songs-only version contains 500.
+Technical Traktor/missing-track playlists must not be used as taste evidence.
 
-## Notes
+## Secrets and runtime assets
 
-- Only playlists **you own** are scanned — playlists you follow but didn't
-  create are skipped (confirmed with the owner 2026-07-13).
-- The target playlist is private by default (`build_playlist.py`,
-  `public=False`) and named `Indie Sort` — change `TARGET_PLAYLIST_NAME` in
-  `.env` any time, Spotify lets you rename the playlist directly too.
-- `classify.py` batches ~60 tracks per Claude call, 4 batches at a time. If a
-  batch errors, those tracks default to **keep** rather than silently
-  dropping them — false positives are a quick manual removal in Spotify,
-  false negatives (a good track never making it in) are invisible and
-  wouldn't get fixed.
-- Rate limits: `spotify_client.py` backs off on 429s using Spotify's
-  `Retry-After` header. If you see a lot of waiting, that's expected on a
-  library this size (1,300+ playlists) — it'll finish, just slowly.
+`.env`, `data/`, virtual environments, model caches and local audio are not
+source artifacts. Never print secret values or copy the live SQLite file
+without handling its WAL safely. See [docs/SECURITY.md](docs/SECURITY.md).

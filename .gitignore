@@ -1,7 +1,11 @@
 .venv/
+.audio-venv/
+.essentia-venv/
 __pycache__/
 *.pyc
 data/
 nohup.out
 *.log
 .env
+.DS_Store
+.cache.db

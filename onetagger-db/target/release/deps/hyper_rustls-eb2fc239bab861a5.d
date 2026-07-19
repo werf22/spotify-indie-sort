@@ -1,0 +1,11 @@
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/hyper_rustls-eb2fc239bab861a5.d: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/config.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/connector.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/connector/builder.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/stream.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libhyper_rustls-eb2fc239bab861a5.rlib: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/config.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/connector.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/connector/builder.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/stream.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libhyper_rustls-eb2fc239bab861a5.rmeta: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/config.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/connector.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/connector/builder.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/stream.rs
+
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/lib.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/config.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/connector.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/connector/builder.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/hyper-rustls-0.27.9/src/stream.rs:

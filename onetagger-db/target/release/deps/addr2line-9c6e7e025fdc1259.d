@@ -1,0 +1,12 @@
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/addr2line-9c6e7e025fdc1259.d: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/frame.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/function.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/line.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/lookup.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/unit.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libaddr2line-9c6e7e025fdc1259.rlib: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/frame.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/function.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/line.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/lookup.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/unit.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libaddr2line-9c6e7e025fdc1259.rmeta: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/frame.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/function.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/line.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/lookup.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/unit.rs
+
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/lib.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/frame.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/function.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/line.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/lookup.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/addr2line-0.25.1/src/unit.rs:

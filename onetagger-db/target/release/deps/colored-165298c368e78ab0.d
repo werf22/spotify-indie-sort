@@ -1,0 +1,12 @@
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/colored-165298c368e78ab0.d: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/color.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/control.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/error.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/style.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/customcolors.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libcolored-165298c368e78ab0.rlib: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/color.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/control.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/error.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/style.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/customcolors.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libcolored-165298c368e78ab0.rmeta: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/color.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/control.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/error.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/style.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/customcolors.rs
+
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/lib.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/color.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/control.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/error.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/style.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/colored-2.2.0/src/customcolors.rs:

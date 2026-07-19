@@ -1,0 +1,13 @@
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/url-f75e8eb867c058d7.d: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/host.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/origin.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/parser.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/path_segments.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/slicing.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/quirks.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/liburl-f75e8eb867c058d7.rlib: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/host.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/origin.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/parser.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/path_segments.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/slicing.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/quirks.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/liburl-f75e8eb867c058d7.rmeta: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/host.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/origin.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/parser.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/path_segments.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/slicing.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/quirks.rs
+
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/lib.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/host.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/origin.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/parser.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/path_segments.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/slicing.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/url-2.5.8/src/quirks.rs:

@@ -1,0 +1,11 @@
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/convert_case-1ef800b9ae6eef86.d: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/boundary.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/case.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/converter.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/pattern.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libconvert_case-1ef800b9ae6eef86.rlib: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/boundary.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/case.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/converter.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/pattern.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libconvert_case-1ef800b9ae6eef86.rmeta: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/boundary.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/case.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/converter.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/pattern.rs
+
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/lib.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/boundary.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/case.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/converter.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/convert_case-0.10.0/src/pattern.rs:

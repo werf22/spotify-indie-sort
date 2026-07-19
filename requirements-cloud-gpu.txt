@@ -1,0 +1,8 @@
+# RunPod PyTorch image already provides CUDA-enabled torch.
+transformers>=5.0,<6
+numpy>=2.0,<3
+scipy>=1.15,<2
+librosa>=0.11,<0.12
+soundfile>=0.13,<0.15
+safetensors>=0.6,<1
+sentencepiece>=0.2,<1

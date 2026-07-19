@@ -1,139 +1,188 @@
-# HANDOFF
+# Handoff: Spotify DJ Music Intelligence Database
 
-## Snapshot (2026-07-14, ~11:40, BLOCKED on account spend limit)
+This is the canonical cold-start document for the next AI agent. Read it
+before changing code, restarting services, creating cloud resources, calling a
+paid API, or modifying Spotify playlists.
 
-**Hard stop, needs the owner's action — not something I can route around.**
-Export succeeded fully (63,213 unique tracks in `data/library_export.json`,
-split into 80 classification batches of ~800 in `data/batches/`). Dispatched
-all 80 as parallel Claude Code subagents. Only **7 completed** (batch_010,
-014, 018, 022, 024, 026, 030 — results in `data/results/`) before every
-other one failed identically with: *"You've hit your monthly spend limit ·
-raise it at claude.ai/settings/usage"*. Confirmed via `ls data/results/` —
-exactly 7 files, not a fluke or a partial-write issue.
+Last manually verified: **2026-07-18, Europe/Bratislava**. Live counters will
+continue changing while the background workers run.
 
-**Do not retry classification until the owner raises the limit or it resets
-monthly** — retrying now just fails again immediately and burns nothing
-productive. Once unblocked, re-dispatch only the missing 73 batches (diff
-`data/batches/` against `data/results/` by filename) — do NOT re-run the 7
-that already succeeded.
+## Mission
 
-**Also found mid-run:** the boundary in `genre_line.py` had a real gap —
-~800 tracks from "Hz Frequency Zone" (solfeggio/binaural/frequency-healing
-content) don't match the literal afro/organic/shamanic house wording but are
-the same kind of functional non-listening audio. Fixed in `genre_line.py`
-(commit `fix: exclude solfeggio/frequency-healing content from the
-boundary`), but since batches ran with a MIX of old/new boundary versions
-(async completion order is unpredictable), **apply a deterministic
-post-merge override** rather than trusting any individual batch's call on
-this: at merge time, force `decision="exclude"` for any track whose artist
-name matches `hz\s*frequency|solfeggio|binaural|chakra|sound\s*bath|singing\s*bowl|meditat`
-(case-insensitive), regardless of what the batch file says. This sidesteps
-needing to know which batches ran under which boundary version.
+Build a local, provenance-preserving intelligence database for the user's
+entire Spotify-derived library (currently **68,075 tracks**) and eventually
+for every locally owned audio file. It must support unusually precise DJ
+discovery from one reference track using:
 
-**Also learned:** dispatching all 80 subagents in tight back-to-back waves
-(12 at a time, minimal spacing) is what triggered a cascade of "Server is
-temporarily limiting requests" failures even before the spend limit hit
-(batches 057, 070, 017, 044, 032 failed this way first). When resuming,
-space dispatches out more (e.g. smaller waves, brief pauses between) rather
-than firing everything as fast as possible.
+- broad genres plus detailed subgenres and niche styles;
+- many mood descriptors, including subtle/open-ended moods;
+- BPM, key, mode, Camelot, energy, danceability and valence/happiness;
+- instruments, voice/instrumental properties and production character;
+- beat presence and beat type: beatless, steady/four-on-the-floor, broken,
+  mixed/variable and unknown;
+- full-track temporal profiles and reusable audio embeddings;
+- labels, dates, catalog identifiers and Spotify listening history;
+- explicit source, confidence and raw payload for every observation.
 
-## Snapshot (2026-07-14, ~10:15, mid-morning update)
+The user values **quality and trust above raw speed**. Cost should still be
+minimal and every paid scale-up must follow a small measured pilot.
 
-**Blocked on a Spotify rate-limit ban until ~14:57 Bratislava time today.**
-Root cause: the overnight duplicate-process bug (see below) hammered the
-Spotify API hard enough that it returned `429` with `Retry-After: 17421`
-(4.8 hours) on a plain `GET /me/playlists` call — confirmed via a direct
-curl test with verbose output, not a guess. This isn't normal throttling,
-it's an extended ban on the app/token used by `dj-set-spotify` /
-`spotify-tidal-sync` / this project (they share one Client ID).
+## Non-negotiable owner rules
 
-What I did about it:
-- Confirmed via `ps aux` that no process is currently running or sleeping
-  against the API (nothing will silently retry and extend the ban).
-- Fixed `spotify_client.py` to fail loudly instead of sleeping through long
-  `Retry-After` values (`MAX_AUTO_RETRY_WAIT_SECONDS = 120` — beyond that it
-  raises immediately with the exact clear time, instead of blocking silently
-  for hours like it just did twice).
-- **DO NOT run `export.py`, `classify.py`, `build_playlist.py`, or anything
-  else that hits `api.spotify.com` / `accounts.spotify.com` before
-  ~14:57 Bratislava time (2026-07-14).** Re-check with a plain curl first
-  (see README or just retry `GET /v1/me` with a fresh token) before running
-  the real pipeline again, in case the ban extended further somehow.
+1. **Never add money, buy credits, upgrade a plan or change billing.** Only the
+   user may fund an account. Warn the user when credit is low.
+2. RunPod may consume only existing credit. Production refuses pods above
+   **USD 0.40/hour** and waits when balance is below **USD 1.00**.
+3. Do not stop the active enrichment/audio workers unless necessary for a
+   verified fix. Jobs must be resumable across sleep, restart and network loss.
+4. Keep at least **50 GiB** free on the internal disk. Notify the user at the
+   threshold; the user plans to move audio to an SSD later.
+5. Preserve provenance and conflicting measurements. Never flatten all
+   providers into an untraceable value.
+6. Treat open-vocabulary CLAP labels as candidates. Canonical tags require a
+   supervised model or independent-source consensus.
+7. Never document, print, commit or paste credential values. Secrets belong in
+   `.env`, Spotify token storage, RunPod CLI storage or the system keychain.
+8. Audio acquisition must use files the user owns or is licensed to download.
+   The current repository builds a queue and verifies files; it does **not**
+   currently implement an unattended downloader.
 
-## Snapshot (2026-07-14, ~00:50, overnight autonomous run)
+## Live system at handoff
 
-Owner said: don't ask anything more tonight, work autonomously, want the
-whole "Indie Sort" playlist done by morning. This file is the entry point if
-this session dies and a fresh one needs to pick up cold.
+The following LaunchAgents were running when this handoff was written:
 
-## State of the world
+| Label | Purpose |
+|---|---|
+| `com.jakub.local-dj-enrichment` | Parallel catalog/API enrichment, indexing and verification supervisor |
+| `com.jakub.music-db-cloud-full-prep` | Prepare full-track Opus copies from matched local audio |
+| `com.jakub.music-db-essentia-full` | **Disabled**; preserved only as an offline fallback |
+| `com.jakub.music-db-rhythm-full` | **Disabled**; preserved only as an offline fallback |
+| `com.jakub.music-db-cloud-production` | Build/run/import bounded RunPod rhythm + MAEST + Essentia + CLAP shards |
+| `com.jakub.music-library-sync-menu` | Menu-bar status and pause/resume control |
 
-- Spotify MCP server (`../spotify-mcp-server`) built, registered with Claude
-  Code at user scope (`claude mcp add spotify -s user`), OAuth completed —
-  real access+refresh tokens sitting in `../spotify-mcp-server/spotify-config.json`.
-  Won't show up as live tools in *this* session (Claude Code needs a restart
-  to pick up newly-registered MCP servers) but will work from the next
-  session onward, and works fine.
-- This project (`spotify-indie-sort`) scaffolded: `.env`/token seeded
-  (credentials copied from `dj-set-spotify`, refresh token copied from the
-  MCP server's auth, both value-blind — never displayed in chat).
-  `spotify_client.py`, `export.py`, `classify.py`, `build_playlist.py`,
-  `run.sh`, `genre_line.py` (the taste calibration, see there for the actual
-  keep/exclude boundary + the 8 reference tracks) all written.
-- Real library scale, confirmed via API: **1,305 owned playlists**, 2,853
-  Liked Songs.
-- **Found and stopped a problem before it burned an hour on garbage data:**
-  a chunk of those 1,305 playlists are NOT taste playlists — they're
-  leftovers from the unrelated Traktor-to-Spotify matching project from
-  2026-07-09 (see `missing_tracks_traktor_2026-07-09.csv` in the parent
-  dir). One single playlist, "Traktor missing tracks 2026-07-09 (part 2)",
-  has **9,500 tracks** in it. Pulling those into the taste sort would be
-  wrong (they're not curated listening choices, they're a technical
-  matching artifact) and would have ~doubled the runtime for no reason.
-  First export.py run was killed after playlist 56/1305 for this reason.
+At the last detailed database snapshot:
 
-## DO-THIS-NOW (next action)
+- tracks: 68,075;
+- locally matched tracks and current cloud-audio target: 5,394;
+- any genre tag: 64,025 (94.05%);
+- mood tag: 51,665 (75.89%);
+- BPM: 53,806 (79.04%); key: 54,842 (80.56%);
+- energy: 55,310 (81.25%); danceability: 58,263 (85.59%);
+- FreqBlog successes: 13,541; ReccoBeats successes: 49,863;
+- `data/music.db`: about 1.8 GiB, WAL enabled;
+- first production shard: 250/250 MAEST and 250/250 CLAP imported; pod deleted;
+- repaired continuation requests only 178 genuinely missing rhythm results;
+- active cloud default: RTX 3090 at USD 0.22/hour;
+- RunPod balance after the first shard and benchmark: about USD 9.69.
 
-1. A cheap name-only scan of all 1,305 owned playlists is running/just
-   finished — check `data/_owned_playlists_raw.json` and the scan output.
-2. Add a name-pattern exclusion list to `export.py` (skip playlists matching
-   utility patterns — "missing track" confirmed so far, check the scan for
-   others) before running the real export. Log what got excluded and why —
-   don't silently drop things.
-3. Run `export.py` for real (background, will take a while — ~1,300
-   playlists to page through even after excluding junk).
-4. Classify: **no `ANTHROPIC_API_KEY` is available in this environment**, so
-   `classify.py` (which calls the Anthropic API directly) can't run
-   standalone tonight. Instead, do the classification live in-session using
-   Agent subagents, batching ~150-250 tracks per agent call, each given
-   `genre_line.py`'s boundary + the 8 reference tracks + its batch of
-   {id, name, artists, genres}. Merge all results into
-   `data/classification.json` in the exact shape `classify.py` would have
-   produced ([{id, decision, reason}]), so `build_playlist.py` doesn't care
-   which path produced it.
-5. Run `build_playlist.py` for real (owner explicitly said don't wait for
-   review — write directly). Target playlist name: "Indie Sort" (owner never
-   gave a name; picked this as a clear, obvious, trivially-renameable
-   default since they said not to ask).
-6. Update this file + `DONE.md`-equivalent (just log in this file for now,
-   single-project scope) with final counts and the playlist URL.
+These numbers are snapshots, not completion assertions. Get current values:
 
-## Decisions made without asking (owner said not to ask tonight)
+```bash
+cd "/Users/jakub/Appky Claude/spotify-indie-sort"
+./.venv/bin/python coverage_report.py
+./.venv/bin/python sync_status.py
+./.venv/bin/python audio_enrichment_status.py
+cat data/cloud_full_shards/orchestrator_status.json
+```
 
-- Playlist name: **"Indie Sort"**, private, description explaining what it is.
-- Excluding Traktor-matching utility playlists from the source scope (not
-  "your music library" in any real sense) — see above.
-- Batch-classification failures default to **keep**, not exclude (a wrongly
-  included track is a 2-second manual removal; a wrongly excluded track is
-  invisible and never gets noticed).
-- Classification done live via Agent subagents tonight (no API key
-  available for the standalone script path); `classify.py` is still fully
-  written and works whenever `ANTHROPIC_API_KEY` gets added to `.env` for
-  future unattended re-runs via `./run.sh`.
+## Current quality-first audio decision
 
-## If this session dies before finishing
+The old 45-second-only plan is superseded. We analyze **the entire available
+track as a timeline of model-native windows**:
 
-Check `data/library_export.json`, `data/classification.json`,
-`data/state.json`, `data/run_log.json` for how far it got — each pipeline
-step's output persists to disk, so resume from whichever file is missing
-rather than restarting from scratch.
+- MAEST: contiguous 10-second windows across the full track;
+- CLAP: contiguous 10-second windows across the full track;
+- Essentia Discogs-EffNet: native approximately 1 Hz patches across the track,
+  reused by 19 supervised classifier heads;
+- Beat This: 45-second windows every 40 seconds (5-second overlap).
+
+The database stores temporal matrices/timelines and a separate robust summary.
+Energy-weighted aggregation prevents silent intros/outros from dominating;
+mean, p90 and section coverage preserve moods or styles that appear only in
+part of a track. This is more trustworthy than one middle excerpt and more
+informative than collapsing the whole track to one opaque prediction.
+
+The three-track full-coverage RunPod smoke test completed all 12 combinations
+(3 tracks x rhythm/MAEST/Essentia/CLAP), imported cleanly and cost only cents.
+Production now runs all four stages in immutable GPU shards. Essentia executes
+concurrently on pod CPUs while the GPU stages run, reducing paid wall time.
+Local Essentia/rhythm agents are disabled to keep the laptop cool. Full-track
+Opus preparation remains local at one background-priority FFmpeg worker because
+the source files must be read and compressed before upload.
+
+A separate bounded RTX 3090 benchmark measured 25.41 s rhythm (including cold
+startup), 7.04 s MAEST, 4.58 s Essentia and 6.50 s CLAP per track across three
+full tracks. Its pod was deleted automatically. RTX 4090 community capacity was
+unavailable during the bounded comparison attempt, so no 4090 pod or cost was
+created. Do not add a second production pod until a complete larger all-stage
+shard validates cost against the remaining prepaid balance.
+
+## Immediate continuation checklist
+
+1. **Observe; do not duplicate workers.** Confirm each LaunchAgent has exactly
+   one parent process before starting anything manually.
+2. Check `data/cloud_full_shards/shard-0001/runpod_state.json`. If a pod exists,
+   let `runpod_full_shard.py` finish. It downloads results and deletes the pod
+   in `finally`.
+3. Check RunPod independently with `~/.local/bin/runpodctl pod list` and
+   `~/.local/bin/runpodctl user`. Never infer deletion only from a local state
+   file.
+4. Allow `prepare_cloud_audio_pilot.py` to finish its 5,394-track manifest.
+   The cloud queue consumes it incrementally.
+5. After each cloud shard, verify all required stages per track and that the
+   pod was deleted. The orchestrator should create the next shard itself.
+6. When all 5,394 current tracks finish, run coverage/conflict reports and a
+   stratified manual audit before calling the audio layer complete.
+7. Generalize the hard-coded `EXPECTED = 5394` batch into a dynamic queue for
+   newly matched files. Do this only after the first immutable batch finishes.
+
+## Where to continue reading
+
+- [Documentation index](docs/README.md)
+- [Current status and verification commands](docs/STATUS.md)
+- [Architecture and file map](docs/ARCHITECTURE.md)
+- [Database schema and trust model](docs/DATA_MODEL.md)
+- [Providers, cost and matching](docs/PROVIDERS.md)
+- [Operations and recovery runbook](docs/OPERATIONS.md)
+- [Decision log](docs/DECISIONS.md)
+- [Backlog and definition of done](docs/TASKS.md)
+- [Project history and playlist work](docs/HISTORY.md)
+- [Spotify playlists created by this project](docs/PLAYLISTS.md)
+- [Security and credential handling](docs/SECURITY.md)
+
+## Known traps
+
+- `PROJECT_STATUS_AND_SCALING.md` records an earlier 45-second/four-GPU plan.
+  It is retained as historical analysis, not the current execution contract.
+- `prepare_cloud_audio_pilot.py` has a historical name but its `--full-track`
+  mode creates full-track Opus assets.
+- `sync_status.py` reports older local MAEST/CLAP counters separately from the
+  new `audio-full:*` artifacts. Do not use one counter as total audio coverage.
+- The source tree is very dirty/untracked. Existing changes belong to the user.
+  Do not reset, clean or overwrite them. No project-wide commit was made.
+- `.env`, Spotify refresh tokens and RunPod credentials exist locally. Never
+  inspect values unless required for a narrowly scoped repair; never echo them.
+- Spotify legacy Audio Features/Analysis access is not assumed. ReccoBeats,
+  FreqBlog, public legacy datasets and local audio analysis replace it.
+- FreqBlog bulk responses and individual `/lookup` behave differently. The
+  paid-plan pilot showed individual lookup can resolve underground tracks that
+  the first bulk validation did not immediately return.
+- CLAP can hallucinate plausible instruments. It is deliberately candidate-only.
+- AcousticBrainz is a frozen historical source with low overlap, not the core
+  audio engine.
+- Run `./.venv/bin/python verify_handoff_access.py --live` to verify active
+  credentials without displaying secret values or consuming FreqBlog quota.
+
+## Definition of complete
+
+The project is not complete merely when workers stop. Completion requires:
+
+- every one of the 68,075 catalog tracks accounted for in provider coverage;
+- every available local audio file identity-matched and deep-verified;
+- full-track temporal audio analysis for every locally available recording;
+- no active paid pods and no orphaned cloud storage/resource;
+- retry queues either empty or explicitly classified as permanent no-match;
+- calibrated source policies and a manual quality audit;
+- search validated on representative DJ use cases;
+- dynamic ingestion of newly liked/playlist/local tracks;
+- a current backup/export and updated status documentation.

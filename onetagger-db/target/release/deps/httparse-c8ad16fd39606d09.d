@@ -1,0 +1,12 @@
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/httparse-c8ad16fd39606d09.d: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/iter.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/macros.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/simd/mod.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/simd/swar.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/simd/neon.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libhttparse-c8ad16fd39606d09.rlib: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/iter.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/macros.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/simd/mod.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/simd/swar.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/simd/neon.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libhttparse-c8ad16fd39606d09.rmeta: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/iter.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/macros.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/simd/mod.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/simd/swar.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/simd/neon.rs
+
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/lib.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/iter.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/macros.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/simd/mod.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/simd/swar.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/httparse-1.10.1/src/simd/neon.rs:

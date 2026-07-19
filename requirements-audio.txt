@@ -1,0 +1,13 @@
+# Heavy local-audio stack. Kept separate from the lightweight cloud workers.
+numpy>=2.0
+scipy>=1.13
+librosa>=0.11
+soundfile>=0.13
+scikit-learn>=1.5
+torch>=2.6
+torchaudio>=2.6
+transformers>=4.45
+sentencepiece>=0.2
+beat-this>=1.1
+python-dotenv>=1.0
+mutagen>=1.47

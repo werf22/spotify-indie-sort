@@ -1,0 +1,11 @@
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/anstyle_parse-e067d06735f97909.d: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/params.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/state/mod.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/state/definitions.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/state/table.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libanstyle_parse-e067d06735f97909.rlib: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/params.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/state/mod.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/state/definitions.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/state/table.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libanstyle_parse-e067d06735f97909.rmeta: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/params.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/state/mod.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/state/definitions.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/state/table.rs
+
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/lib.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/params.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/state/mod.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/state/definitions.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/anstyle-parse-1.0.0/src/state/table.rs:

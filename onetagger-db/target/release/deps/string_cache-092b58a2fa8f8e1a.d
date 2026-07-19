@@ -1,0 +1,11 @@
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/string_cache-092b58a2fa8f8e1a.d: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/atom.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/dynamic_set.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/static_sets.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/trivial_impls.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libstring_cache-092b58a2fa8f8e1a.rlib: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/atom.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/dynamic_set.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/static_sets.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/trivial_impls.rs
+
+/Users/jakub/Appky Claude/spotify-indie-sort/onetagger-db/target/release/deps/libstring_cache-092b58a2fa8f8e1a.rmeta: /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/lib.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/atom.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/dynamic_set.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/static_sets.rs /Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/trivial_impls.rs
+
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/lib.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/atom.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/dynamic_set.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/static_sets.rs:
+/Users/jakub/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/string_cache-0.8.9/src/trivial_impls.rs:

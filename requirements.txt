@@ -1,2 +1,4 @@
 requests>=2.31
 python-dotenv>=1.0
+mutagen>=1.47
+numpy>=2.0
