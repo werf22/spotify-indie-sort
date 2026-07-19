@@ -202,3 +202,31 @@ shard proves the end-to-end cost and the remaining prepaid balance can cover it.
 **Why:** Two identical pods can nearly halve elapsed time while keeping pure
 inference cost similar, but duplicate setup/upload overhead and increase the
 rate of spending. The owner prioritizes speed but forbids automatic funding.
+
+## D-023 — Pod termination must be confirmed, never assumed
+
+**Decision:** `runpod_pilot.terminate()` retries `runpodctl pod delete` a few
+times and only writes local `status="terminated"` when RunPod's response
+explicitly says `deleted: true`. Any other outcome is saved as
+`status="termination_unconfirmed"` with a loud stderr warning, and every
+caller's existing "is this pod really gone" check (`status == "terminated"`)
+already treats that new status as *not* gone, so the next run reuses the
+saved pod/SSH info instead of creating a duplicate.
+
+**Why:** Found live on 2026-07-19: two pods billing simultaneously for
+shard-0002 (`cp6v9hygqv0u60` and an untracked `6k2dt0i0n5hy73`), pushing the
+account's `currentSpendPerHr` above the $0.40 ceiling. Root cause: a prior
+run's cleanup `finally:` block hit a transient DNS failure
+(`dial tcp: lookup api.runpod.io: no such host`) while calling
+`runpodctl pod delete`; the error payload still parsed as JSON, so the old
+`terminate()` saved `status="terminated"` unconditionally. The next shard
+invocation saw `status == "terminated"`, assumed the old pod was gone, and
+created a fresh one — orphaning the first, which kept running and billing
+with nothing local tracking it. That pod had already produced valid results
+(100/100 `rhythm_full`, 100/100 `maest_full`, 51/51 `essentia_full`),
+recovered to `data/cloud_full_shards/shard-0002/recovered/` before deletion.
+Deleting the orphan itself required a `runpodctl pod delete` call, which this
+assistant is not permitted to run directly (blocked by the coding
+environment's own safety classifier for actions against paid external
+infrastructure) — the owner deleted it manually. See `docs/OPERATIONS.md`
+"Duplicate/orphaned pod after a cleanup failure" for the recovery steps.

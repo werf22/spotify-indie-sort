@@ -1,6 +1,6 @@
 # Status snapshot
 
-Captured on **2026-07-18** in Europe/Bratislava while all workers were left
+Captured on **2026-07-19** in Europe/Bratislava while all workers were left
 running. Values will change. Re-run the commands at the end instead of treating
 this file as a live dashboard.
 
@@ -10,39 +10,39 @@ this file as a live dashboard.
 |---|---:|---:|
 | Tracks | 68,075 | 100% |
 | Spotify legacy artist genres | 47,927 | 70.40% |
-| Any genre tag | 64,025 | 94.05% |
-| Any tag | 66,256 | 97.33% |
-| Mood | 51,665 | 75.89% |
-| Instrument | 4,962 | 7.29% |
-| Voice | 48,153 | 70.74% |
-| BPM | 53,806 | 79.04% |
-| Key | 54,842 | 80.56% |
-| Energy | 55,310 | 81.25% |
-| Danceability | 58,263 | 85.59% |
-| Valence/happiness | 54,050 | 79.40% |
-| Label | 24,860 | 36.52% |
-| Release date | 26,344 | 38.70% |
-| ISRC | 52,835 | 77.61% |
-| MusicBrainz ID | 8,284 | 12.17% |
+| Any genre tag | 64,464 | 94.70% |
+| Any tag | 66,418 | 97.57% |
+| Mood | 53,694 | 78.87% |
+| Instrument | 5,269 | 7.74% |
+| Voice | 48,399 | 71.10% |
+| BPM | 55,539 | 81.59% |
+| Key | 56,419 | 82.88% |
+| Energy | 56,653 | 83.22% |
+| Danceability | 59,446 | 87.32% |
+| Valence/happiness | 55,470 | 81.48% |
+| Label | 29,550 | 43.41% |
+| Release date | 32,001 | 47.01% |
+| ISRC | 53,791 | 79.02% |
+| MusicBrainz ID | 11,639 | 17.10% |
 
 ## Provider queues
 
-- FreqBlog: 13,541 success; 239 queued; 230 processing; 5 failed;
-  659 quota-wait; 874 review; 7,181 not-found; 45,346 untouched.
-- FreqBlog tracked calls: 33,134 of the 150,000 monthly Starter allowance.
+- FreqBlog: 20,558 success; 252 queued; 669 processing; 7 failed;
+  659 quota-wait; 1,207 review; 11,238 not-found; 33,485 untouched.
+- FreqBlog tracked calls: 56,348 of the 150,000 monthly Starter allowance.
 - ReccoBeats: 49,863 exact Spotify-ID successes; 18,212 not-found; no untouched.
-- OneTagger/Discogs v2: 1,677 success; 6,917 no-match; 59,481 untouched.
-- Deezer: 24,634 success; 839 not-found; 243 failed; 42,359 untouched.
+- OneTagger/Discogs v2: 2,055 success; 8,431 no-match; 57,589 untouched.
+- Deezer: 29,285 success; 968 not-found; 547 failed; 37,275 untouched.
 
 ## Local-library and acquisition inventory
 
 - locally matched unique Spotify tracks: 5,394;
-- deep-verified at the cited sync snapshot: 340;
-- acquisition queue: 333 complete, 4,767 verify-local, 7,172 locate-existing,
-  55,803 needs-source;
+- deep-verified at the cited sync snapshot: 1,820;
+- acquisition queue: 1,567 complete, 3,606 verify-local, 7,172 locate-existing,
+  55,730 needs-source;
 - Spotify-only blindspots exported to four playlists: 26,142;
 - current safety floor: 50 GiB free;
-- free disk during documentation: approximately 422 GiB.
+- free disk during documentation: approximately 400.8 GiB.
 
 The current dedicated full-audio target is **5,394** matched tracks. Preparation
 is resumable and the manifest is replaced atomically while it grows.
@@ -102,6 +102,16 @@ benchmark measured mean stage times of 25.41 s rhythm, 7.04 s MAEST, 4.58 s
 Essentia and 6.50 s CLAP; the rhythm mean includes cold model startup. The
 first complete 100-track all-stage shard is the cost gate before any second
 parallel pod. Production must remain within existing credit.
+
+**2026-07-19 incident:** shard-0002's cleanup hit a transient DNS failure
+mid-run, which the old `terminate()` mistook for a successful pod delete
+(D-023 in `docs/DECISIONS.md`). The next invocation then created a second
+pod for the same shard instead of reusing the first, doubling the hourly
+burn to about USD 0.45/hour until noticed. The orphaned pod's partial
+results (100/100 rhythm_full, 100/100 maest_full, 51/51 essentia_full) were
+recovered before cleanup. `terminate()` now verifies deletion before trusting
+local state; see `docs/OPERATIONS.md` "Duplicate/orphaned pod after a cleanup
+failure" for the general recovery steps if this pattern ever recurs.
 
 ## Live checks
 

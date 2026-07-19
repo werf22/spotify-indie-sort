@@ -4,8 +4,28 @@ This is the canonical cold-start document for the next AI agent. Read it
 before changing code, restarting services, creating cloud resources, calling a
 paid API, or modifying Spotify playlists.
 
-Last manually verified: **2026-07-18, Europe/Bratislava**. Live counters will
-continue changing while the background workers run.
+Last manually verified: **2026-07-19, morning, Europe/Bratislava**. Live
+counters will continue changing while the background workers run.
+
+**Open action for the owner right now:** a second, untracked RunPod pod
+(`6k2dt0i0n5hy73`) is running alongside the real shard-0002 pod
+(`cp6v9hygqv0u60`), doubling the account's hourly burn to about
+USD 0.45/hour. Its useful partial results were already recovered to
+`data/cloud_full_shards/shard-0002/recovered/orphan-pod-6k2dt0i0n5hy73-results.jsonl`
+(100/100 rhythm_full, 100/100 maest_full, 51/51 essentia_full). It is safe to
+delete now:
+
+```bash
+~/.local/bin/runpodctl pod delete 6k2dt0i0n5hy73
+~/.local/bin/runpodctl pod list   # confirm only cp6v9hygqv0u60 remains
+```
+
+Root cause fixed in code (D-023, `runpod_pilot.terminate()` now confirms
+deletion instead of assuming it); see `docs/DECISIONS.md` and
+`docs/OPERATIONS.md` "Duplicate/orphaned pod after a cleanup failure". This
+assistant could not run the delete itself — the coding environment's own
+safety classifier blocks it from calling destructive/spend-adjacent commands
+against external paid infrastructure directly.
 
 ## Mission
 
@@ -63,17 +83,21 @@ The following LaunchAgents were running when this handoff was written:
 At the last detailed database snapshot:
 
 - tracks: 68,075;
-- locally matched tracks and current cloud-audio target: 5,394;
-- any genre tag: 64,025 (94.05%);
-- mood tag: 51,665 (75.89%);
-- BPM: 53,806 (79.04%); key: 54,842 (80.56%);
-- energy: 55,310 (81.25%); danceability: 58,263 (85.59%);
-- FreqBlog successes: 13,541; ReccoBeats successes: 49,863;
-- `data/music.db`: about 1.8 GiB, WAL enabled;
+- locally matched tracks and current cloud-audio target: 5,394; deep-verified:
+  1,820;
+- any genre tag: 64,464 (94.70%);
+- mood tag: 53,694 (78.87%);
+- BPM: 55,539 (81.59%); key: 56,419 (82.88%);
+- energy: 56,653 (83.22%); danceability: 59,446 (87.32%);
+- FreqBlog successes: 20,558 (56,348/150,000 monthly calls tracked); ReccoBeats
+  successes: 49,863;
+- `data/music.db`: about 2.3 GiB, WAL enabled;
 - first production shard: 250/250 MAEST and 250/250 CLAP imported; pod deleted;
-- repaired continuation requests only 178 genuinely missing rhythm results;
+- shard-0002 in progress on pod `cp6v9hygqv0u60` (RTX 3090, uploaded/analyzing);
+  see the open action above about its untracked duplicate pod;
 - active cloud default: RTX 3090 at USD 0.22/hour;
-- RunPod balance after the first shard and benchmark: about USD 9.69.
+- RunPod balance: about USD 7.7 (see open action above — currently paying for
+  two pods at once, about USD 0.45/hour combined instead of USD 0.22).
 
 These numbers are snapshots, not completion assertions. Get current values:
 

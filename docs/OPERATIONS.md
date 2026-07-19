@@ -216,6 +216,34 @@ Inspect pod and shard state. Resume `runpod_full_shard.py --shard ...` only when
 the production LaunchAgent is not already doing so. The runner reuses saved SSH
 state, skips uploaded/analyzed stages when valid and deletes in `finally`.
 
+### Duplicate/orphaned pod after a cleanup failure
+
+`runpodctl pod list` can show more pods than shard directories under
+`data/cloud_full_shards/`. This happened live on 2026-07-19 (D-023): a
+transient DNS failure during `runpod_pilot.terminate()`'s delete call left a
+pod running and billing while local state wrongly believed it was gone, so the
+next invocation created a second pod for the same shard.
+
+Detect it: for every `id` returned by `runpodctl pod list`, check whether it
+matches the `pod_id` in some `data/cloud_full_shards/shard-*/runpod_state.json`
+whose `status` is not `"terminated"`. Any pod that matches nothing is
+untracked. `runpod_pilot.terminate()` now retries the delete and only trusts
+`status="terminated"` when RunPod actually returns `deleted: true`; ambiguous
+outcomes are saved as `status="termination_unconfirmed"` (treated the same as
+"not terminated" everywhere else) with a loud stderr warning, so this should
+now self-heal on the next run for that shard rather than silently duplicating.
+Still verify independently — this fix does not retroactively clean up a pod
+orphaned before it landed.
+
+Recovery: before deleting an untracked pod, try a short read-only
+`ssh -o BatchMode=yes -o ConnectTimeout=8 ...` (key at
+`~/.runpod/ssh/runpodctl-ssh-key`, host/port from `runpodctl pod list`'s PORTS
+column) to check `/workspace/**/results.jsonl` for a completed or
+partially-completed run — `scp` it out (e.g. into a shard's `recovered/`
+subdirectory) before terminating, since it can represent real, already-paid-for
+GPU work. Then `runpodctl pod delete <id>` and re-run `runpodctl pod list` to
+confirm it is actually gone, not just assumed gone from a local file.
+
 ### Result JSONL exists but DB count did not increase
 
 Run `import_full_audio_results.py` with the corresponding manifest/results only
