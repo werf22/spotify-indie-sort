@@ -272,8 +272,30 @@ def download(command: str) -> bool:
 
 
 def terminate(pod_id: str) -> None:
-    result = ctl("pod", "delete", pod_id, check=False)
-    save_state(status="terminated", termination_response=result)
+    """Delete the pod, but only record it as gone once RunPod confirms deletion.
+
+    A transient network/DNS failure here must never be mistaken for a successful
+    delete: ``ctl(..., check=False)`` swallows non-zero exits, and an error payload
+    on stdout still parses as JSON, so the old code saved status="terminated"
+    unconditionally. That let one shard's cleanup fail silently while the pod kept
+    running and billing, untracked, and the next invocation created a second pod
+    for the same shard (see docs/DECISIONS.md D-023).
+    """
+    result: dict = {}
+    for attempt in range(3):
+        result = ctl("pod", "delete", pod_id, check=False)
+        if isinstance(result, dict) and result.get("deleted") is True:
+            save_state(status="terminated", termination_response=result)
+            return
+        if attempt < 2:
+            time.sleep(5)
+    save_state(status="termination_unconfirmed", termination_response=result)
+    print(
+        f"WARNING: RunPod did not confirm pod {pod_id} was deleted "
+        f"(last response: {result!r}). It may still be running and billing. "
+        f"Verify manually: runpodctl pod list | grep {pod_id}",
+        file=sys.stderr,
+    )
 
 
 def main() -> None:
