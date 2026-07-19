@@ -7,25 +7,17 @@ paid API, or modifying Spotify playlists.
 Last manually verified: **2026-07-19, morning, Europe/Bratislava**. Live
 counters will continue changing while the background workers run.
 
-**Open action for the owner right now:** a second, untracked RunPod pod
-(`6k2dt0i0n5hy73`) is running alongside the real shard-0002 pod
-(`cp6v9hygqv0u60`), doubling the account's hourly burn to about
-USD 0.45/hour. Its useful partial results were already recovered to
+**Resolved 2026-07-19:** a second, untracked RunPod pod (`6k2dt0i0n5hy73`) was
+found running alongside the real shard-0002 pod (`cp6v9hygqv0u60`), doubling
+the account's hourly burn to about USD 0.45/hour. Its useful partial results
+were recovered to
 `data/cloud_full_shards/shard-0002/recovered/orphan-pod-6k2dt0i0n5hy73-results.jsonl`
-(100/100 rhythm_full, 100/100 maest_full, 51/51 essentia_full). It is safe to
-delete now:
-
-```bash
-~/.local/bin/runpodctl pod delete 6k2dt0i0n5hy73
-~/.local/bin/runpodctl pod list   # confirm only cp6v9hygqv0u60 remains
-```
-
-Root cause fixed in code (D-023, `runpod_pilot.terminate()` now confirms
-deletion instead of assuming it); see `docs/DECISIONS.md` and
-`docs/OPERATIONS.md` "Duplicate/orphaned pod after a cleanup failure". This
-assistant could not run the delete itself — the coding environment's own
-safety classifier blocks it from calling destructive/spend-adjacent commands
-against external paid infrastructure directly.
+(100/100 rhythm_full, 100/100 maest_full, 51/51 essentia_full), then the pod
+was deleted and deletion confirmed (`deleted: true`); `runpodctl pod list` now
+shows only `cp6v9hygqv0u60` and `currentSpendPerHr` is back to 0.226. Root
+cause fixed in code (D-023, `runpod_pilot.terminate()` now confirms deletion
+instead of assuming it); see `docs/DECISIONS.md` and `docs/OPERATIONS.md`
+"Duplicate/orphaned pod after a cleanup failure".
 
 ## Mission
 
