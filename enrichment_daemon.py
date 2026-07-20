@@ -30,6 +30,7 @@ JOBS = [
     ("lastfm-artists", ["enrich_lastfm_artists.py", "--limit", "150", "--delay", "0.45"], 2),
     ("lastfm-tracks", ["enrich_lastfm_tracks.py", "--limit", "150", "--delay", "0.45"], 2),
     ("musicbrainz", ["enrich_musicbrainz.py", "--limit", "50", "--delay", "1.10"], 2),
+    ("musicbrainz-genres", ["enrich_musicbrainz_genres.py", "--limit", "30", "--delay", "1.10"], 2),
     ("reccobeats", ["enrich_reccobeats.py", "--limit", "10000", "--concurrency", "3", "--per-minute", "60"], 21600),
     ("onetagger-discogs", ["onetagger_db_bridge.py", "--limit", "100", "--delay", "2.5", "--source", "discogs_v2"], 5),
     # OneTagger's current Beatport scraper no longer matches the redesigned

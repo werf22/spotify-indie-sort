@@ -317,3 +317,34 @@ same host as the D-023 orphan). Duplicates were deleted, the exclusion was
 added, and a rebuilt shard-0020 verified 0-track overlap against the
 in-flight shard-0019. Sequential operation never exposed this because a
 shard always finished importing before the next build (D-011).
+
+## D-028 — Owner-approved pod scale-out; funds-scaled parallelism
+
+**Decision (owner, 2026-07-20):** run as many pods in parallel as useful —
+total cost is identical at any parallelism, only wall-clock changes. Cap
+implemented at 8 concurrent pods: above that the laptop's uplink (a 1.5 GB
+bundle upload per shard) and community RTX 3090 availability become the
+serializer, so extra pods would idle-bill while queueing for upload.
+`allowed_parallel` scales with balance headroom (one pod per ~$0.50 of
+spendable balance above the $1 floor); the per-pod $0.40/h ceiling and the
+never-fund rule (D-012) are unchanged. The runner's account-level spend
+check moved to the orchestrator (which knows its own pods); the runner keeps
+a balance-only gate — otherwise no parallel runner could ever start, since
+siblings already bill more than the old whole-account $0.40/h sanity limit.
+Measured baseline for the scaled run: $0.0021/track, ~2 h per 200-track
+shard (ledger, shards 0023/0024).
+
+## D-029 — Enrichment expansion wave 1 (roadmap items B and D1)
+
+**Decision:** (a) The OneTagger Discogs bridge gains optional token auth
+(`DISCOGS_TOKEN` in `.env`) — 25 → 60 req/min — and a structured
+`track=`+`artist=` search (Discogs indexes tracklists) gated on artist
+similarity ≥ 0.75, falling back to the legacy free-text query; cache keys
+bumped to v3 for the structured path. (b) New `enrich_musicbrainz_genres.py`
+harvests genre/tag lists for the 23.5k already-resolved MBIDs. Because
+MusicBrainz allows ~1 req/s per IP and TWO workers now share it, all MB
+requests serialize through a cross-process file-lock limiter in
+`enrich_musicbrainz.get()` — verified live after the unlimited first attempt
+produced SSL connection drops. The Deezer 30-s preview audio tier was also
+owner-approved and is queued to start after the 5,394 full-track batch
+finishes (docs/ENRICHMENT_ROADMAP.md, task list).

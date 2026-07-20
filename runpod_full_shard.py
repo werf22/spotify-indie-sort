@@ -308,7 +308,13 @@ def main() -> None:
     rp.PILOT, rp.BUNDLE = shard, bundle
     rp.CHECKSUM, rp.STATE, rp.RESULTS = shard / "bundle.tar.sha256", state, results
     rp.verify_bundle()
-    rp.account_ready()  # Existing credit only. No funding endpoint exists here.
+    # Balance-only gate (existing credit, never funding). The account-level
+    # spend sanity check lives in the orchestrator, which knows how many
+    # sibling pods it is running (D-028); rp.account_ready() would refuse to
+    # start any parallel runner because siblings already bill >$0.40/hr.
+    funds = float(rp.ctl("user").get("clientBalance") or 0)
+    if funds < 1.0:
+        raise SystemExit(f"RunPod balance ${funds:.2f} below $1 floor; owner action required")
     saved = rp.read_state()
     pod_id = saved.get("pod_id")
     dead = saved.get("status") in {"terminated", "termination_unconfirmed"}

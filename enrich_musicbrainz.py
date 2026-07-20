@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import re
 import time
 import unicodedata
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import quote, urlencode
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -19,6 +21,13 @@ from musicdb import connect, record_source_run
 
 API = "https://musicbrainz.org/ws/2"
 SOURCE = "musicbrainz"
+# Cross-process limiter: MusicBrainz allows ~1 req/s PER IP, and several
+# workers (identity pass + genre pass) may run concurrently in the daemon.
+# All of them call get() below, which serializes requests through this lock
+# file and enforces the shared minimum interval. Tweak MB_MIN_INTERVAL only
+# if MusicBrainz publishes a different limit.
+MB_RATE_LOCK = Path(__file__).resolve().parent / "data" / "mb_rate.lock"
+MB_MIN_INTERVAL = 1.05
 
 
 def norm(value: str | None) -> str:
@@ -27,8 +36,24 @@ def norm(value: str | None) -> str:
 
 
 def get(url: str, user_agent: str) -> dict:
-    req = Request(url, headers={"User-Agent": user_agent, "Accept": "application/json"})
-    return json.loads(urlopen(req, timeout=30).read())
+    MB_RATE_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    with MB_RATE_LOCK.open("a+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        lock.seek(0)
+        try:
+            last = float(lock.read().strip() or 0)
+        except ValueError:
+            last = 0.0
+        wait = MB_MIN_INTERVAL - (time.time() - last)
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            req = Request(url, headers={"User-Agent": user_agent, "Accept": "application/json"})
+            return json.loads(urlopen(req, timeout=30).read())
+        finally:
+            lock.seek(0)
+            lock.truncate()
+            lock.write(str(time.time()))
 
 
 def main() -> None:

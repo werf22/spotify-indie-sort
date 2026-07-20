@@ -41,9 +41,10 @@ RUNPODCTL = Path.home() / ".local" / "bin" / "runpodctl"
 EXPECTED = 5394        # immutable first-batch target; raise deliberately only
 SHARD_SIZE = 200       # bigger shards amortize pod setup cost (D-026)
 MIN_BALANCE = 1.0      # below this: park and wait for the owner (D-012)
-PARALLEL_BALANCE = 4.0 # second pod allowed only above this balance
-MAX_PARALLEL = 2       # hard cap on concurrent pods
-SPEND_TOLERANCE = 0.06 # allowed gap between actual and explained spend/hr
+SHARD_COST_EST = 0.5   # measured ~$0.44/200-track shard; used to scale parallelism
+MAX_PARALLEL = 8       # owner-approved scale-out (D-028); above ~8 the laptop
+                       # uplink (1.5 GB bundle per shard) becomes the serializer
+SPEND_TOLERANCE = 0.10 # allowed gap between actual and explained spend/hr
 CYCLE_SECONDS = 45
 
 
@@ -195,11 +196,15 @@ def ledger_totals() -> dict:
 
 
 def allowed_parallel(funds: float) -> int:
+    """Concurrent pods scaled to spendable headroom above the D-012 floor.
+
+    Each extra pod is only allowed when the balance can absorb roughly one
+    more shard (~$0.50). Total cost is the same at any parallelism — this
+    only controls how fast the same money is spent (D-028).
+    """
     if funds < MIN_BALANCE:
         return 0
-    if funds < PARALLEL_BALANCE:
-        return 1
-    return MAX_PARALLEL
+    return min(MAX_PARALLEL, max(1, int((funds - MIN_BALANCE) / SHARD_COST_EST)))
 
 
 def spawn(shard: Path) -> subprocess.Popen:
