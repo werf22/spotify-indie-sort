@@ -38,7 +38,7 @@ ALL_STAGES = {"rhythm_full", "maest_full", "essentia_full", "clap_full"}
 
 # --- CONSTANTS (safe to tweak) -------------------------------------------
 POLL_SECONDS = 60          # how often the runner checks the pod
-SETUP_GRACE_MIN = 25       # no-progress allowance while models install/download
+SETUP_GRACE_MIN = 40       # no-progress allowance while models install/download (setup is silent; slow hosts need it)
 STALL_MIN = 15             # abort when results stop growing this long (post-grace)
 DONE_SELF_STOP_MIN = 15    # pod stops itself this long after done/fail markers
 MAX_RELAUNCH = 2           # remote pipeline restarts before giving up
@@ -208,7 +208,7 @@ def poll(command: str, shard_rel: str) -> dict | None:
     probe = (f'for f in run.done run.fail; do [ -f "{shard_rel}/$f" ] && echo "$f"; done; echo @@; '
              f'stat -c %s "{shard_rel}/results.jsonl" 2>/dev/null || echo 0; echo @@; '
              f'pgrep -f "cloud_audio_full.py --manifest {shard_rel}" >/dev/null && echo alive || echo dead; echo @@; '
-             f'tail -n 2 /workspace/run.log 2>/dev/null | tr "\\n" "|"')
+             f'tail -n 5 /workspace/run.log 2>/dev/null | tr "\\n" "|"')
     proc = subprocess.run(rp.ssh_args(command) + [f"cd /workspace && {probe}"],
                           text=True, cwd=ROOT, timeout=40, capture_output=True)
     if proc.returncode:
