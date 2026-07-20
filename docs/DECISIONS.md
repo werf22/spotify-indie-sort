@@ -300,3 +300,20 @@ work. The sweep is the standing enforcement of the D-023 class of failure;
 the ledger makes cost per track a measured number instead of an estimate;
 parallelism is the D-022 gate finally exercised (17 clean all-stage shards
 measured at ≈ $0.005/track).
+
+## D-027 — Shard builder excludes tracks claimed by unimported shards
+
+**Decision:** `build_cloud_full_shard.py` skips every track present in the
+manifest of any existing shard without an `imported.ok` marker.
+
+**Why:** Caught live within minutes of enabling parallel mode (2026-07-20):
+the builder selected pending tracks by database state only, and with two
+builds in one orchestrator cycle (plus retries) the DB knew nothing about
+in-flight work — shards 0019/0020/0021/0022 came out as four IDENTICAL
+200-track shards. Two duplicate pods were running before containment; total
+damage ≈ $0.11 because all failed/stopped before analyzing (the first two on
+a repeatedly bad community host, 99.69.17.69, that reset every scp — the
+same host as the D-023 orphan). Duplicates were deleted, the exclusion was
+added, and a rebuilt shard-0020 verified 0-track overlap against the
+in-flight shard-0019. Sequential operation never exposed this because a
+shard always finished importing before the next build (D-011).

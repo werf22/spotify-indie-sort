@@ -134,8 +134,22 @@ def main() -> None:
         return
     ready = manifest_rows()
     done = completed_stages()
+    # Tracks already claimed by an existing, not-yet-imported shard must not be
+    # selected again: with parallel shard runners the DB does not yet know about
+    # in-flight work, and without this exclusion two shards would contain the
+    # same tracks and the same GPU work would be paid for twice (D-027).
+    claimed: set[str] = set()
+    for shard_dir in DEST.glob("shard-*"):
+        if (shard_dir / "imported.ok").is_file():
+            continue
+        existing = shard_dir / "manifest.csv"
+        if existing.is_file():
+            with existing.open(encoding="utf-8", newline="") as handle:
+                claimed.update(r["spotify_id"] for r in csv.DictReader(handle))
     selected = []
     for row in ready:
+        if row["spotify_id"] in claimed:
+            continue
         missing = [stage for stage in ALL_STAGES if stage not in done.get(row["spotify_id"], set())]
         if missing and Path(row["clip_path"]).is_file():
             selected.append((row, missing))
