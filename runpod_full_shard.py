@@ -207,7 +207,7 @@ def poll(command: str, shard_rel: str) -> dict | None:
     """One cheap SSH round-trip: markers, results size, runner liveness, log tail."""
     probe = (f'for f in run.done run.fail; do [ -f "{shard_rel}/$f" ] && echo "$f"; done; echo @@; '
              f'stat -c %s "{shard_rel}/results.jsonl" 2>/dev/null || echo 0; echo @@; '
-             f'pgrep -f "cloud_audio_full.py --manifest {shard_rel}" >/dev/null && echo alive || echo dead; echo @@; '
+             f'pgrep -f "[c]loud_audio_full.py --manifest {shard_rel}" >/dev/null && echo alive || echo dead; echo @@; '
              f'tail -n 5 /workspace/run.log 2>/dev/null | tr "\\n" "|"')
     proc = subprocess.run(rp.ssh_args(command) + [f"cd /workspace && {probe}"],
                           text=True, cwd=ROOT, timeout=40, capture_output=True)
