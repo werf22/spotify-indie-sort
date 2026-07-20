@@ -1,5 +1,19 @@
 #!/usr/bin/env python3
-"""Continuously prepare and run bounded full-audio GPU shards."""
+"""Continuously prepare and run bounded full-audio GPU shards.
+
+Cost-control design (D-026):
+- runs 1-2 shard runners in PARALLEL, gated by account balance;
+- sweeps ORPHANED pods every cycle: any RunPod pod named ``music-db-*`` that
+  no shard state tracks (or that a state says was terminated long ago) is
+  deleted immediately — a paid pod may never exist without owned work;
+- compares actual account spend/hr against the spend the tracked pods
+  explain; a mismatch blocks new launches and raises a loud status;
+- appends a per-shard COST LEDGER so speed and price stay measurable;
+- never funds anything (D-012): below $1 it parks and waits for the owner.
+
+HOW TO TWEAK: the CONSTANTS block below (shard size, parallelism, balance
+thresholds). EXPECTED is the immutable first-batch target (D-011).
+"""
 
 from __future__ import annotations
 
@@ -11,7 +25,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from musicdb import connect
+from musicdb import connect_readonly
 from runpod_full_shard import required_pairs, successful
 
 
@@ -19,13 +33,18 @@ ROOT = Path(__file__).resolve().parent
 SHARDS = ROOT / "data" / "cloud_full_shards"
 MANIFEST = ROOT / "data" / "cloud_full" / "manifest.csv"
 STATUS = SHARDS / "orchestrator_status.json"
+LEDGER = SHARDS / "cost_ledger.jsonl"
 LOCK = SHARDS / "orchestrator.lock"
 RUNPODCTL = Path.home() / ".local" / "bin" / "runpodctl"
-# Immutable target selected by the currently running full-track preparation pass.
-# Raise this when a later inventory pass deliberately appends more matched files.
-EXPECTED = 5394
-SHARD_SIZE = 100
-MIN_BALANCE = 1.0
+
+# --- CONSTANTS (safe to tweak) -------------------------------------------
+EXPECTED = 5394        # immutable first-batch target; raise deliberately only
+SHARD_SIZE = 200       # bigger shards amortize pod setup cost (D-026)
+MIN_BALANCE = 1.0      # below this: park and wait for the owner (D-012)
+PARALLEL_BALANCE = 4.0 # second pod allowed only above this balance
+MAX_PARALLEL = 2       # hard cap on concurrent pods
+SPEND_TOLERANCE = 0.06 # allowed gap between actual and explained spend/hr
+CYCLE_SECONDS = 45
 
 
 def utcnow() -> str:
@@ -47,12 +66,16 @@ def write_status(**values) -> None:
     temporary.replace(STATUS)
 
 
-def balance() -> tuple[float, float]:
-    proc = subprocess.run([str(RUNPODCTL), "user"], cwd=ROOT,
-                          capture_output=True, text=True, timeout=60)
+def ctl_json(*args: str, timeout: int = 60):
+    proc = subprocess.run([str(RUNPODCTL), *args], cwd=ROOT, capture_output=True,
+                          text=True, timeout=timeout)
     if proc.returncode:
         raise RuntimeError((proc.stderr or proc.stdout)[-1000:])
-    data = json.loads(proc.stdout)
+    return json.loads(proc.stdout) if proc.stdout.strip() else {}
+
+
+def balance() -> tuple[float, float]:
+    data = ctl_json("user")
     return float(data.get("clientBalance") or 0), float(data.get("currentSpendPerHr") or 0)
 
 
@@ -64,7 +87,7 @@ def ready_count() -> int:
 
 
 def completed_count() -> int:
-    with connect() as db:
+    with connect_readonly() as db:
         return int(db.execute(
             """SELECT COUNT(*) FROM (
                  SELECT spotify_id FROM audio_analysis_artifacts
@@ -74,14 +97,25 @@ def completed_count() -> int:
         ).fetchone()[0])
 
 
-def incomplete_shard() -> Path | None:
+def shard_state(shard: Path) -> dict:
+    try:
+        return json.loads((shard / "runpod_state.json").read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def incomplete_shards() -> list[Path]:
+    found = []
     for shard in sorted(SHARDS.glob("shard-*")):
         manifest = shard / "manifest.csv"
         if not manifest.is_file() or not (shard / "bundle.tar").is_file():
             continue
-        if not required_pairs(manifest) <= successful(shard / "results.jsonl"):
-            return shard
-    return None
+        required = required_pairs(manifest)
+        if not required <= successful(shard / "results.jsonl"):
+            found.append(shard)
+        elif not (shard / "imported.ok").is_file():
+            found.append(shard)  # results complete but import never confirmed
+    return found
 
 
 def build(minimum: int) -> Path | None:
@@ -95,13 +129,85 @@ def build(minimum: int) -> Path | None:
     return Path(payload["shard"]) if payload.get("status") == "ready" else None
 
 
-def run_shard(shard: Path) -> None:
-    proc = subprocess.run([
+def sweep_orphans() -> list[str]:
+    """Delete any music-db pod that no shard state currently explains."""
+    pods = ctl_json("pod", "list")
+    if not isinstance(pods, list):
+        return []
+    states = {}
+    for shard in SHARDS.glob("shard-*"):
+        data = shard_state(shard)
+        if data.get("pod_id"):
+            states[data["pod_id"]] = data
+    deleted = []
+    for pod in pods:
+        pod_id = str(pod.get("id") or "")
+        name = str(pod.get("name") or "")
+        if not name.startswith("music-db-"):
+            continue  # never touch pods this project did not create
+        tracked = states.get(pod_id)
+        stale = False
+        if tracked is None:
+            stale = True
+        elif tracked.get("status") in {"terminated", "termination_unconfirmed"}:
+            updated = tracked.get("updated_at", "1970-01-01T00:00:00Z")
+            age = datetime.now(timezone.utc) - datetime.fromisoformat(
+                updated.replace("Z", "+00:00"))
+            stale = age.total_seconds() > 900
+        if stale:
+            subprocess.run([str(RUNPODCTL), "pod", "delete", pod_id], cwd=ROOT,
+                           capture_output=True, text=True, timeout=60)
+            deleted.append(pod_id)
+            print(f"ORPHAN SWEEP: deleted untracked pod {pod_id} ({name})", flush=True)
+    return deleted
+
+
+def ledger_append(shard: Path) -> None:
+    data = shard_state(shard)
+    try:
+        start = datetime.fromisoformat(data["created_at"].replace("Z", "+00:00"))
+        end = datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00"))
+        hours = max(0.0, (end - start).total_seconds() / 3600)
+        entry = {"shard": shard.name, "pod_id": data.get("pod_id"),
+                 "gpu": data.get("gpu"), "hourly_usd": data.get("hourly_cost_usd"),
+                 "hours": round(hours, 3),
+                 "est_cost_usd": round(hours * float(data.get("hourly_cost_usd") or 0), 4),
+                 "result_rows": data.get("result_rows"), "ts": utcnow()}
+        with LEDGER.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except (KeyError, ValueError, TypeError):
+        pass
+
+
+def ledger_totals() -> dict:
+    total_cost = total_hours = entries = 0
+    if LEDGER.is_file():
+        for line in LEDGER.read_text(encoding="utf-8").splitlines():
+            try:
+                row = json.loads(line)
+                total_cost += float(row.get("est_cost_usd") or 0)
+                total_hours += float(row.get("hours") or 0)
+                entries += 1
+            except (json.JSONDecodeError, TypeError, ValueError):
+                continue
+    return {"shards": entries, "hours": round(total_hours, 2),
+            "cost_usd": round(total_cost, 2)}
+
+
+def allowed_parallel(funds: float) -> int:
+    if funds < MIN_BALANCE:
+        return 0
+    if funds < PARALLEL_BALANCE:
+        return 1
+    return MAX_PARALLEL
+
+
+def spawn(shard: Path) -> subprocess.Popen:
+    print(f"starting shard runner: {shard.name}", flush=True)
+    return subprocess.Popen([
         str(ROOT / ".venv" / "bin" / "python"), str(ROOT / "runpod_full_shard.py"),
         "--shard", str(shard),
-    ], cwd=ROOT, timeout=4 * 60 * 60)
-    if proc.returncode:
-        raise RuntimeError(f"Shard runner exited {proc.returncode}: {shard}")
+    ], cwd=ROOT)
 
 
 def main() -> None:
@@ -111,46 +217,72 @@ def main() -> None:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return
+        active: dict[Path, subprocess.Popen] = {}
+        cooldown: dict[Path, float] = {}
         failures = 0
         while True:
             try:
+                for shard, proc in list(active.items()):
+                    if proc.poll() is None:
+                        continue
+                    del active[shard]
+                    if proc.returncode == 0:
+                        failures = 0
+                        ledger_append(shard)
+                    else:
+                        failures += 1
+                        cooldown[shard] = time.monotonic() + min(300 * failures, 1800)
                 done, ready = completed_count(), ready_count()
                 funds, hourly = balance()
-                if done >= EXPECTED:
+                swept = sweep_orphans()
+                expected_spend = sum(
+                    float(shard_state(s).get("hourly_cost_usd") or 0) for s in active)
+                overspend = hourly > expected_spend + SPEND_TOLERANCE and not swept
+                if done >= EXPECTED and not active:
                     write_status(phase="complete", completed_tracks=done,
-                                 ready_tracks=ready, balance_usd=funds, hourly_usd=hourly)
+                                 ready_tracks=ready, balance_usd=funds,
+                                 hourly_usd=hourly, ledger=ledger_totals())
                     return
-                if funds < MIN_BALANCE:
-                    write_status(phase="waiting_for_user_credit", completed_tracks=done,
-                                 ready_tracks=ready, balance_usd=funds, hourly_usd=hourly,
-                                 note="No automatic funding; user action required.")
-                    time.sleep(600)
-                    continue
-                if hourly > 0.40:
-                    write_status(phase="unexpected_existing_spend", hourly_usd=hourly,
-                                 balance_usd=funds)
-                    time.sleep(300)
-                    continue
-                shard = incomplete_shard()
-                if shard is None:
-                    minimum = 1 if ready >= EXPECTED else SHARD_SIZE
-                    shard = build(minimum)
-                if shard is None:
-                    write_status(phase="waiting_for_full_tracks", completed_tracks=done,
-                                 ready_tracks=ready, balance_usd=funds, hourly_usd=hourly)
-                    time.sleep(60)
-                    continue
-                write_status(phase="running_shard", shard=str(shard),
-                             completed_tracks=done, ready_tracks=ready,
-                             balance_usd=funds, hourly_usd=hourly,
-                             consecutive_failures=0, last_error=None)
-                run_shard(shard)
-                failures = 0
+                target = 0 if overspend else allowed_parallel(funds)
+                if target and len(active) < target:
+                    candidates = [s for s in incomplete_shards()
+                                  if s not in active
+                                  and cooldown.get(s, 0) < time.monotonic()]
+                    while len(active) < target:
+                        if candidates:
+                            shard = candidates.pop(0)
+                        else:
+                            pool = max(0, ready - done)
+                            built = build(SHARD_SIZE if pool >= SHARD_SIZE else 1)
+                            if built is None:
+                                break
+                            shard = built
+                        active[shard] = spawn(shard)
+                phase = ("waiting_for_user_credit" if funds < MIN_BALANCE
+                         else "unexplained_spend" if overspend
+                         else "running_shards" if active
+                         else "waiting_for_full_tracks")
+                write_status(
+                    phase=phase, completed_tracks=done, ready_tracks=ready,
+                    balance_usd=funds, hourly_usd=hourly,
+                    expected_hourly_usd=round(expected_spend, 3),
+                    active_shards={s.name: {
+                        "pod_id": shard_state(s).get("pod_id"),
+                        "status": shard_state(s).get("status"),
+                        "result_rows": shard_state(s).get("result_rows"),
+                    } for s in active},
+                    swept_orphans=swept or None,
+                    consecutive_failures=failures, last_error=None,
+                    ledger=ledger_totals(),
+                    note=("No automatic funding; user action required."
+                          if funds < MIN_BALANCE else None))
             except Exception as exc:
                 failures += 1
                 write_status(phase="retrying", consecutive_failures=failures,
                              last_error=repr(exc)[-2000:])
                 time.sleep(min(60 * failures, 600))
+                continue
+            time.sleep(CYCLE_SECONDS if funds >= MIN_BALANCE else 600)
 
 
 if __name__ == "__main__":

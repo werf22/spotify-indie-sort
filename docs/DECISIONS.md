@@ -256,3 +256,47 @@ runpod-results.jsonl` were ever touched or lost, it would start creating pods
 on its own schedule, outside anything the production orchestrator (or D-023's
 fix) tracks. Neither agent was documented in `HANDOFF.md` or
 `docs/OPERATIONS.md`, which is how they went unnoticed.
+
+## D-025 — Detached pod execution; billed compute decoupled from local network
+
+**Decision:** `runpod_full_shard.py` no longer drives the analysis through a
+live SSH session. The pipeline runs detached on the pod (`nohup` + `run.done`
+/`run.fail` markers); the local runner polls cheaply, pulls results
+incrementally by byte offset, relaunches a dead remote runner (max 2), and
+aborts on a genuine stall (no result growth for 15 min after a 25-min setup
+grace). Server-side stop/terminate deadlines are computed from the shard's
+actual pending stage-pairs instead of a fixed 3 h/3.5 h. The pod additionally
+stops itself ~15 min after the done/fail marker if nobody collected it (via
+the pod-scoped `runpodctl` credential; best-effort, unverified until the next
+funded shard). A complete-but-unimported shard is now always imported
+(idempotent, serialized by `import.lock`, confirmed by `imported.ok`).
+
+**Why:** Three of the first 17 shards lost 2–5 hours each to network drops:
+the SSH session died, the remote pipeline died with it (SIGHUP), and the pod
+idled on billing until its distant fixed deadline. Measured waste ≈ $1.3 of
+≈ $7 spent. Separately, a crash between result download and import left
+shard-0018's 100 tracks absent from the DB while the builder would have
+re-bought them on a new pod — the guaranteed-import path recovered them for
+free. With detached execution a network drop costs nothing: the work
+continues, and reconnection resumes collection.
+
+## D-026 — Orchestrator: balance-gated parallelism, orphan sweep, cost ledger
+
+**Decision:** `cloud_production_orchestrator.py` manages up to 2 concurrent
+shard runners (2nd pod only above $4 balance; 0 below $1, D-012 unchanged);
+sweeps every cycle for `music-db-*` pods that no shard state explains and
+deletes them immediately; blocks new launches while actual account spend/hr
+exceeds what tracked pods explain (+$0.06 tolerance); appends a per-shard
+cost ledger (`cost_ledger.jsonl`) and exposes it plus per-shard progress in
+`orchestrator_status.json`. Shard size raised 100 → 200 to halve per-pod
+setup overhead; the endgame builds a final small shard (minimum 1) when the
+remaining pool is smaller than a full shard. Monitoring reads go through a
+new read-only DB connection (`musicdb.connect_readonly`) so status loops can
+no longer die on, or contribute to, `database is locked`.
+
+**Why:** The owner's directive of 2026-07-20: same quality, less money, more
+speed, and paid resources must be physically unable to run without doing
+work. The sweep is the standing enforcement of the D-023 class of failure;
+the ledger makes cost per track a measured number instead of an estimate;
+parallelism is the D-022 gate finally exercised (17 clean all-stage shards
+measured at ≈ $0.005/track).

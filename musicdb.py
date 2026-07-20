@@ -431,6 +431,22 @@ END;
 """
 
 
+def connect_readonly(path: Path = DB_PATH) -> sqlite3.Connection:
+    """Open the database strictly read-only for status/monitoring queries.
+
+    WHAT/WHY: the full ``connect()`` below always runs schema DDL, which takes a
+    write lock. Monitoring loops (orchestrator counters, status dashboards) were
+    colliding with long importer transactions and dying with "database is
+    locked". Read-only mode never competes for the write lock.
+    HOW TO TWEAK: busy_timeout is how long a reader waits (ms) when WAL
+    checkpointing briefly blocks readers; 30s is generous.
+    """
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=30000")
+    return conn
+
+
 def connect(path: Path = DB_PATH) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, timeout=90)

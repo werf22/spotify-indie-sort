@@ -4,8 +4,24 @@ This is the canonical cold-start document for the next AI agent. Read it
 before changing code, restarting services, creating cloud resources, calling a
 paid API, or modifying Spotify playlists.
 
-Last manually verified: **2026-07-19, morning, Europe/Bratislava**. Live
+Last manually verified: **2026-07-20, afternoon, Europe/Bratislava**. Live
 counters will continue changing while the background workers run.
+
+**ACTION NEEDED FROM THE OWNER: RunPod balance is $0.98, below the $1.00
+floor — cloud audio production is parked (`waiting_for_user_credit`) with
+1,753/5,394 tracks fully analyzed.** Adding ≈ **$20** covers the remaining
+≈ 3,641 tracks (measured ≈ $0.005/track) with margin; ≥ $4 balance also
+enables the new two-pod parallel mode, roughly halving wall-clock time.
+Nothing else is blocked; all metadata workers continue normally.
+
+**2026-07-20 cost/speed overhaul (D-025, D-026):** pod analysis now runs
+detached (network drops no longer kill or bill-idle paid work), results
+stream back incrementally, pods self-stop if uncollected, stop/terminate
+caps are sized to the shard, the orchestrator sweeps unexplained pods every
+cycle, blocks on unexplained spend, keeps a cost ledger, and can run two
+balance-gated parallel pods. Shards grew to 200 tracks. A guaranteed-import
+path healed shard-0018 (+100 already-paid tracks). New canonical oversight
+command: `./.venv/bin/python pipeline_status.py`.
 
 **Resolved 2026-07-19:** a second, untracked RunPod pod (`6k2dt0i0n5hy73`) was
 found running alongside the real shard-0002 pod (`cp6v9hygqv0u60`), doubling

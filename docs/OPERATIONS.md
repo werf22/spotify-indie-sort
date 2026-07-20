@@ -40,6 +40,15 @@ Do not launch a script manually when its LaunchAgent already owns it.
 
 ## Standard status
 
+The canonical one-command overview (money, pods, audio progress, providers,
+worker liveness — read-only, safe any time):
+
+```bash
+./.venv/bin/python pipeline_status.py
+```
+
+Deeper per-domain views:
+
 ```bash
 ./.venv/bin/python coverage_report.py
 ./.venv/bin/python sync_status.py
@@ -83,8 +92,25 @@ Rules:
 
 Production shard lifecycle is:
 
-`ready -> created -> ssh_ready -> uploaded -> analysis_complete ->
-results_downloaded -> terminated -> imported`.
+`ready -> created -> ssh_ready -> uploaded -> analysis_started ->
+analysis_complete -> results_downloaded -> terminated`, then a local
+`imported.ok` marker confirms the import (D-025). The analysis runs
+DETACHED on the pod: a local network drop does not kill it, the runner
+reconnects and resumes collecting. Results arrive incrementally during the
+run, so `results.jsonl` grows on the laptop while the pod works.
+
+Cost watchdogs, layered (D-025/D-026):
+
+1. incremental result pull — at most ~1 poll interval of work can be lost;
+2. local stall watchdog — no result growth for 15 min → download, delete pod;
+3. pod self-stop — done/fail marker uncollected for ~15 min → pod stops itself;
+4. server-side stop/terminate — sized from the shard's pending work, the
+   catastrophic backstop when the laptop is fully offline;
+5. orchestrator orphan sweep — any `music-db-*` pod unexplained by a shard
+   state is deleted on sight, and unexplained account spend blocks launches.
+
+`data/cloud_full_shards/cost_ledger.jsonl` accumulates per-shard hours and
+estimated cost; `pipeline_status.py` prints the running $/track.
 
 Results are append-only; re-running an incomplete shard skips successful
 track/stage pairs. A completed shard has every pair listed in its manifest's

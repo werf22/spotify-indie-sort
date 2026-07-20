@@ -70,10 +70,12 @@ change.
   for every newly matched local track.
 - [ ] Make menu pause/resume cover the dedicated full-track/cloud LaunchAgents,
   or clearly expose separate controls for them.
-- [ ] Add a single canonical status command that combines old and new audio
-  pipeline counters.
-- [ ] Add an automated orphan-pod monitor that deletes only project-owned pods
+- [x] Add a single canonical status command that combines old and new audio
+  pipeline counters. (`pipeline_status.py`, 2026-07-20)
+- [x] Add an automated orphan-pod monitor that deletes only project-owned pods
   after safely collecting results; it must never fund an account.
+  (orchestrator sweep, D-026, 2026-07-20 — deletes `music-db-*` pods no shard
+  state explains; incremental result pull makes pre-delete collection moot)
 - [ ] Add consistent model revision pins for every downloadable model.
 - [ ] Add SQLite live-backup tooling and a documented restore test.
 - [ ] Add schema migration tests and JSONL corruption/truncation tests.
