@@ -130,6 +130,10 @@ def create_pod(shard: Path, pending: set[tuple[str, str]]) -> str:
     return pod_id
 
 
+UPLOAD_SLOTS = 2  # concurrent 1.5 GB bundle uploads; more saturates the home
+                  # uplink and starves the SSH polls of already-running pods
+
+
 def upload(command: str, bundle: Path, results: Path) -> None:
     target, port, identity = rp.connection_parts(command)
     args = ["scp", "-o", "StrictHostKeyChecking=accept-new"]
@@ -137,9 +141,26 @@ def upload(command: str, bundle: Path, results: Path) -> None:
         args += ["-P", port]
     if identity:
         args += ["-i", identity]
-    rp.run(args + [str(bundle), f"{target}:/workspace/full-shard.tar"], timeout=2400)
-    if results.is_file() and results.stat().st_size:
-        rp.run(args + [str(results), f"{target}:/workspace/resume-results.jsonl"], timeout=600)
+    # Cross-process upload semaphore: wait for one of UPLOAD_SLOTS lock files.
+    slots = [IMPORT_LOCK.parent / f"upload-slot-{i}.lock" for i in range(UPLOAD_SLOTS)]
+    while True:
+        for slot in slots:
+            handle = slot.open("w")
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                handle.close()
+        else:
+            time.sleep(10)
+            continue
+        break
+    try:
+        rp.run(args + [str(bundle), f"{target}:/workspace/full-shard.tar"], timeout=2400)
+        if results.is_file() and results.stat().st_size:
+            rp.run(args + [str(results), f"{target}:/workspace/resume-results.jsonl"], timeout=600)
+    finally:
+        handle.close()
     rp.save_state(status="uploaded")
 
 
@@ -209,8 +230,14 @@ def poll(command: str, shard_rel: str) -> dict | None:
              f'stat -c %s "{shard_rel}/results.jsonl" 2>/dev/null || echo 0; echo @@; '
              f'pgrep -f "[c]loud_audio_full.py --manifest {shard_rel}" >/dev/null && echo alive || echo dead; echo @@; '
              f'tail -n 5 /workspace/run.log 2>/dev/null | tr "\\n" "|"')
-    proc = subprocess.run(rp.ssh_args(command) + [f"cd /workspace && {probe}"],
-                          text=True, cwd=ROOT, timeout=40, capture_output=True)
+    try:
+        proc = subprocess.run(rp.ssh_args(command) + [f"cd /workspace && {probe}"],
+                              text=True, cwd=ROOT, timeout=40, capture_output=True)
+    except subprocess.TimeoutExpired:
+        # A slow/saturated uplink (e.g. parallel bundle uploads) must count as
+        # "pod unreachable", never crash the runner: an uncaught timeout here
+        # once killed seven healthy pods mid-analysis at once.
+        return None
     if proc.returncode:
         return None
     parts = proc.stdout.split("@@")
@@ -227,9 +254,12 @@ def poll(command: str, shard_rel: str) -> dict | None:
 def fetch_delta(command: str, shard_rel: str, results: Path) -> None:
     """Append only the new bytes of the remote results file (append-only JSONL)."""
     offset = results.stat().st_size if results.is_file() else 0
-    proc = subprocess.run(
-        rp.ssh_args(command) + [f"tail -c +{offset + 1} /workspace/{shard_rel}/results.jsonl"],
-        cwd=ROOT, timeout=300, capture_output=True)
+    try:
+        proc = subprocess.run(
+            rp.ssh_args(command) + [f"tail -c +{offset + 1} /workspace/{shard_rel}/results.jsonl"],
+            cwd=ROOT, timeout=300, capture_output=True)
+    except subprocess.TimeoutExpired:
+        return  # transient; the next poll retries the same offset
     if proc.returncode == 0 and proc.stdout:
         with results.open("ab") as handle:
             handle.write(proc.stdout)
