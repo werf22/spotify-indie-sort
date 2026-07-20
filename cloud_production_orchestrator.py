@@ -258,6 +258,15 @@ def main() -> None:
                                 break
                             shard = built
                         active[shard] = spawn(shard)
+                # Build-ahead: keep exactly one spare shard bundled while all
+                # slots are busy, so a finishing pod never waits ~2 min for
+                # tar/bundling before its successor can launch (time win only;
+                # the spare costs nothing until a runner picks it up).
+                if target and len(active) >= target:
+                    spare = [s for s in incomplete_shards() if s not in active]
+                    pool = max(0, ready - done - len(active) * SHARD_SIZE)
+                    if not spare and pool >= 1:
+                        build(SHARD_SIZE if pool >= SHARD_SIZE else 1)
                 phase = ("waiting_for_user_credit" if funds < MIN_BALANCE
                          else "unexplained_spend" if overspend
                          else "running_shards" if active

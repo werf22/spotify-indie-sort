@@ -64,6 +64,16 @@ change.
 - [ ] Test `find_similar.py` on representative DJ seeds and record judged quality.
 - [ ] Produce a final coverage/no-match report by provider and field.
 
+## Enrichment expansion (researched 2026-07-20 — docs/ENRICHMENT_ROADMAP.md)
+
+- [ ] Direct Discogs API enricher (free; canonical styles vocabulary; replaces
+  slow OneTagger bridge for the 43k untouched tail). Recommended first.
+- [ ] Deezer 30-s preview audio tier for ~55.5k unmatched tracks (beat type,
+  audio genre/mood candidates at 10× coverage) — OWNER APPROVAL REQUIRED
+  (rule 8 / licensing stance; ~$8–15 compute or free-but-warm laptop).
+- [ ] MusicBrainz genre second pass over the 23.5k known MBIDs (free, 1 req/s).
+- [ ] FreqBlog needs_review queue (2,414) supervised fuzzy-acceptance pass.
+
 ## Engineering backlog
 
 - [ ] Replace hard-coded `EXPECTED = 5394` with a dynamic append-only audio queue
