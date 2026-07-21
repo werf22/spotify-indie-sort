@@ -40,12 +40,16 @@ change.
 
 ## In progress — leave running
 
-- [ ] Prepare full-track Opus analysis assets for the current 5,394-track
-  initial local batch.
-- [ ] Analyze all 5,394 with cloud Essentia supervised heads.
-- [ ] Analyze all 5,394 with cloud Beat This + DSP full-track rhythm timelines.
-- [ ] Analyze all 5,394 with cloud MAEST + CLAP under existing RunPod credit.
+- [x] Prepare full-track Opus analysis assets for the current 5,394-track
+  initial local batch. (5,393 prepared; 1 source file permanently corrupt)
+- [x] Analyze all 5,394 with cloud Essentia supervised heads. (5,393 done
+  2026-07-21 — the whole 4-stage batch: 19 shards, 25.9 GPU-h, $5.88)
+- [x] Analyze all 5,394 with cloud Beat This + DSP full-track rhythm timelines.
+  (5,393 done 2026-07-21)
+- [x] Analyze all 5,394 with cloud MAEST + CLAP under existing RunPod credit.
+  (5,393 done 2026-07-21)
 - [ ] Continue FreqBlog enrichment within existing 150k monthly quota.
+  (43,429 success; quota ~exhausted at 145k/150k — auto-resumes on monthly reset)
 - [ ] Continue Last.fm, MusicBrainz, Deezer, TheAudioDB, OneTagger and Spotify
   metadata workers.
 - [ ] Continue local file indexing and deep verification.

@@ -7,12 +7,14 @@ paid API, or modifying Spotify playlists.
 Last manually verified: **2026-07-20, afternoon, Europe/Bratislava**. Live
 counters will continue changing while the background workers run.
 
-**ACTION NEEDED FROM THE OWNER: RunPod balance is $0.98, below the $1.00
-floor — cloud audio production is parked (`waiting_for_user_credit`) with
-1,753/5,394 tracks fully analyzed.** Adding ≈ **$20** covers the remaining
-≈ 3,641 tracks (measured ≈ $0.005/track) with margin; ≥ $4 balance also
-enables the new two-pod parallel mode, roughly halving wall-clock time.
-Nothing else is blocked; all metadata workers continue normally.
+**MILESTONE 2026-07-21: the full-track audio layer is COMPLETE — 5,393 of
+5,393 preparable tracks have all four stages (rhythm, MAEST, Essentia, CLAP)
+analyzed and imported.** (Track 5,394 of the original target has a
+permanently corrupt source file and never produced an Opus asset.) The whole
+scaled run: 19 shards, 25.9 GPU-hours, **$5.88 total (~$0.0016/track)**, no
+pods left running, spend $0.00/hr, balance $1.84. Next step per the approved
+roadmap: a measured 100-track pilot of the Deezer 30-s preview tier (D-007
+discipline) before the ~55k-track preview run is priced and funded.
 
 **2026-07-20 cost/speed overhaul (D-025, D-026):** pod analysis now runs
 detached (network drops no longer kill or bill-idle paid work), results
