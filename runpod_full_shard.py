@@ -136,7 +136,7 @@ UPLOAD_SLOTS = 2  # concurrent 1.5 GB bundle uploads; more saturates the home
 
 def upload(command: str, bundle: Path, results: Path) -> None:
     target, port, identity = rp.connection_parts(command)
-    args = ["scp", "-o", "StrictHostKeyChecking=accept-new"]
+    args = ["scp", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
     if port:
         args += ["-P", port]
     if identity:

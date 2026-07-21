@@ -202,7 +202,7 @@ def wait_for_ssh(pod_id: str, timeout_seconds: int = 600) -> str:
 
 def ssh_args(command: str) -> list[str]:
     target, port, identity = connection_parts(command)
-    args = ["ssh", "-o", "StrictHostKeyChecking=accept-new"]
+    args = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
     if port:
         args += ["-p", port]
     if identity:
@@ -222,7 +222,7 @@ def connection_parts(command: str) -> tuple[str, str | None, str | None]:
 
 def upload(command: str) -> None:
     target, port, identity = connection_parts(command)
-    args = ["scp", "-o", "StrictHostKeyChecking=accept-new"]
+    args = ["scp", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
     if port:
         args += ["-P", port]
     if identity:
@@ -257,7 +257,7 @@ python cloud_audio_pilot.py --manifest data/cloud_pilot/manifest.csv --output da
 
 def download(command: str) -> bool:
     target, port, identity = connection_parts(command)
-    args = ["scp", "-o", "StrictHostKeyChecking=accept-new"]
+    args = ["scp", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
     if port:
         args += ["-P", port]
     if identity:
