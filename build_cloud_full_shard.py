@@ -11,7 +11,7 @@ import os
 import subprocess
 from pathlib import Path
 
-from musicdb import connect
+from musicdb import connect_readonly
 
 
 ROOT = Path(__file__).resolve().parent
@@ -37,7 +37,9 @@ def manifest_rows() -> list[dict]:
 
 
 def completed_stages() -> dict[str, set[str]]:
-    with connect() as db:
+    # Read-only: the builder only reads completed stages; the full connect()
+    # runs schema DDL and was intermittently dying on daemon writers' locks.
+    with connect_readonly() as db:
         rows = db.execute(
             """SELECT spotify_id,stage FROM audio_analysis_artifacts
                WHERE stage IN ('rhythm_full','maest_full','essentia_full','clap_full')"""
