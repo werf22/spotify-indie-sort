@@ -80,8 +80,8 @@ change.
 
 ## Engineering backlog
 
-- [ ] Replace hard-coded `EXPECTED = 5394` with a dynamic append-only audio queue
-  for every newly matched local track.
+- [x] Replace hard-coded `EXPECTED = 5394` with a dynamic append-only audio queue
+  for every newly matched local track. (D-030, 2026-07-21 — `target_count()`)
 - [ ] Make menu pause/resume cover the dedicated full-track/cloud LaunchAgents,
   or clearly expose separate controls for them.
 - [x] Add a single canonical status command that combines old and new audio

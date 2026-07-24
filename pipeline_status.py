@@ -67,12 +67,19 @@ def audio_section() -> None:
                      WHERE stage IN ('rhythm_full','maest_full','essentia_full','clap_full')
                      GROUP BY spotify_id HAVING COUNT(DISTINCT stage)=4)"""
             ).fetchone()[0]
+            target = db.execute(
+                "SELECT COUNT(DISTINCT spotify_id) FROM audio_files WHERE scan_status='matched'"
+            ).fetchone()[0]
+            local_only = db.execute(
+                "SELECT COUNT(*) FROM tracks WHERE library_sources='local_only'"
+            ).fetchone()[0]
             stages = dict(db.execute(
                 """SELECT stage, COUNT(*) FROM audio_analysis_artifacts
                    WHERE stage LIKE '%_full' GROUP BY stage"""))
-            print(f"Full audio: {full}/5394 tracks all-4-stages "
+            print(f"Full audio: {full}/{target} tracks all-4-stages "
                   f"(rhythm {stages.get('rhythm_full', 0)}, maest {stages.get('maest_full', 0)}, "
-                  f"essentia {stages.get('essentia_full', 0)}, clap {stages.get('clap_full', 0)})")
+                  f"essentia {stages.get('essentia_full', 0)}, clap {stages.get('clap_full', 0)}) "
+                  f"— of which {local_only} local_only (not in the 68,075-track Spotify catalog)")
     except Exception as exc:
         print(f"Full audio: db busy ({str(exc)[:60]})")
 

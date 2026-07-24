@@ -348,3 +348,43 @@ requests serialize through a cross-process file-lock limiter in
 produced SSL connection drops. The Deezer 30-s preview audio tier was also
 owner-approved and is queued to start after the 5,394 full-track batch
 finishes (docs/ENRICHMENT_ROADMAP.md, task list).
+
+## D-030 — Local-only tracks get synthetic identity; queue generalized (D-011 follow-through)
+
+**Decision (owner, 2026-07-21):** every locally-owned audio file under 15
+minutes — including the 1,585 that matched nothing in the 68,075-track
+Spotify catalog — is now eligible for the full audio pipeline, matching the
+owner's "analyze everything on my computer except long DJ/ED sets" request.
+`promote_unmatched_local_tracks.py` does two passes: (1) ISRC recovery,
+restricted to ISRCs that map to exactly one catalog track — an ISRC shared
+across 2+ tracks (common for reissues/compilations; ~130 cases found) stays
+unresolved per D-006 rather than guessed; (2) everything else with a known
+duration ≤ 900s gets a synthetic identity (`local_<sha1(path)[:16]>` — never
+a valid 22-char Spotify ID) and a minimal `tracks` row
+(`library_sources='local_only'`, `uri='local:<path>'`, empty `artist_ids`/
+`genres` — the real values arrive through the same tag pipeline). Result:
+71 ISRC recoveries, 1,496 synthetic local-only tracks, 20 excluded as >15 min,
+1 skipped for unknown duration. Nothing else changed: the shard/pod pipeline
+keys everything by an opaque `spotify_id` string already, so local-only
+tracks flow through D-025/D-026 unmodified.
+
+Follow-through: `cloud_production_orchestrator.py`'s `EXPECTED = 5394`
+(D-011's deliberately-immutable first-batch target) is replaced by a live
+`target_count()` — every `audio_files` row with `scan_status='matched'` —
+per the engineering-backlog item deferred until the first immutable batch
+finished (it now has, 2026-07-21). `coverage_report.py` and
+`pipeline_status.py` exclude `local_only` tracks from the 68,075-catalog
+percentages so this never silently inflates "Tracks: 68,075" — reported as
+a separate line instead.
+
+**Why:** the owner explicitly wants maximum tag/mood/beat-type coverage
+usable without listening, for every real song on the machine, not only the
+Spotify-catalog subset. Synthetic identity (vs. a schema/FK change) was
+chosen because `audio_analysis_artifacts`/`tags`/`track_attributes` treat
+`spotify_id` as an opaque string throughout — reusing it costs one small
+script instead of forking the entire analysis+import path.
+
+**Known gap:** the two prior scans covered `~/Music` and (from an earlier
+ad-hoc run) `~/Downloads`; the owner confirmed `~/Music` is the whole
+collection, so no broader rescan was run. If other folders exist, extending
+`index_audio_files.py --root` before re-running the promoter is the path.

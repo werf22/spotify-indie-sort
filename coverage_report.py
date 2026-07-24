@@ -4,9 +4,21 @@ from __future__ import annotations
 from musicdb import connect
 
 
+LOCAL_ONLY_FILTER = "spotify_id NOT LIKE 'local\\_%' ESCAPE '\\'"
+
+
+def catalog_only(query: str) -> str:
+    """Exclude synthetic local-only tracks (D-029) so percentages stay
+    against the real 68,075-track Spotify catalog, not inflated by files
+    that were never in it. Every metric query below reads a table with a
+    spotify_id column, so this is a safe blanket append."""
+    return f"{query} AND {LOCAL_ONLY_FILTER}" if " WHERE " in query else f"{query} WHERE {LOCAL_ONLY_FILTER}"
+
+
 def main() -> None:
     db = connect()
-    total = db.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
+    total = db.execute(catalog_only("SELECT COUNT(*) FROM tracks")).fetchone()[0]
+    local_only = db.execute("SELECT COUNT(*) FROM tracks WHERE library_sources='local_only'").fetchone()[0]
     metrics = [
         ("Spotify legacy genres", "SELECT COUNT(*) FROM tracks WHERE genres<>''"),
         ("Any genre tag", "SELECT COUNT(DISTINCT spotify_id) FROM tags WHERE tag_type='genre'"),
@@ -28,10 +40,10 @@ def main() -> None:
         ("ISRC", "SELECT COUNT(*) FROM tracks WHERE isrc IS NOT NULL AND isrc<>''"),
         ("MusicBrainz ID", "SELECT COUNT(*) FROM tracks WHERE musicbrainz_id IS NOT NULL AND musicbrainz_id<>''"),
     ]
-    print(f"Tracks: {total:,}\n")
+    print(f"Tracks: {total:,}  (+ {local_only:,} local-only, not in the Spotify catalog)\n")
     width = max(len(name) for name, _ in metrics)
     for name, query in metrics:
-        count = db.execute(query).fetchone()[0]
+        count = db.execute(catalog_only(query)).fetchone()[0]
         pct = count * 100 / total if total else 0
         print(f"{name:<{width}}  {count:>7,}  {pct:6.2f}%")
 

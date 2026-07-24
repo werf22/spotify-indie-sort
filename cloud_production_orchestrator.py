@@ -38,7 +38,6 @@ LOCK = SHARDS / "orchestrator.lock"
 RUNPODCTL = Path.home() / ".local" / "bin" / "runpodctl"
 
 # --- CONSTANTS (safe to tweak) -------------------------------------------
-EXPECTED = 5394        # immutable first-batch target; raise deliberately only
 SHARD_SIZE = 200       # bigger shards amortize pod setup cost (D-026)
 MIN_BALANCE = 1.0      # below this: park and wait for the owner (D-012)
 SHARD_COST_EST = 0.5   # measured ~$0.44/200-track shard; used to scale parallelism
@@ -95,6 +94,17 @@ def completed_count() -> int:
                  WHERE stage IN ('rhythm_full','maest_full','essentia_full','clap_full')
                  GROUP BY spotify_id HAVING COUNT(DISTINCT stage)=4
                )"""
+        ).fetchone()[0])
+
+
+def target_count() -> int:
+    """Dynamic queue size: every locally-matched track (catalog or
+    local-only), not a fixed number (D-011's original 5,394 was the first
+    immutable batch; the queue is append-only from here per docs/TASKS.md).
+    """
+    with connect_readonly() as db:
+        return int(db.execute(
+            "SELECT COUNT(DISTINCT spotify_id) FROM audio_files WHERE scan_status='matched'"
         ).fetchone()[0])
 
 
@@ -237,13 +247,13 @@ def main() -> None:
                     else:
                         failures += 1
                         cooldown[shard] = time.monotonic() + min(300 * failures, 1800)
-                done, ready = completed_count(), ready_count()
+                done, ready, target_n = completed_count(), ready_count(), target_count()
                 funds, hourly = balance()
                 swept = sweep_orphans()
                 expected_spend = sum(
                     float(shard_state(s).get("hourly_cost_usd") or 0) for s in active)
                 overspend = hourly > expected_spend + SPEND_TOLERANCE and not swept
-                if done >= EXPECTED and not active:
+                if done >= target_n and not active and not incomplete_shards():
                     write_status(phase="complete", completed_tracks=done,
                                  ready_tracks=ready, balance_usd=funds,
                                  hourly_usd=hourly, ledger=ledger_totals())
