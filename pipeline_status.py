@@ -109,7 +109,12 @@ def workers_section() -> None:
     probe = subprocess.run(["ps", "-axo", "command"], capture_output=True, text=True)
     names = {"enrichment_daemon": "daemon", "cloud_production_orchestrator": "orchestrator",
              "prepare_cloud_audio_pilot": "opus-prep", "runpod_full_shard": "shard-runner"}
-    alive = [label for needle, label in names.items() if needle in probe.stdout]
+    # Match the script's full path form ("/<name>.py"), so a shell or grep
+    # whose command line merely mentions the name is not counted as a running
+    # worker — the same self-match class of bug that once made poll() see a
+    # dead pod as alive.
+    alive = [label for needle, label in names.items()
+             if f"/{needle}.py" in probe.stdout]
     print("Workers alive: " + (", ".join(alive) if alive else "NONE"))
 
 

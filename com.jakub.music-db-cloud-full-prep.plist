@@ -10,7 +10,7 @@
     <string>/Users/jakub/Appky Claude/spotify-indie-sort/prepare_cloud_audio_pilot.py</string>
     <string>--limit</string><string>100000</string>
     <string>--codec</string><string>opus</string>
-    <string>--workers</string><string>1</string>
+    <string>--workers</string><string>4</string>
     <string>--full-track</string>
     <string>--output</string>
     <string>/Users/jakub/Appky Claude/spotify-indie-sort/data/cloud_full</string>
