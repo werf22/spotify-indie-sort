@@ -426,3 +426,33 @@ window, which is what makes the full collection feasible at all.
 `Desktop/GitHub` (repository assets) and `Documents/Journal ALL` (121
 personal voice recordings — genre/mood analysis is meaningless there and the
 owner asked for music). `~/Music/Music` (Apple Music managed) is empty.
+
+**Prep throughput:** `ProcessType=Background` (set under D-020 to keep the
+laptop cool) put each FFmpeg worker under macOS background QoS at ~2.3% CPU,
+giving 24 clips/hour — 33 days for this backlog. Switched to `Standard`:
+51-73% CPU per worker, ~4,000-5,000 clips/hour, roughly 4 hours total. The
+plist is the revert point once the backlog is done.
+
+## D-032 — A later-known duration retracts a fuzzy match
+
+**Decision:** `verify_match_durations.py` (hourly daemon job, ahead of the
+identity promoter) unmatches any `title_artist_duration` match whose file
+and catalog durations differ by more than 20 seconds, deletes the audio
+artifacts produced from that file, and lets the promoter give the file its
+own local-only identity.
+
+**Why:** `index_audio_files.match()` scores duration a neutral 0.5 when the
+file's duration is unknown at index time, so artist+title agreement alone
+can clear the 0.82 threshold (0.72x1.0 + 0.28x0.5 = 0.86, matching the 0.95
+confidence seen on the bad rows). Durations arrive later from tag re-reads
+and ffprobe verification, and 89 of those matches then proved to pair
+different recordings of the same song — a 196 s radio edit filed under a
+450 s extended mix, "Come To Me" at 188 s under a 394 s track, and so on.
+Analyzing one recording and storing the result under another is precisely
+the failure D-006 exists to prevent, so the match is retracted rather than
+kept. First run: 89 demoted, 188 artifact rows removed, all 89 re-identified
+as local-only; a second run finds nothing, so the loop converges.
+
+**Scope limit:** `isrc_tag` matches are left alone. An ISRC is the
+publisher's own identity assertion; differing masters sharing one ISRC is a
+labelling reality, not something this check should overrule.

@@ -53,6 +53,9 @@ LOCAL_JOBS = [
     # invisible to prep and the pods (found 2026-07-29). Roots come from
     # AUDIO_LIBRARY_ROOTS in .env; the hourly cadence keeps the walk cheap.
     ("audio-index", ["index_audio_files.py"], 3600),
+    # Undo fuzzy matches that a later-known duration disproves, before the
+    # promoter hands out identities (D-032).
+    ("audio-match-verify", ["verify_match_durations.py"], 3600),
     ("audio-identity", ["promote_unmatched_local_tracks.py"], 3600),
     # Reclaim clips/bundles once their analysis is safely in the database.
     # Without this the ~19k-track backlog would need ~125 GB of clips at
