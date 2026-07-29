@@ -145,16 +145,27 @@ def build(minimum: int) -> Path | None:
     return Path(payload["shard"]) if payload.get("status") == "ready" else None
 
 
-def sweep_orphans() -> list[str]:
-    """Delete any music-db pod that no shard state currently explains."""
+def sweep_orphans(active: dict | None = None) -> list[str]:
+    """Delete any music-db pod that no LIVE runner explains.
+
+    A pod is not safe merely because some shard state names it: if that
+    shard has no runner in `active`, nobody is polling the pod, collecting
+    its results, or going to delete it — the runner died (a crash, or the
+    orchestrator being restarted, which kills its children). Observed
+    2026-07-29: pod 9sc258b9ht5xsy billed 3h10m in state "created" with
+    zero results because its state file still "owned" it. Only the
+    orchestrator spawns runners, so `active` is the authoritative answer to
+    "is anyone actually working on this shard".
+    """
     pods = ctl_json("pod", "list")
     if not isinstance(pods, list):
         return []
+    live_shards = {s.name for s in (active or {})}
     states = {}
     for shard in SHARDS.glob("shard-*"):
         data = shard_state(shard)
         if data.get("pod_id"):
-            states[data["pod_id"]] = data
+            states[data["pod_id"]] = (data, shard.name)
     deleted = []
     for pod in pods:
         pod_id = str(pod.get("id") or "")
@@ -165,11 +176,18 @@ def sweep_orphans() -> list[str]:
         stale = False
         if tracked is None:
             stale = True
-        elif tracked.get("status") in {"terminated", "termination_unconfirmed"}:
-            updated = tracked.get("updated_at", "1970-01-01T00:00:00Z")
-            age = datetime.now(timezone.utc) - datetime.fromisoformat(
-                updated.replace("Z", "+00:00"))
-            stale = age.total_seconds() > 900
+        else:
+            data, shard_name = tracked
+            updated = data.get("updated_at", "1970-01-01T00:00:00Z")
+            age = (datetime.now(timezone.utc)
+                   - datetime.fromisoformat(updated.replace("Z", "+00:00"))).total_seconds()
+            if data.get("status") in {"terminated", "termination_unconfirmed"}:
+                stale = age > 900
+            elif shard_name not in live_shards:
+                # Tracked, non-terminal, but no runner is working it: an
+                # abandoned pod. Grace period covers the gap between spawn()
+                # and the shard appearing in `active`.
+                stale = age > 600
         if stale:
             subprocess.run([str(RUNPODCTL), "pod", "delete", pod_id], cwd=ROOT,
                            capture_output=True, text=True, timeout=60)
@@ -254,7 +272,7 @@ def main() -> None:
                         cooldown[shard] = time.monotonic() + min(300 * failures, 1800)
                 done, ready, target_n = completed_count(), ready_count(), target_count()
                 funds, hourly = balance()
-                swept = sweep_orphans()
+                swept = sweep_orphans(active)
                 expected_spend = sum(
                     float(shard_state(s).get("hourly_cost_usd") or 0) for s in active)
                 overspend = hourly > expected_spend + SPEND_TOLERANCE and not swept
