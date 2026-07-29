@@ -50,7 +50,18 @@ def candidates(db):
            SELECT f.spotify_id,f.path,f.duration_seconds,f.codec,
                   t.title track_name,t.artist_names,t.album album_name,t.isrc
            FROM one_file f JOIN tracks t USING(spotify_id)
-           WHERE f.pick=1 ORDER BY f.spotify_id"""
+           WHERE f.pick=1
+             -- Skip tracks whose four stages are already in the database.
+             -- Without this the pass re-validates every finished clip on
+             -- each restart, and clips could never be pruned (the next pass
+             -- would just re-encode them) — which caps the corpus at
+             -- whatever fits on disk. See prune_analyzed_clips.py.
+             AND f.spotify_id NOT IN (
+               SELECT spotify_id FROM audio_analysis_artifacts
+               WHERE stage IN ('rhythm_full','maest_full','essentia_full','clap_full')
+               GROUP BY spotify_id HAVING COUNT(DISTINCT stage)=4
+             )
+           ORDER BY f.spotify_id"""
     )]
     if not rows:
         return rows
