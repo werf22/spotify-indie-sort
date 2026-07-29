@@ -18,7 +18,7 @@
   <key>WorkingDirectory</key>
   <string>/Users/jakub/Appky Claude/spotify-indie-sort</string>
   <key>RunAtLoad</key><true/>
-  <key>ProcessType</key><string>Background</string>
+  <key>ProcessType</key><string>Standard</string>
   <key>KeepAlive</key>
   <dict><key>SuccessfulExit</key><false/></dict>
   <key>StandardOutPath</key>
