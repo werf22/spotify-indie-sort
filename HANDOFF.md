@@ -7,14 +7,24 @@ paid API, or modifying Spotify playlists.
 Last manually verified: **2026-07-20, afternoon, Europe/Bratislava**. Live
 counters will continue changing while the background workers run.
 
-**STATUS 2026-07-29 — ONE BLOCKER, OWNER ACTION REQUIRED.**
+**STATUS 2026-07-29 (evening) — ONE BLOCKER: RunPod credit.**
 
-*RunPod balance is $0.83, below the $1.00 floor (D-012), so the audio
-pipeline is parked in `waiting_for_user_credit`.* Remaining: ~1,498 tracks
-of the 6,936-track dynamic target (the local-only expansion, D-030).
-Measured cost is ~$0.0012/track, so **~$2 finishes it; adding $5 leaves
-margin**. The orchestrator resumes on its own within ~10 minutes of the
-balance going above $1 — nothing else to restart.
+The scope changed completely today: the indexer had never been automated,
+so ~17,700 already-downloaded files were invisible to the pipeline. After
+the rescan the target is the whole collection — **24,688 eligible tracks**
+(≤15 min, local file present), of which **7,593 are fully analyzed**.
+
+*Every local step is finished or self-running.* All 17,875 outstanding
+analysis clips are prepared (0 failures, 112 GB), so nothing local blocks
+progress. What remains is GPU time: **~17,100 tracks × $0.0014 ≈ $24**.
+The balance runs the pipeline down gracefully — pod count scales with
+funds and parks at $1 — so topping up is the only action needed; the
+orchestrator resumes within ~10 minutes and scales to 16 pods.
+
+*The full loop is now automatic* (D-031/D-032): hourly index → duration
+re-verification of fuzzy matches → identity assignment → Opus prep →
+GPU analysis → clip/bundle pruning. New downloads enter it by themselves;
+this was the day's main structural fix.
 
 *Metadata enrichment is effectively COMPLETE.* Every free provider has
 attempted every eligible track and now returns zeros because its queue is
