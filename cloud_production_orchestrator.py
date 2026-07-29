@@ -41,8 +41,13 @@ RUNPODCTL = Path.home() / ".local" / "bin" / "runpodctl"
 SHARD_SIZE = 200       # bigger shards amortize pod setup cost (D-026)
 MIN_BALANCE = 1.0      # below this: park and wait for the owner (D-012)
 SHARD_COST_EST = 0.5   # measured ~$0.44/200-track shard; used to scale parallelism
-MAX_PARALLEL = 8       # owner-approved scale-out (D-028); above ~8 the laptop
-                       # uplink (1.5 GB bundle per shard) becomes the serializer
+MAX_PARALLEL = 16      # owner-approved scale-out (D-028: "even 20, I don't
+                       # care" — total cost is identical, only wall-clock
+                       # changes). Uploads stay throttled to UPLOAD_SLOTS=2 in
+                       # runpod_full_shard.py, so extra pods queue briefly for
+                       # the uplink (~4 min each) and then analyze in parallel
+                       # for ~2 h — the queue is not the constraint at this
+                       # ratio. 95 shards: ~24 h at 8 pods, ~12 h at 16.
 SPEND_TOLERANCE = 0.10 # allowed gap between actual and explained spend/hr
 CYCLE_SECONDS = 45
 
