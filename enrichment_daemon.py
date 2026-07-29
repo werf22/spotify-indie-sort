@@ -147,7 +147,15 @@ def run_job(name: str, args: list[str], success_delay: int, log, requires_online
             )
             with CHILD_LOCK:
                 CHILDREN[name] = child
-            code = child.wait(timeout=7200 if name.startswith("audio-") else 3600)
+            # Prep transcodes the whole outstanding corpus in one pass and
+            # re-validates every existing clip on the way, so a full run can
+            # exceed the generic audio budget. Killing it mid-pass loses the
+            # newest files repeatedly (the validation restarts from scratch),
+            # so give it a much longer ceiling — it is idempotent and the
+            # daemon relaunches it on its own schedule anyway.
+            budget = (28800 if name == "audio-prep"
+                      else 7200 if name.startswith("audio-") else 3600)
+            code = child.wait(timeout=budget)
             delay = success_delay if code == 0 else 30
             if code:
                 write(log, f"{name}: exited {code}; retry in {delay}s")
