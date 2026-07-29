@@ -57,6 +57,15 @@ LOCAL_JOBS = [
     # promoter hands out identities (D-032).
     ("audio-match-verify", ["verify_match_durations.py"], 3600),
     ("audio-identity", ["promote_unmatched_local_tracks.py"], 3600),
+    # Transcode newly identified tracks into analysis clips. This used to be
+    # the standalone com.jakub.music-db-cloud-full-prep agent, which exits on
+    # success and never restarts — so anything indexed later sat unprepared
+    # forever. Owning it here closes the discover -> identity -> prep ->
+    # analyze loop. --output must be given: the script defaults to the old
+    # cloud_pilot directory.
+    ("audio-prep", ["prepare_cloud_audio_pilot.py", "--limit", "100000",
+                    "--codec", "opus", "--workers", "4", "--full-track",
+                    "--output", "data/cloud_full"], 1800),
     # Reclaim clips/bundles once their analysis is safely in the database.
     # Without this the ~19k-track backlog would need ~125 GB of clips at
     # once; pruned continuously it stays a small rolling window.
