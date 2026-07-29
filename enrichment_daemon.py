@@ -54,6 +54,10 @@ LOCAL_JOBS = [
     # AUDIO_LIBRARY_ROOTS in .env; the hourly cadence keeps the walk cheap.
     ("audio-index", ["index_audio_files.py"], 3600),
     ("audio-identity", ["promote_unmatched_local_tracks.py"], 3600),
+    # Reclaim clips/bundles once their analysis is safely in the database.
+    # Without this the ~19k-track backlog would need ~125 GB of clips at
+    # once; pruned continuously it stays a small rolling window.
+    ("audio-clip-prune", ["prune_analyzed_clips.py"], 1800),
     # Independent guard: pause the whole supervisor before the internal disk
     # reaches the user's 50 GiB safety floor.  It also emits a macOS alert.
     ("disk-guard", ["sync_control.py", "check-disk"], 60),

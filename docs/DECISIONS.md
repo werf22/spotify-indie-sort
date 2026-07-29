@@ -384,7 +384,45 @@ chosen because `audio_analysis_artifacts`/`tags`/`track_attributes` treat
 `spotify_id` as an opaque string throughout — reusing it costs one small
 script instead of forking the entire analysis+import path.
 
-**Known gap:** the two prior scans covered `~/Music` and (from an earlier
-ad-hoc run) `~/Downloads`; the owner confirmed `~/Music` is the whole
-collection, so no broader rescan was run. If other folders exist, extending
-`index_audio_files.py --root` before re-running the promoter is the path.
+**Known gap (closed by D-031):** the two prior scans covered `~/Music` and
+(from an earlier ad-hoc run) `~/Downloads`; the owner confirmed `~/Music` is
+the whole collection, so no broader rescan was run. If other folders exist,
+extending `index_audio_files.py --root` before re-running the promoter is
+the path.
+
+## D-031 — Whole-collection scope; indexing, identity and pruning automated
+
+**Decision (owner, 2026-07-29):** analyze *every* audio file on the machine
+under 15 minutes, catalog-matched or not. Three changes make that real:
+
+1. **Indexing is automatic.** `index_audio_files.py` had never been wired
+   into any automation — it ran only by hand, so ~17,700 files downloaded
+   after the last manual run were invisible to the entire pipeline while
+   sitting in `~/Music`. It is now an hourly daemon job (with
+   `promote_unmatched_local_tracks.py` behind it), roots from
+   `AUDIO_LIBRARY_ROOTS`. Rescan result: **28,828 files** indexed, up from
+   11,171; 27,619 matched; 1,183 new local-only identities.
+2. **The 15-minute rule is enforced everywhere.** It previously applied only
+   to local-only promotion, so 95 catalog-matched DJ/continuous mixes (up to
+   109 minutes) were still eligible. `prepare_cloud_audio_pilot.py` now
+   filters on `COALESCE(file duration, catalog duration) <= 900`. This is
+   also the largest single cost lever, since GPU time scales with length.
+3. **Derived data is pruned continuously.** Clips and shard bundles were
+   kept forever: 82 GB of shard directories plus 36 GB of clips, and the
+   clips could not be freed at all because shard directories hold hardlinks
+   to the same inodes. `prune_analyzed_clips.py` (half-hourly daemon job)
+   removes both once all four stages are in the database, keeping
+   `manifest.csv`/`results.jsonl`/state as the audit trail and never
+   touching an unfinished shard. First run freed **76.9 GiB** (182 → 258 GiB
+   free). Prep skips fully-analyzed tracks, so a pruned clip is never
+   re-encoded.
+
+**Resulting scope:** 24,320 eligible tracks, 5,438 already analyzed,
+**18,882 remaining ≈ $23** at the measured $0.0012/track. Peak clip storage
+would be ~125 GB unpruned; with continuous pruning it stays a small rolling
+window, which is what makes the full collection feasible at all.
+
+**Excluded deliberately:** `Library/Group Containers` (application sounds),
+`Desktop/GitHub` (repository assets) and `Documents/Journal ALL` (121
+personal voice recordings — genre/mood analysis is meaningless there and the
+owner asked for music). `~/Music/Music` (Apple Music managed) is empty.

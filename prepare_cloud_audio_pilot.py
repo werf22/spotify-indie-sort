@@ -51,6 +51,12 @@ def candidates(db):
                   t.title track_name,t.artist_names,t.album album_name,t.isrc
            FROM one_file f JOIN tracks t USING(spotify_id)
            WHERE f.pick=1
+             -- Owner rule: analyze normal tracks only, never DJ/ED sets or
+             -- long mixes (>15 min). Applies to catalog and local-only
+             -- alike; falls back to the catalog duration when the file's
+             -- own duration is unknown. Also the single biggest cost lever,
+             -- since GPU time scales with track length.
+             AND COALESCE(f.duration_seconds, t.duration_ms/1000.0, 0) <= 900
              -- Skip tracks whose four stages are already in the database.
              -- Without this the pass re-validates every finished clip on
              -- each restart, and clips could never be pruned (the next pass
