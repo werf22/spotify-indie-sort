@@ -47,6 +47,13 @@ JOBS = [
 # inference is cloud-first by default so the laptop remains cool.
 LOCAL_JOBS = [
     ("audio-verification", ["run_audio_verification.py"], 10),
+    # Discover newly downloaded audio and give it a database identity. Both
+    # steps are offline and idempotent. Without this the indexer only ever ran
+    # by hand, so ~18k files downloaded after the last manual run stayed
+    # invisible to prep and the pods (found 2026-07-29). Roots come from
+    # AUDIO_LIBRARY_ROOTS in .env; the hourly cadence keeps the walk cheap.
+    ("audio-index", ["index_audio_files.py"], 3600),
+    ("audio-identity", ["promote_unmatched_local_tracks.py"], 3600),
     # Independent guard: pause the whole supervisor before the internal disk
     # reaches the user's 50 GiB safety floor.  It also emits a macOS alert.
     ("disk-guard", ["sync_control.py", "check-disk"], 60),
