@@ -7,9 +7,35 @@ paid API, or modifying Spotify playlists.
 Last manually verified: **2026-07-20, afternoon, Europe/Bratislava**. Live
 counters will continue changing while the background workers run.
 
-**MILESTONE 2026-07-21: the full-track audio layer is COMPLETE — 5,393 of
-5,393 preparable tracks have all four stages (rhythm, MAEST, Essentia, CLAP)
-analyzed and imported.** (Track 5,394 of the original target has a
+**STATUS 2026-07-29 — ONE BLOCKER, OWNER ACTION REQUIRED.**
+
+*RunPod balance is $0.83, below the $1.00 floor (D-012), so the audio
+pipeline is parked in `waiting_for_user_credit`.* Remaining: ~1,498 tracks
+of the 6,936-track dynamic target (the local-only expansion, D-030).
+Measured cost is ~$0.0012/track, so **~$2 finishes it; adding $5 leaves
+margin**. The orchestrator resumes on its own within ~10 minutes of the
+balance going above $1 — nothing else to restart.
+
+*Metadata enrichment is effectively COMPLETE.* Every free provider has
+attempted every eligible track and now returns zeros because its queue is
+drained, not because it is broken: Deezer 57,035 (the ~9k "remaining" have
+no ISRC, so they are unreachable by design), MusicBrainz 28,505, MB genres
+6,494 tagged of all known MBIDs, TheAudioDB 8,677, Last.fm tracks 2,271
+(67,251 genuinely have no tags upstream), Discogs 45,531 across sources.
+FreqBlog is at its 150,000/150,000 monthly cap and resumes automatically on
+the August reset — no action needed.
+
+*Opus prep* runs at 4 FFmpeg workers (raised from 1 on 2026-07-29 because
+it is the only work advanceable while pods are unfunded; revert to 1 in
+`com.jakub.music-db-cloud-full-prep.plist` if the laptop runs hot, D-020).
+~750 clips left. A prior pass recorded 320 prep failures whose causes land
+in `data/cloud_full/failures.json` only when the run ends — a sample of the
+not-yet-processed files transcodes fine, so the cause is still unknown and
+should be read from that file rather than assumed.
+
+**Earlier milestone 2026-07-21: the first full-track batch completed —
+5,393 of 5,393 preparable catalog tracks** have all four stages (rhythm,
+MAEST, Essentia, CLAP) analyzed and imported. (Track 5,394 of the original target has a
 permanently corrupt source file and never produced an Opus asset.) The whole
 scaled run: 19 shards, 25.9 GPU-hours, **$5.88 total (~$0.0016/track)**, no
 pods left running, spend $0.00/hr, balance $1.84. Next step per the approved
