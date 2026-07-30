@@ -175,7 +175,31 @@ def extract(ffmpeg: str, source: Path, target: Path, duration: float, seconds: f
     return start
 
 
+def merge_with_existing(path: Path, records: list[dict]) -> list[dict]:
+    """Union this pass's records with still-valid rows from the old manifest.
+
+    A pass rewrites the manifest from scratch, so a pass that is killed
+    part-way (daemon restart, timeout) replaces a complete manifest with a
+    fragment — and the shard builder, which reads this file, then finds
+    almost nothing to schedule and the GPU pipeline idles with credit
+    available. Keeping prior rows whose clip is still on disk makes the
+    manifest monotonic: an interrupted pass can only ever add.
+    """
+    fresh = {row["spotify_id"] for row in records}
+    kept = []
+    if path.is_file():
+        try:
+            with path.open(encoding="utf-8", newline="") as handle:
+                for row in csv.DictReader(handle):
+                    if row["spotify_id"] not in fresh and Path(row["clip_path"]).is_file():
+                        kept.append(row)
+        except (OSError, csv.Error, KeyError):
+            return records
+    return records + kept
+
+
 def write_manifest(path: Path, records: list[dict]) -> None:
+    records = merge_with_existing(path, records)
     tmp = path.with_suffix(".partial.csv")
     fields = [
         "spotify_id", "track_name", "artist_names", "album_name", "isrc",
