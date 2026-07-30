@@ -105,7 +105,11 @@ def create_pod(shard: Path, pending: set[tuple[str, str]]) -> str:
         ]
         proc = rp.run(command, timeout=120, check=False)
         if proc.returncode:
-            failures.append(f"{gpu}: {(proc.stderr or proc.stdout)[-250:]}")
+            # Keep the HEAD of stderr: CLI tools print the real reason first
+            # and then dump usage, so the tail is just help text. Logging the
+            # tail hid every actual cause behind "volume mount path ...".
+            reason = " ".join((proc.stderr or proc.stdout).split())[:220]
+            failures.append(f"{gpu}: {reason}")
             continue
         try:
             payload = json.loads(proc.stdout)
