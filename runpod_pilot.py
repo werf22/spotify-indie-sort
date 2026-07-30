@@ -31,10 +31,15 @@ BUNDLE = PILOT / "cloud-audio-pilot.tar"
 CHECKSUM = BUNDLE.with_suffix(".tar.sha256")
 STATE = PILOT / "runpod_state.json"
 RESULTS = PILOT / "runpod-results.jsonl"
+# Tried in order; anything over MAX_HOURLY_USD is handed straight back and
+# the next candidate is tried. Ordered cheapest-capable first. RTX 3090
+# community stock is frequently "Low", which is what starves throughput, so
+# the list keeps several sub-ceiling alternatives.
 GPU_CANDIDATES = (
     "NVIDIA GeForce RTX 3090",
-    "NVIDIA GeForce RTX 4090",
+    "NVIDIA RTX A5000",
     "NVIDIA RTX A4000",
+    "NVIDIA GeForce RTX 4090",
 )
 MAX_HOURLY_USD = 0.40
 

@@ -109,24 +109,31 @@ def create_pod(shard: Path, pending: set[tuple[str, str]]) -> str:
             continue
         try:
             payload = json.loads(proc.stdout)
-            selected_gpu = gpu
-            break
         except json.JSONDecodeError:
             failures.append(f"{gpu}: invalid response")
-    if not payload:
+            continue
+        candidate_id = str(payload.get("id") or payload.get("pod", {}).get("id") or "")
+        details = rp.ctl("pod", "get", candidate_id, check=False)
+        hourly = float(details.get("costPerHr") or details.get("costPerHour") or 0)
+        if hourly > rp.MAX_HOURLY_USD:
+            # Over the owner's ceiling: give the pod back and try the NEXT
+            # candidate. Previously this aborted the whole attempt, so when
+            # 3090 stock ran out and only pricier 4090s were free, every
+            # cycle created-and-destroyed a 4090 and never reached the
+            # cheaper A4000/A5000 tiers below it.
+            rp.terminate(candidate_id)
+            failures.append(f"{gpu}: ${hourly:.3f}/h over ${rp.MAX_HOURLY_USD:.2f} ceiling")
+            continue
+        pod_id, selected_gpu, selected_hourly = candidate_id, gpu, hourly
+        break
+    else:
         raise RuntimeError("No bounded GPU available: " + " | ".join(failures))
-    pod_id = str(payload.get("id") or payload.get("pod", {}).get("id") or "")
     rp.save_state(pod_id=pod_id, status="created", created_at=rp.iso(started),
                   gpu=selected_gpu, ssh_command=None, termination_response=None,
                   result_rows=0, pending_pairs=len(pending),
+                  hourly_cost_usd=selected_hourly or None,
                   stop_after=rp.iso(started + stop_off),
                   terminate_after=rp.iso(started + term_off))
-    details = rp.ctl("pod", "get", pod_id, check=False)
-    hourly = float(details.get("costPerHr") or details.get("costPerHour") or 0)
-    if hourly > rp.MAX_HOURLY_USD:
-        rp.terminate(pod_id)
-        raise RuntimeError(f"Pod price ${hourly:.3f}/h exceeds ceiling")
-    rp.save_state(hourly_cost_usd=hourly or None)
     return pod_id
 
 
