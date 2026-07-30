@@ -11,15 +11,19 @@ counters will continue changing while the background workers run.
 
 The scope changed completely today: the indexer had never been automated,
 so ~17,700 already-downloaded files were invisible to the pipeline. After
-the rescan the target is the whole collection — **24,688 eligible tracks**
-(≤15 min, local file present), of which **7,593 are fully analyzed**.
+the rescan the target is the whole collection — **25,674 eligible tracks**
+(≤15 min, local file present), of which **11,785 are fully analyzed**
+(2,846 of those are local-only, outside the Spotify catalog).
 
-*Every local step is finished or self-running.* All 17,875 outstanding
-analysis clips are prepared (0 failures, 112 GB), so nothing local blocks
-progress. What remains is GPU time: **~17,100 tracks × $0.0014 ≈ $24**.
-The balance runs the pipeline down gracefully — pod count scales with
-funds and parks at $1 — so topping up is the only action needed; the
-orchestrator resumes within ~10 minutes and scales to 16 pods.
+*Every local step is finished or self-running.* 12,778 prepared clips sit
+on disk ready to go, so nothing local blocks progress. What remains is
+purely GPU time: **~13,900 tracks × ~$0.0014 ≈ $20**. Spend to date:
+89 shards, 83 GPU-hours, $18.40. The balance runs the pipeline down
+gracefully — pod count scales with funds and parks at $1 — so topping up
+is the only action needed; the orchestrator resumes within ~10 minutes.
+
+*Verified at park time:* zero pods billing, no shard state claiming a
+pod, 146 GiB free.
 
 *The full loop is now automatic* (D-031/D-032): hourly index → duration
 re-verification of fuzzy matches → identity assignment → Opus prep →
