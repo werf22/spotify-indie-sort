@@ -145,9 +145,12 @@ UPLOAD_SLOTS = 2  # concurrent 1.5 GB bundle uploads; more saturates the home
                   # uplink and starves the SSH polls of already-running pods
 
 
+UPLOAD_ATTEMPTS = 3  # a stalled consumer link should not scrap a paid pod
+
+
 def upload(command: str, bundle: Path, results: Path) -> None:
     target, port, identity = rp.connection_parts(command)
-    args = ["scp", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
+    args = ["scp", *rp.SSH_HARDENING]
     if port:
         args += ["-P", port]
     if identity:
@@ -167,9 +170,26 @@ def upload(command: str, bundle: Path, results: Path) -> None:
             continue
         break
     try:
-        rp.run(args + [str(bundle), f"{target}:/workspace/full-shard.tar"], timeout=2400)
+        # scp -C compresses; the bundle is Opus (already compressed) but the
+        # manifest/scripts benefit and it costs little. Retry on the network
+        # timeouts that community pods produce: giving up here throws away a
+        # pod we already paid to create.
+        for attempt in range(1, UPLOAD_ATTEMPTS + 1):
+            try:
+                rp.run(args + [str(bundle), f"{target}:/workspace/full-shard.tar"], timeout=2400)
+                break
+            except Exception as exc:
+                if attempt == UPLOAD_ATTEMPTS:
+                    raise
+                print(f"upload attempt {attempt} failed ({str(exc)[:90]}); retrying", flush=True)
+                time.sleep(20 * attempt)
         if results.is_file() and results.stat().st_size:
-            rp.run(args + [str(results), f"{target}:/workspace/resume-results.jsonl"], timeout=600)
+            try:
+                rp.run(args + [str(results), f"{target}:/workspace/resume-results.jsonl"], timeout=600)
+            except Exception as exc:
+                # Resume data is an optimization; losing it only means the pod
+                # redoes work it would otherwise have skipped.
+                print(f"resume upload failed, continuing without it: {str(exc)[:90]}", flush=True)
     finally:
         handle.close()
     rp.save_state(status="uploaded")

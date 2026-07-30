@@ -205,9 +205,22 @@ def wait_for_ssh(pod_id: str, timeout_seconds: int = 600) -> str:
     raise TimeoutError(f"Pod SSH not ready within {timeout_seconds}s: {last}")
 
 
+# Shared hardening for every ssh/scp call. Community pods sit on consumer
+# links that stall for tens of seconds; without keepalives a stalled TCP
+# session hangs until the command timeout and the whole shard is abandoned.
+SSH_HARDENING = [
+    "-o", "StrictHostKeyChecking=no",
+    "-o", "UserKnownHostsFile=/dev/null",
+    "-o", "LogLevel=ERROR",
+    "-o", "ConnectTimeout=30",      # fail a dead host fast instead of hanging
+    "-o", "ServerAliveInterval=15",  # detect a silently dropped session
+    "-o", "ServerAliveCountMax=4",
+]
+
+
 def ssh_args(command: str) -> list[str]:
     target, port, identity = connection_parts(command)
-    args = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
+    args = ["ssh", *SSH_HARDENING]
     if port:
         args += ["-p", port]
     if identity:
