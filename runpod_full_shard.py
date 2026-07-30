@@ -176,7 +176,12 @@ def upload(command: str, bundle: Path, results: Path) -> None:
         # pod we already paid to create.
         for attempt in range(1, UPLOAD_ATTEMPTS + 1):
             try:
-                rp.run(args + [str(bundle), f"{target}:/workspace/full-shard.tar"], timeout=2400)
+                # 15 min is ~1.5 MB/s for a 1.3 GB bundle — generous for a
+                # working link, but short enough that a stalled transfer is
+                # abandoned quickly. The old 40 min, multiplied by retries,
+                # let a pod idle-bill for up to two hours on a dead link
+                # (observed on shard-0110: 1.5 h in ssh_ready, zero rows).
+                rp.run(args + [str(bundle), f"{target}:/workspace/full-shard.tar"], timeout=900)
                 break
             except Exception as exc:
                 if attempt == UPLOAD_ATTEMPTS:
