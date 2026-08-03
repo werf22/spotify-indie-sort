@@ -23,6 +23,10 @@ from musicdb import connect
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_OUTPUT = ROOT / "data" / "cloud_pilot"
+# Stop making clips while this much disk remains, keeping clear headroom
+# above the owner's 50 GiB floor. Raise it if the collection keeps growing
+# faster than the GPU stage can drain the backlog.
+MIN_FREE_GIB = 70.0
 
 
 def utcnow() -> str:
@@ -260,6 +264,7 @@ def main() -> None:
     worker = lambda row: prepare_row(
         row, clips, args.codec, args.seconds, ffmpeg, ffprobe, args.full_track
     )
+    stopped_for_disk = False
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
         for index, (record, failure) in enumerate(pool.map(worker, selected), 1):
             if record:
@@ -269,6 +274,19 @@ def main() -> None:
             if index % 25 == 0:
                 write_manifest(args.output / "manifest.csv", records)
                 print(f"pilot: {index}/{len(selected)} ready={len(records)} failed={len(failures)}", flush=True)
+                # A clip may only be pruned once its analysis is in the
+                # database, so while the GPU stage is stalled (no credit,
+                # no capacity) clips pile up with nothing able to reclaim
+                # them. Stop well above the owner's 50 GiB floor rather
+                # than filling the disk and tripping the global guard,
+                # which would pause enrichment too.
+                free_gib = shutil.disk_usage(ROOT).free / 1024**3
+                if free_gib < MIN_FREE_GIB:
+                    print(f"pilot: stopping early, only {free_gib:.0f} GiB free "
+                          f"(floor {MIN_FREE_GIB} GiB); clips resume once analysis "
+                          f"drains the backlog", flush=True)
+                    stopped_for_disk = True
+                    break
     write_manifest(args.output / "manifest.csv", records)
     (args.output / "failures.json").write_text(json.dumps(failures, ensure_ascii=False, indent=2), encoding="utf-8")
     total_bytes = sum(Path(row["clip_path"]).stat().st_size for row in records)
