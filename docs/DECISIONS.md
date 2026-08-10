@@ -525,3 +525,24 @@ labels hold on real CUDA hardware.
 
 Coverage honesty: subsampled CLAP results carry
 `coverage_mode=subsampled_16_evenly` plus `window_count_available` (D-001).
+
+## D-036 — fp16 rejected by measurement; the window cap is label-validated
+
+**Decision (2026-08-10):** half precision stays OFF. The isolating A/B on one
+pod (22 tracks, two CLAP passes with identical windows) measured: embeddings
+byte-identical in effect (cosine 1.0000 median AND minimum) yet mood top-3
+sets agree only 11/22 — pure rank jitter among near-tied tags, not semantic
+drift — and the speedup is **3%** (4.50 s → 4.35 s/track), because CLAP is
+bound by CPU-side feature extraction, not GPU math. Trading label stability
+for 3% is a bad deal; the AUDIO_FP16 plumbing remains in the code, default
+off, for future hardware where the math might dominate.
+
+The same probe isolated the 16-window cap's label effect (fp32+cap vs stored
+fp32 full-window): mood top-3 20/22, instrument top-3 22/22, voice top-1
+22/22, embedding cosine median 0.9999 (min 0.9984) — confirming D-035 at the
+label level, so the cap stays in production.
+
+Probe safety lesson: all four earlier probe failures were the orchestrator's
+own orphan sweep deleting the probe pod (named music-db-* but tracked outside
+cloud_full_shards). Probe pods are now named probe-*-musicdb, outside the
+sweep's prefix guard. Total probe spend across the whole saga: ~$0.20.
