@@ -456,3 +456,43 @@ as local-only; a second run finds nothing, so the loop converges.
 **Scope limit:** `isrc_tag` matches are left alone. An ISRC is the
 publisher's own identity assertion; differing masters sharing one ISRC is a
 labelling reality, not something this check should overrule.
+
+## D-034 — Adaptive rhythm coverage; full tiling kept where it earns its cost
+
+**Decision (owner asked to cut cost without losing quality, 2026-08-10):**
+the rhythm stage analyses a probe of 4 evenly spaced windows first and stops
+there when they unanimously agree on rhythm pattern, beat presence and tempo
+(BPM spread <= 1.0); otherwise it analyses the whole track as before. MAEST
+and CLAP keep full tiling.
+
+**Why, and why only rhythm.** Both were measured by replaying the per-window
+timelines of already-paid results — no GPU spend for the study
+(`study_window_budget.py`):
+
+- *Blind truncation is not viable.* Fixed budgets of 3-8 windows reproduced
+  the full-track rhythm verdict in only 82-94% of 4,061 tracks. Cheap, but a
+  DJ database that is wrong about the beat on 1 track in 10 is not the goal.
+- *Adaptive is free.* Probing 4 windows and only trusting a unanimous verdict
+  matched the full-track answer on rhythm pattern, beat presence AND BPM
+  (within 0.5) in **100.0% of the same 4,061 tracks, while skipping 28% of
+  the windows**. Tracks whose probe disagrees — the layered, shifting ones —
+  still get complete coverage, which is exactly where it matters.
+- *Genre cannot be cut.* The same study on 2,538 MAEST tracks (avg 30.3
+  windows): 12 windows reproduced the top genre only 90.9% of the time and
+  the top-3 set 78.5%. Adaptive probing gives 100% top-1 but saves just 3%,
+  because only 5% of tracks are genre-uniform window to window. Genre
+  genuinely varies inside a track, so full tiling is justified spend, not
+  waste.
+
+`window_count` now reports what was actually analysed, with
+`window_count_available` alongside and `coverage_mode` set to
+`adaptive_probe_uniform_track`, so a shortened run can never be mistaken for
+full coverage (D-001).
+
+**Related, same session:** the rhythm stage's real cost turned out not to be
+GPU at all — librosa's harmonic/percussive separation is ~3.1 s per window,
+single-threaded, and matched the whole stage's runtime while the paid GPU sat
+idle. It now runs concurrently across the pod's vCPUs (identical output).
+Measured cost by GPU tier was also compared: RTX 3090 ($0.22/h, 99 min/shard)
+and RTX A4000 ($0.17/h, 127 min) both land at $0.0018/track and the 4090 at
+$0.0025, so GPU selection offers nothing further and was left alone.
