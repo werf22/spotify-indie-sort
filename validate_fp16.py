@@ -112,7 +112,7 @@ def compare(path: Path) -> None:
             totals["genre top-3 set"] += 1
             checks["genre top-3 set"] += set(a) == set(b)
         else:
-            a, b = tags(old, "moods"), tags(new, "moods")
+            a, b = tags(old, "mood"), tags(new, "mood")
             totals["mood top-3 set"] += 1
             checks["mood top-3 set"] += set(a) == set(b)
     for label, hits in checks.items():
