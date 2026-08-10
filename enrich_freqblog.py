@@ -444,8 +444,19 @@ def main() -> None:
     ensure_status_schema(db)
     monthly_quota = int(os.getenv("FREQBLOG_MONTHLY_QUOTA") or "150000")
     month = datetime.now(timezone.utc).strftime("%Y-%m")
+    # Trust the provider's own accounting. `quota_requests` is FreqBlog's
+    # `requests_used` field, returned per response; the /bulk endpoint charges
+    # per REQUEST while `selected` counts TRACKS (~50 per request), so taking
+    # MAX() of the two billed us for tracks and parked the paid plan at ~23%
+    # of its real usage: August showed 34,688 requests actually consumed but
+    # the guard counted 151,328 and refused to run. Runs where the provider
+    # reported nothing (transport failures) still fall back to the pessimistic
+    # count — those are a couple of thousand tracks a month, and FreqBlog's own
+    # 429 remains the real backstop if this ever undercounts.
     used = int(db.execute(
-        """SELECT COALESCE(SUM(MAX(quota_requests,selected-COALESCE(reused,0))),0)
+        """SELECT COALESCE(SUM(CASE WHEN COALESCE(quota_requests,0) > 0
+                                    THEN quota_requests
+                                    ELSE selected - COALESCE(reused,0) END),0)
            FROM freqblog_usage_runs WHERE substr(started_at,1,7)=?""",
         (month,),
     ).fetchone()[0])
