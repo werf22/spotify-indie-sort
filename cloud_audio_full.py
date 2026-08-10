@@ -282,16 +282,26 @@ def run_rhythm(row: dict, device: str) -> dict:
     from concurrent.futures import ThreadPoolExecutor
 
     def analyse_indices(indices: list[int]) -> dict[int, dict]:
-        """Analyse the given windows; HPSS concurrently, tracker sequentially."""
+        """Analyse the given windows with CPU and GPU overlapped.
+
+        HPSS futures cook on the CPU pool while the GPU tracker consumes
+        windows in order as each percussive is ready — the tracker starts on
+        window 0 the moment its HPSS lands instead of after ALL of them.
+        Stage wall-time becomes ~max(CPU half, GPU half) rather than their
+        sum. max_workers stays at 4 so the concurrent essentia/MAEST/CLAP
+        processes on the same pod are not starved of cores. Outputs are
+        unchanged: same functions, same per-window order.
+        """
         chosen = [(i, windows[i]) for i in indices]
-        with ThreadPoolExecutor(max_workers=min(6, len(chosen) or 1)) as pool:
-            percussives = list(pool.map(
-                lambda item: librosa.effects.hpss(item[1][1])[1], chosen))
         out = {}
-        for (i, (start, clip)), perc in zip(chosen, percussives):
-            result = analyze(clip, tracker, precomputed_percussive=perc)
-            out[i] = {"index": i, "start": start,
-                      "duration": len(clip) / SR, **result}
+        with ThreadPoolExecutor(max_workers=min(4, len(chosen) or 1)) as pool:
+            futures = {i: pool.submit(lambda clip=clip: librosa.effects.hpss(clip)[1])
+                       for i, (start, clip) in chosen}
+            for i, (start, clip) in chosen:
+                perc = futures[i].result()
+                result = analyze(clip, tracker, precomputed_percussive=perc)
+                out[i] = {"index": i, "start": start,
+                          "duration": len(clip) / SR, **result}
         return out
 
     # Adaptive coverage (D-034). A probe of PROBE_WINDOWS evenly spaced windows

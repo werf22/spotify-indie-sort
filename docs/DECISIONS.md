@@ -546,3 +546,26 @@ Probe safety lesson: all four earlier probe failures were the orchestrator's
 own orphan sweep deleting the probe pod (named music-db-* but tracked outside
 cloud_full_shards). Probe pods are now named probe-*-musicdb, outside the
 sweep's prefix guard. Total probe spend across the whole saga: ~$0.20.
+
+## D-037 — Every stage runs concurrently; CPU and GPU overlap inside rhythm too
+
+**Decision (owner: maximise both CPU and GPU on every pod, 2026-08-10):**
+the remote pipeline launches all four stages at once — Essentia (CPU-TF),
+rhythm, MAEST and CLAP — instead of essentia || (rhythm → maest || clap).
+Each stage is its own process with its own model; appends are
+flock-serialized and (track, stage) keys are disjoint, so concurrency is
+write-safe by construction. Thread caps (essentia TF 2 threads, OMP=1 for
+the GPU stages) stop four processes from oversubscribing the ~6 vCPUs, and
+completion markers now require every stage's exit code to be zero. Inside
+the rhythm stage, HPSS futures cook on the CPU pool while the GPU tracker
+consumes windows as each one lands (max_workers 4, order preserved) —
+verified locally to produce identical output.
+
+**Why:** measured stage shares were rhythm 56%, essentia 18%, clap 13%,
+maest 13%, running mostly serially — so the GPU idled during rhythm's CPU
+half and the CPU idled during GPU forwards. With all stages concurrent the
+shard wall-time trends toward max(stage totals) instead of their sum.
+VRAM fits comfortably (three small models on 16-24 GB cards). Expected
+effect is a further ~30-40% wall-clock cut per shard; the honest number
+will come from the cost ledger once new-code shards complete, since bundles
+bake the analysis code at build time and old/new shards currently mix.

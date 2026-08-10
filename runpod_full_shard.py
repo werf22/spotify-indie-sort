@@ -233,22 +233,32 @@ rm -f "$SHARD/run.done" "$SHARD/run.fail"
     fi
   done
 ) >/dev/null 2>&1 &
-set -e
-python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage essentia_full --device cuda &
+# All four stages run CONCURRENTLY so neither resource ever idles: the GPU
+# schedules Beat This + MAEST + CLAP forward passes between each other while
+# the CPU cores run Essentia-TF, HPSS, mel/feature extraction and decodes.
+# Safe because each stage is its own process with its own model, results
+# appends are flock-serialized, and (track, stage) keys are disjoint. Thread
+# caps stop the four processes from oversubscribing the ~6 vCPUs. Exit codes
+# are collected per stage: done only when every stage succeeded.
+set +e
+OMP_NUM_THREADS=2 TF_NUM_INTRAOP_THREADS=2 TF_NUM_INTEROP_THREADS=1 \
+  python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage essentia_full --device cuda &
 ESSENTIA_PID=$!
-python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage rhythm_full --device cuda
-# MAEST and CLAP each alternate CPU feature extraction with GPU inference, so
-# running them back to back leaves one resource idle at all times. Run them
-# together: one's mel/preprocessing overlaps the other's forward pass. Both
-# models fit alongside each other on a 24 GB 3090, results.jsonl is
-# append-only with per-line fsync, and each stage writes disjoint
-# (track, stage) keys — so concurrent writers cannot corrupt or race.
-python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage maest_full --device cuda &
+OMP_NUM_THREADS=1 python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage rhythm_full --device cuda &
+RHYTHM_PID=$!
+OMP_NUM_THREADS=1 python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage maest_full --device cuda &
 MAEST_PID=$!
-python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage clap_full --device cuda
-wait "$MAEST_PID"
-wait "$ESSENTIA_PID"
-touch "$SHARD/run.done"
+OMP_NUM_THREADS=1 python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage clap_full --device cuda &
+CLAP_PID=$!
+RC=0
+for pid in "$ESSENTIA_PID" "$RHYTHM_PID" "$MAEST_PID" "$CLAP_PID"; do
+  wait "$pid" || RC=1
+done
+if [ "$RC" -eq 0 ]; then
+  touch "$SHARD/run.done"
+else
+  touch "$SHARD/run.fail"
+fi
 """
 
 
