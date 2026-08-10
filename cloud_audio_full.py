@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import base64
 import csv
+import fcntl
 import json
 import os
 import shutil
@@ -24,11 +25,26 @@ import numpy as np
 
 
 def append(path: Path, payload: dict) -> None:
+    """Append one result line, safe against concurrent stage processes.
+
+    Stages run in parallel and share this file, and these lines are large —
+    CLAP reaches ~940 KB, MAEST ~380 KB — while POSIX only guarantees
+    O_APPEND atomicity up to PIPE_BUF. Interleaving was NOT reproduced in a
+    4-writer stress test (120/120 lines intact on APFS, with and without
+    this lock), so treat it as insurance rather than a fixed bug: the pods
+    run a different OS and filesystem, and the lock costs nothing measurable
+    next to model inference.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n"
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
-        handle.flush()
-        os.fsync(handle.fileno())
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            handle.write(line)
+            handle.flush()
+            os.fsync(handle.fileno())
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def completed(path: Path) -> set[tuple[str, str]]:
