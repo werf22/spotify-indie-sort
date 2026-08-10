@@ -176,7 +176,13 @@ def run_clap(row: dict, device: str) -> dict:
 
     expected = float(row["segment_seconds"])
     audio = decode_full(row["clip_path"], SR, expected)
-    windows = full_windows(audio, SR, 10.0)
+    all_windows = full_windows(audio, SR, 10.0)
+    if len(all_windows) > CLAP_MAX_WINDOWS:
+        picked = sorted({round(i * (len(all_windows) - 1) / (CLAP_MAX_WINDOWS - 1))
+                         for i in range(CLAP_MAX_WINDOWS)})
+        windows = [all_windows[i] for i in picked]
+    else:
+        windows = all_windows
     weights = energy_weights(windows)
     model = run_clap.model if hasattr(run_clap, "model") else SemanticModel(device)
     run_clap.model = model
@@ -216,9 +222,12 @@ def run_clap(row: dict, device: str) -> dict:
         for item in summary[kind]:
             item["section_coverage"] = counts[item["tag"]] / len(timeline)
     return {
-        "model": EMBEDDING_KEY, "coverage_mode": "full_track_tiled",
+        "model": EMBEDDING_KEY,
+        "coverage_mode": ("full_track_tiled" if len(windows) == len(all_windows)
+                          else "subsampled_16_evenly"),
         "track_duration": len(audio) / SR, "window_seconds": 10.0,
-        "window_count": len(windows), **summary, "timeline": timeline,
+        "window_count": len(windows), "window_count_available": len(all_windows),
+        **summary, "timeline": timeline,
         "segment_embeddings": pack(matrix), "aggregate_embedding": pack(aggregate),
     }
 
@@ -242,6 +251,13 @@ def run_essentia(row: dict, device: str) -> dict:
 # savings for caution; both were tuned on 4,061 replayed tracks.
 PROBE_WINDOWS = 4
 PROBE_BPM_SPREAD = 1.0
+# CLAP window cap (D-035): 16 evenly spaced windows reproduce the full-track
+# embedding to median cosine 0.9997 (p5 0.9987, p1 0.9970) on 1,283 replayed
+# tracks — less drift than the weighting scheme itself contributes — while
+# cutting CLAP inference ~47%. MAEST is NOT capped: the same study on its
+# stored logits shows even 20/30 windows flip the top genre in 4.8% of
+# tracks, so genre keeps full coverage.
+CLAP_MAX_WINDOWS = 16
 
 
 def weighted_mean(values, key: str) -> float:

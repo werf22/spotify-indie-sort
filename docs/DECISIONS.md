@@ -496,3 +496,32 @@ idle. It now runs concurrently across the pod's vCPUs (identical output).
 Measured cost by GPU tier was also compared: RTX 3090 ($0.22/h, 99 min/shard)
 and RTX A4000 ($0.17/h, 127 min) both land at $0.0018/track and the 4090 at
 $0.0025, so GPU selection offers nothing further and was left alone.
+
+## D-035 — CLAP capped at 16 windows; MAEST stays full; fp16 gated on a probe
+
+**Decision (owner: cut cost aggressively, small quality loss acceptable,
+2026-08-10):** CLAP analyses at most 16 evenly spaced windows per track.
+MAEST keeps full tiling. Half precision (AUDIO_FP16=1) is wired into both
+GPU models but stays OFF until a 20-track probe — built from tracks already
+analysed in float32 so the comparison itself is nearly free — confirms the
+labels hold on real CUDA hardware.
+
+**Evidence (all from replayed, already-paid results; no GPU spend):**
+
+- *CLAP:* on 1,283 tracks (avg 30.7 windows), a 16-window subset reproduces
+  the full unweighted aggregate embedding at median cosine 0.9997
+  (p5 0.9987, p1 0.9970) — less drift than the energy-weighting scheme
+  itself contributes (its full-vs-stored cosine: median 0.9996, p5 0.9973).
+  The subsample error is therefore below the pipeline's own design noise
+  while cutting CLAP inference ~47% (~6% of total per-track cost) and
+  shrinking the largest results.jsonl payloads. Adaptive probing was also
+  tested and rejected for CLAP: only 11% of tracks are mood-uniform, saving
+  just 8% — the fixed cap is strictly better here.
+- *MAEST:* the earlier label-proxy finding (D-034) was re-verified on the
+  TRUE aggregate (softmax over stored segment_logits, subset mean vs full
+  mean): even 20 of ~30 windows change the top-1 genre on 4.8% of tracks
+  and the top-3 set on 11.1%. Genre genuinely accumulates across the whole
+  track; full coverage stays.
+
+Coverage honesty: subsampled CLAP results carry
+`coverage_mode=subsampled_16_evenly` plus `window_count_available` (D-001).
