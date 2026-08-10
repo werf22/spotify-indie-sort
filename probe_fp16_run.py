@@ -77,6 +77,22 @@ def main() -> None:
     funds = float(rp.ctl("user").get("clientBalance") or 0)
     if funds < 1.0:
         raise SystemExit(f"balance ${funds:.2f} below the $1 floor; not starting")
+    # Community hosts are flaky (dead SSH, dropped uploads). Each failed
+    # attempt costs cents and cleanup is verified, so try up to 3 pods before
+    # giving up rather than needing a human relaunch per bad host.
+    last_error: Exception | None = None
+    for attempt in range(1, 4):
+        try:
+            run_probe()
+            return
+        except (RuntimeError, TimeoutError, SystemExit) as exc:
+            last_error = exc
+            print(f"probe attempt {attempt} failed: {str(exc)[:160]}", flush=True)
+            time.sleep(30)
+    raise SystemExit(f"all probe attempts failed; last: {last_error}")
+
+
+def run_probe() -> None:
     pod_id = create_pod()
     try:
         command = rp.wait_for_ssh(pod_id)
