@@ -20,6 +20,7 @@ from __future__ import annotations
 import csv
 import fcntl
 import json
+import shutil
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -50,6 +51,12 @@ MAX_PARALLEL = 16      # owner-approved scale-out (D-028: "even 20, I don't
                        # ratio. 95 shards: ~24 h at 8 pods, ~12 h at 16.
 SPEND_TOLERANCE = 0.10 # allowed gap between actual and explained spend/hr
 CYCLE_SECONDS = 45
+# Each shard writes a ~1.3 GB bundle before its pod starts, and build-ahead
+# stacks several. With the owner's library still growing on the same disk that
+# quietly ate the free space down to 29 GiB while eight shards were staged, so
+# stop staging new ones when headroom gets thin. Running shards are never
+# interrupted — they finish and their bundles are pruned on import.
+MIN_FREE_GIB_TO_BUILD = 45.0
 
 
 def utcnow() -> str:
@@ -290,6 +297,8 @@ def main() -> None:
                         if candidates:
                             shard = candidates.pop(0)
                         else:
+                            if shutil.disk_usage(ROOT).free / 1024**3 < MIN_FREE_GIB_TO_BUILD:
+                                break  # no headroom to stage another bundle
                             pool = max(0, ready - done)
                             built = build(SHARD_SIZE if pool >= SHARD_SIZE else 1)
                             if built is None:
@@ -303,7 +312,8 @@ def main() -> None:
                 if target and len(active) >= target:
                     spare = [s for s in incomplete_shards() if s not in active]
                     pool = max(0, ready - done - len(active) * SHARD_SIZE)
-                    if not spare and pool >= 1:
+                    if (not spare and pool >= 1
+                            and shutil.disk_usage(ROOT).free / 1024**3 >= MIN_FREE_GIB_TO_BUILD):
                         build(SHARD_SIZE if pool >= SHARD_SIZE else 1)
                 phase = ("waiting_for_user_credit" if funds < MIN_BALANCE
                          else "unexplained_spend" if overspend
