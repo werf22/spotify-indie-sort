@@ -31,9 +31,11 @@ export FFMPEG_PATH="$(command -v ffmpeg)"
 python -m venv --system-site-packages /workspace/venv
 source /workspace/venv/bin/activate
 python -m pip install --disable-pip-version-check -q -r requirements-cloud-audio.txt
-export AUDIO_FP16=1
-python cloud_audio_full.py --manifest data/fp16_probe/manifest.csv --output data/fp16_probe/results.jsonl --stage maest_full --device cuda
-python cloud_audio_full.py --manifest data/fp16_probe/manifest.csv --output data/fp16_probe/results.jsonl --stage clap_full --device cuda
+# Two CLAP passes isolate the two variables: fp32+cap16 vs stored full-window
+# fp32 measures the window cap alone; fp16+cap16 vs fp32+cap16 measures half
+# precision alone. MAEST fp16 was already validated 20/20 earlier.
+AUDIO_FP16=0 python cloud_audio_full.py --manifest data/fp16_probe/manifest.csv --output data/fp16_probe/results_fp32cap.jsonl --stage clap_full --device cuda
+AUDIO_FP16=1 python cloud_audio_full.py --manifest data/fp16_probe/manifest.csv --output data/fp16_probe/results_fp16cap.jsonl --stage clap_full --device cuda
 touch /workspace/probe.done
 """
 
@@ -141,8 +143,9 @@ def run_probe() -> None:
                 break
         else:
             raise SystemExit(f"probe timed out; log tail: {log_tail[-300:]}")
-        rp.run(scp + [f"{target}:/workspace/data/fp16_probe/results.jsonl",
-                      str(PROBE / "results.jsonl")], timeout=300)
+        for name in ("results_fp32cap.jsonl", "results_fp16cap.jsonl"):
+            rp.run(scp + [f"{target}:/workspace/data/fp16_probe/{name}",
+                          str(PROBE / name)], timeout=300)
         print("results downloaded", flush=True)
     finally:
         rp.terminate(pod_id)
