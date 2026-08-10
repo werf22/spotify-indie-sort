@@ -227,9 +227,19 @@ def run_rhythm(row: dict, device: str) -> dict:
     windows = full_windows(audio, SR, 45.0, 40.0)
     tracker = run_rhythm.tracker if hasattr(run_rhythm, "tracker") else BeatTracker(device)
     run_rhythm.tracker = tracker
+    # Harmonic/percussive separation is ~3 s of single-threaded CPU per window
+    # and dominates this stage — it was the reason a GPU pod spent most of its
+    # paid time with an idle GPU. librosa releases the GIL inside it, so doing
+    # all windows concurrently up front cuts the stage ~3x on the pod's 6 vCPU.
+    # The beat-tracker calls below stay sequential: identical results, and no
+    # concurrent forward passes through one Torch model.
+    import librosa
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(6, len(windows) or 1)) as pool:
+        percussives = list(pool.map(lambda item: librosa.effects.hpss(item[1])[1], windows))
     timeline = []
     for index, (start, clip) in enumerate(windows):
-        result = analyze(clip, tracker)
+        result = analyze(clip, tracker, precomputed_percussive=percussives[index])
         timeline.append({"index": index, "start": start,
                          "duration": len(clip) / SR, **result})
     patterns = Counter(item["rhythm_pattern"] for item in timeline)

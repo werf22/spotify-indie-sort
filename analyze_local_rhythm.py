@@ -107,7 +107,8 @@ def robust_unit(values: np.ndarray) -> np.ndarray:
     return np.clip((values - floor) / (ceiling - floor), 0, 1).astype(np.float32)
 
 
-def analyze(y: np.ndarray, tracker: BeatTracker) -> dict:
+def analyze(y: np.ndarray, tracker: BeatTracker,
+            precomputed_percussive: np.ndarray | None = None) -> dict:
     beats, downbeats, beat_prob, downbeat_prob = tracker(y)
     if len(beats) < 4:
         # Conservative fallback: librosa can occasionally recover a pulse where
@@ -126,7 +127,13 @@ def analyze(y: np.ndarray, tracker: BeatTracker) -> dict:
                                    max(float(np.median(plausible)), 1e-6) if len(plausible) > 5 else 1.0))
 
     # Harmonic/percussive separation provides an independent beat-presence clue.
-    harmonic, percussive = librosa.effects.hpss(y)
+    # It is by far the most expensive step here (~3 s per 45 s window, single
+    # threaded) and it is pure CPU, so callers analysing many windows can
+    # compute it concurrently up front and pass it in. Same numbers either
+    # way — this only moves where the work happens.
+    percussive = precomputed_percussive
+    if percussive is None:
+        _, percussive = librosa.effects.hpss(y)
     total_rms = float(np.sqrt(np.mean(y * y)) + 1e-9)
     perc_rms = float(np.sqrt(np.mean(percussive * percussive)))
     percussive_ratio = clamp(perc_rms / total_rms)
