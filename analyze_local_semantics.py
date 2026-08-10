@@ -99,7 +99,11 @@ class SemanticModel:
                 with torch.inference_mode():
                     batch = feature_tensor(self.model.get_text_features(**inputs))
                 vectors.append(batch / batch.norm(dim=-1, keepdim=True))
-            self.text_features[kind] = torch.cat(vectors, dim=0)
+            # Text features are tiny and computed once; keep them float32 even
+            # when the model runs half, so score() never mixes dtypes with the
+            # float32 audio vectors (observed: "float != c10::Half" crash that
+            # zeroed the whole CLAP stage on the fp16 probe).
+            self.text_features[kind] = torch.cat(vectors, dim=0).float()
 
     def embed(self, audio: np.ndarray) -> torch.Tensor:
         window = 10 * SR
