@@ -81,6 +81,9 @@ class SemanticModel:
         self.device = torch.device(device)
         self.processor = ClapProcessor.from_pretrained(MODEL)
         self.model = ClapModel.from_pretrained(MODEL).to(self.device).eval()
+        if os.getenv("AUDIO_FP16") == "1" and self.device.type == "cuda":
+            self.model = self.model.half()
+        self.fp16 = os.getenv("AUDIO_FP16") == "1" and self.device.type == "cuda"
         self.vocab = {
             "mood": MOODS,
             "instrument": INSTRUMENTS,

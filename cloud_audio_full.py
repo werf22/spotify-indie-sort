@@ -134,7 +134,10 @@ def run_maest(row: dict, device: str) -> dict:
             [clip for _, clip in batch], sampling_rate=SR,
             return_tensors="pt", padding=True,
         )
-        inputs = {key: value.to(model.device) for key, value in inputs.items()}
+        inputs = {key: (value.to(model.device).half()
+                        if getattr(model, "fp16", False) and value.is_floating_point()
+                        else value.to(model.device))
+                  for key, value in inputs.items()}
         with torch.inference_mode():
             logits = model.model(**inputs).logits.float().cpu().numpy()
         all_logits.append(logits)
@@ -186,9 +189,12 @@ def run_clap(row: dict, device: str) -> dict:
         except TypeError:
             inputs = model.processor(audios=clips, sampling_rate=SR,
                                      return_tensors="pt", padding=True)
-        inputs = {key: value.to(model.device) for key, value in inputs.items()}
+        inputs = {key: (value.to(model.device).half()
+                        if getattr(model, "fp16", False) and value.is_floating_point()
+                        else value.to(model.device))
+                  for key, value in inputs.items()}
         with torch.inference_mode():
-            vector = feature_tensor(model.model.get_audio_features(**inputs))
+            vector = feature_tensor(model.model.get_audio_features(**inputs)).float()
         vector = vector / vector.norm(dim=-1, keepdim=True)
         vectors.append(vector.float().cpu().numpy())
     matrix = np.concatenate(vectors, axis=0)

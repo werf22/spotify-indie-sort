@@ -64,6 +64,12 @@ class GenreModel:
             MODEL, revision=MODEL_REVISION, trust_remote_code=True
         )
         self.model = self.model.to(self.device).eval()
+        # Optional half precision (AUDIO_FP16=1), CUDA only — MPS/CPU keep
+        # float32 where fp16 is slow or unsupported. Validated against stored
+        # float32 results before being switched on for production (D-035).
+        if os.getenv("AUDIO_FP16") == "1" and self.device.type == "cuda":
+            self.model = self.model.half()
+        self.fp16 = os.getenv("AUDIO_FP16") == "1" and self.device.type == "cuda"
         self.labels = [self.model.config.id2label[i] for i in range(self.model.config.num_labels)]
 
     def __call__(self, audio: np.ndarray):
