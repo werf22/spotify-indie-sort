@@ -45,7 +45,7 @@ def create_pod() -> str:
         proc = rp.run([
             str(rp.RUNPODCTL), "pod", "create", "--template-id", "runpod-torch-v280",
             "--gpu-id", gpu, "--gpu-count", "1", "--cloud-type", "COMMUNITY",
-            "--name", "music-db-fp16-probe", "--public-ip", "--ssh", "--ports", "22/tcp",
+            "--name", "probe-fp16-musicdb", "--public-ip", "--ssh", "--ports", "22/tcp",
             "--container-disk-in-gb", "30", "--volume-in-gb", "10",
             "--volume-mount-path", "/workspace",
             "--stop-after", rp.iso(started + timedelta(minutes=45)),
