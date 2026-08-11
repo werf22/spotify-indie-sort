@@ -332,12 +332,18 @@ def quota():
                                            # 128-core HOST, not our slice
 print(max(2,min(32,quota())))")
 ESSENTIA_T=$(( CPUS / 4 )); [ "$ESSENTIA_T" -lt 2 ] && ESSENTIA_T=2
+# rhythm is the tail stage and the only CPU-bound one left at the end of a
+# shard. Measured on a live 17.85-CPU pod: its HPSS pool runs 4 windows at
+# OMP=2 = 8 threads, and /proc/loadavg read 8.44 — i.e. half the paid CPU idle
+# while the GPU waited. Doubling its threads fills the box; thread count is a
+# parallelism knob only, so per-window results are unchanged.
+RHYTHM_T=$(( CPUS / 4 )); [ "$RHYTHM_T" -lt 2 ] && RHYTHM_T=2
 FEATURE_T=$(( CPUS / 8 )); [ "$FEATURE_T" -lt 1 ] && FEATURE_T=1
-echo "cpu quota=$CPUS essentia_threads=$ESSENTIA_T feature_threads=$FEATURE_T"
+echo "cpu quota=$CPUS essentia_threads=$ESSENTIA_T rhythm_threads=$RHYTHM_T feature_threads=$FEATURE_T"
 OMP_NUM_THREADS=$ESSENTIA_T TF_NUM_INTRAOP_THREADS=$ESSENTIA_T TF_NUM_INTEROP_THREADS=2 \
   python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage essentia_full --device cuda &
 ESSENTIA_PID=$!
-OMP_NUM_THREADS=$FEATURE_T python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage rhythm_full --device cuda &
+OMP_NUM_THREADS=$RHYTHM_T python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage rhythm_full --device cuda &
 RHYTHM_PID=$!
 OMP_NUM_THREADS=$FEATURE_T python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage maest_full --device cuda &
 MAEST_PID=$!
