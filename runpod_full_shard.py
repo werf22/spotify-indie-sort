@@ -255,6 +255,51 @@ def gpu_healthy(command: str) -> tuple[bool, str]:
     return ("gpu-ok" in out), " ".join(out.split())[:200]
 
 
+def prewarm(command: str) -> bool:
+    """Start the dependency install while the 1.3 GB bundle is still uploading.
+
+    Measured across 11 shards: 20.2 min of a 29.8 min shard is fixed overhead
+    and only 9.6 min is analysis — 68% of every paid shard. Two of those
+    overhead blocks are independent: the bundle upload (~8-10 min of pod time
+    spent receiving) and apt+venv+pip (~8-10 min of torch/librosa/essentia).
+    They ran strictly back to back because the installer lives inside run.sh,
+    which only launches once the upload lands. Overlapping them removes the
+    shorter of the two from every shard.
+
+    Fail-safe by construction: if this returns False, or the install dies
+    halfway, run.sh still performs the identical setup itself. The worst case
+    is no speedup, never a broken shard.
+    """
+    target, port, identity = rp.connection_parts(command)
+    args = ["scp", *rp.SSH_HARDENING]
+    if port:
+        args += ["-P", port]
+    if identity:
+        args += ["-i", identity]
+    try:
+        proc = rp.run(args + [str(ROOT / "requirements-cloud-audio.txt"),
+                              f"{target}:/workspace/requirements-cloud-audio.txt"],
+                      timeout=120, check=False)
+        if proc.returncode:
+            return False
+        script = (
+            "set -uo pipefail; cd /workspace; touch .setup_running\n"
+            "if ! command -v ffmpeg >/dev/null 2>&1; then apt-get update -qq && "
+            "apt-get install -y -qq ffmpeg; fi\n"
+            "python -m venv --system-site-packages /workspace/musicdb-venv\n"
+            "source /workspace/musicdb-venv/bin/activate\n"
+            "python -m pip install --disable-pip-version-check -q "
+            "-r /workspace/requirements-cloud-audio.txt && touch /workspace/.setup_done\n"
+            "rm -f /workspace/.setup_running\n")
+        launch = (f"cat > /workspace/prewarm.sh <<'PREWARM_EOF'\n{script}PREWARM_EOF\n"
+                  "nohup bash /workspace/prewarm.sh > /workspace/prewarm.log 2>&1 & echo prewarming")
+        out = subprocess.run(rp.ssh_args(command) + [launch],
+                             text=True, cwd=ROOT, timeout=120, capture_output=True)
+        return "prewarming" in (out.stdout or "")
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+
 def upload(command: str, bundle: Path, results: Path) -> None:
     target, port, identity = rp.connection_parts(command)
     args = ["scp", *rp.SSH_HARDENING]
@@ -313,8 +358,18 @@ def remote_script(shard_rel: str) -> str:
 cd /workspace
 SHARD="{shard_rel}"
 trap 'touch "$SHARD/run.fail"' ERR
+# A prewarm may already be installing dependencies (started during the upload).
+# Wait for it rather than racing it into the same venv; fall through to doing
+# the work here if it never finishes, so this path never depends on prewarm.
+for _ in $(seq 1 180); do   # 15 min ceiling: the install fits inside the upload window
+  [[ -f /workspace/.setup_done ]] && break
+  [[ -f /workspace/.setup_running ]] || break
+  sleep 5
+done
+# Extraction is keyed on the clips actually being present, NOT on .setup_done:
+# a successful prewarm sets that flag without ever having seen the bundle.
+[[ -d "$SHARD/clips" ]] || tar -xf full-shard.tar
 if [[ ! -f /workspace/.setup_done ]]; then
-  tar -xf full-shard.tar
   if ! command -v ffmpeg >/dev/null 2>&1; then apt-get update -qq && apt-get install -y -qq ffmpeg; fi
   python -m venv --system-site-packages /workspace/musicdb-venv
   source /workspace/musicdb-venv/bin/activate
@@ -575,6 +630,8 @@ def main() -> None:
             healthy, detail = gpu_healthy(command)
             if not healthy:
                 raise RuntimeError(f"pod GPU unusable before upload: {detail}")
+            if prewarm(command):
+                print("dependency install started; uploading bundle alongside it", flush=True)
             upload(command, bundle, results)
         drive(command, shard_rel, results)
         rp.save_state(status="results_downloaded", result_rows=len(successful(results)))
