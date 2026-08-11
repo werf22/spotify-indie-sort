@@ -16,6 +16,15 @@ resumes on its own within ~10 minutes of a top-up.
 four stages (rhythm, MAEST, Essentia, CLAP). 9,355 prepared clips are already
 on disk waiting for shards, so GPU time — not local work — is the constraint.
 
+**READ THIS BEFORE OPTIMISING ANYTHING:** a shard's paid time is NOT mostly
+analysis. Measured across 11 shards: 20.2 min of overhead against 9.6 min of
+actual work — 68% of every paid shard. And that overhead is not fixed either;
+`venv` + `pip install` of torch/librosa/essentia are CPU-bound, so a 28-vCPU pod
+reached its first result in 11.4 min where the mixed-CPU fleet averaged 20.2.
+Two claims made earlier the same day were wrong and are corrected in DECISIONS:
+the vCPU floor is not "the biggest lever" (it moved end-to-end time 8%), and the
+overhead is not fixed. Measure the overhead split before tuning threads again.
+
 **What got cheaper today** (all measured on live pods, not estimated):
 - D-037 runs all four stages concurrently on one pod: 37 min/shard instead of
   ~57, i.e. **$0.00066/track** against the $0.0017 lifetime ledger average.
@@ -35,6 +44,13 @@ on disk waiting for shards, so GPU time — not local work — is the constraint
 - D-041 proves the GPU computes before uploading 1.3 GB, and counts progress in
   successes rather than bytes. A pod with a wedged CUDA driver had billed a
   full run while failing all 375 tracks, invisible to the byte-growth watchdog.
+- D-045 installs dependencies WHILE the bundle uploads. Those two 8-10 min
+  blocks used to run back to back because the installer lived inside run.sh,
+  which cannot start until the 1.3 GB upload lands. Verified in production by
+  watching two pods side by side: shard-0165 had its venv built while its bundle
+  was 1% transferred; shard-0163, created minutes earlier without the change,
+  had almost its whole bundle and had installed nothing. Fail-safe: if the
+  prewarm never starts or dies, run.sh does the identical setup itself.
 - D-043 fixed the one enrichment lane that was quietly stuck: 603 bandcamp
   tracks orphaned in `processing` since 2026-07-18, unreachable by a selector
   that only looked at missing-or-failed rows. Orphans now self-heal hourly.
