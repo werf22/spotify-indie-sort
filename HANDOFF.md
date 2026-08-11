@@ -44,9 +44,12 @@ overhead is not fixed. Measure the overhead split before tuning threads again.
 - D-041 proves the GPU computes before uploading 1.3 GB, and counts progress in
   successes rather than bytes. A pod with a wedged CUDA driver had billed a
   full run while failing all 375 tracks, invisible to the byte-growth watchdog.
-- D-045 installs dependencies WHILE the bundle uploads. Those two 8-10 min
-  blocks used to run back to back because the installer lived inside run.sh,
-  which cannot start until the 1.3 GB upload lands. Verified in production by
+- D-045 installs dependencies WHILE the bundle uploads, worth a MEASURED 4.8
+  min per shard (16-19% of wall clock, taking $0.00066/track to ~$0.00053).
+  The install used to run after the upload because it lived inside run.sh,
+  which cannot start until the 1.3 GB bundle lands. Measured on ONE pod
+  (install duration vs the same pod's upload) — comparing two shards gives
+  nonsense, because each uploads under different contention. Verified in production by
   watching two pods side by side: shard-0165 had its venv built while its bundle
   was 1% transferred; shard-0163, created minutes earlier without the change,
   had almost its whole bundle and had installed nothing. Fail-safe: if the
