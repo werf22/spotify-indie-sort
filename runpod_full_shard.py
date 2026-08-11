@@ -255,6 +255,36 @@ def gpu_healthy(command: str) -> tuple[bool, str]:
     return ("gpu-ok" in out), " ".join(out.split())[:200]
 
 
+def acquire_upload_slot():
+    """Block until one of UPLOAD_SLOTS is free, and return the locked handle.
+
+    Acquired BEFORE the pod is created, not before the upload. The pod used to
+    be created first and then queue for a slot, which is invisible at 1-2 pods
+    and ruinous at 16: with only two slots, fourteen pods would sit at $0.22/h
+    each doing nothing but waiting their turn to receive a bundle. A pod must
+    never exist unless it can start receiving work immediately.
+    """
+    slots = [IMPORT_LOCK.parent / f"upload-slot-{i}.lock" for i in range(UPLOAD_SLOTS)]
+    IMPORT_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    while True:
+        for slot in slots:
+            handle = slot.open("w")
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return handle
+            except BlockingIOError:
+                handle.close()
+        time.sleep(10)
+
+
+def release_upload_slot(handle) -> None:
+    """Release the slot the moment the bundle has landed — analysis does not need it."""
+    try:
+        handle.close()
+    except OSError:
+        pass
+
+
 def prewarm(command: str) -> bool:
     """Start the dependency install while the 1.3 GB bundle is still uploading.
 
@@ -307,48 +337,31 @@ def upload(command: str, bundle: Path, results: Path) -> None:
         args += ["-P", port]
     if identity:
         args += ["-i", identity]
-    # Cross-process upload semaphore: wait for one of UPLOAD_SLOTS lock files.
-    slots = [IMPORT_LOCK.parent / f"upload-slot-{i}.lock" for i in range(UPLOAD_SLOTS)]
-    while True:
-        for slot in slots:
-            handle = slot.open("w")
-            try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                handle.close()
-        else:
-            time.sleep(10)
-            continue
-        break
-    try:
-        # scp -C compresses; the bundle is Opus (already compressed) but the
-        # manifest/scripts benefit and it costs little. Retry on the network
-        # timeouts that community pods produce: giving up here throws away a
-        # pod we already paid to create.
-        for attempt in range(1, UPLOAD_ATTEMPTS + 1):
-            try:
-                # 15 min is ~1.5 MB/s for a 1.3 GB bundle — generous for a
-                # working link, but short enough that a stalled transfer is
-                # abandoned quickly. The old 40 min, multiplied by retries,
-                # let a pod idle-bill for up to two hours on a dead link
-                # (observed on shard-0110: 1.5 h in ssh_ready, zero rows).
-                rp.run(args + [str(bundle), f"{target}:/workspace/full-shard.tar"], timeout=900)
-                break
-            except Exception as exc:
-                if attempt == UPLOAD_ATTEMPTS:
-                    raise
-                print(f"upload attempt {attempt} failed ({str(exc)[:90]}); retrying", flush=True)
-                time.sleep(20 * attempt)
-        if results.is_file() and results.stat().st_size:
-            try:
-                rp.run(args + [str(results), f"{target}:/workspace/resume-results.jsonl"], timeout=600)
-            except Exception as exc:
-                # Resume data is an optimization; losing it only means the pod
-                # redoes work it would otherwise have skipped.
-                print(f"resume upload failed, continuing without it: {str(exc)[:90]}", flush=True)
-    finally:
-        handle.close()
+    # scp -C compresses; the bundle is Opus (already compressed) but the
+    # manifest/scripts benefit and it costs little. Retry on the network
+    # timeouts that community pods produce: giving up here throws away a
+    # pod we already paid to create.
+    for attempt in range(1, UPLOAD_ATTEMPTS + 1):
+        try:
+            # 15 min is ~1.5 MB/s for a 1.3 GB bundle — generous for a
+            # working link, but short enough that a stalled transfer is
+            # abandoned quickly. The old 40 min, multiplied by retries,
+            # let a pod idle-bill for up to two hours on a dead link
+            # (observed on shard-0110: 1.5 h in ssh_ready, zero rows).
+            rp.run(args + [str(bundle), f"{target}:/workspace/full-shard.tar"], timeout=900)
+            break
+        except Exception as exc:
+            if attempt == UPLOAD_ATTEMPTS:
+                raise
+            print(f"upload attempt {attempt} failed ({str(exc)[:90]}); retrying", flush=True)
+            time.sleep(20 * attempt)
+    if results.is_file() and results.stat().st_size:
+        try:
+            rp.run(args + [str(results), f"{target}:/workspace/resume-results.jsonl"], timeout=600)
+        except Exception as exc:
+            # Resume data is an optimization; losing it only means the pod
+            # redoes work it would otherwise have skipped.
+            print(f"resume upload failed, continuing without it: {str(exc)[:90]}", flush=True)
     rp.save_state(status="uploaded")
 
 
@@ -610,32 +623,48 @@ def main() -> None:
     pod_id = saved.get("pod_id")
     dead = saved.get("status") in {"terminated", "termination_unconfirmed"}
     command = saved.get("ssh_command") if not dead else None
-    if not pod_id or dead:
-        # Hunt for a well-provisioned host first; settle for any pod on the last
-        # attempt so a thin market can never stall the shard entirely.
-        for attempt in range(VCPU_ATTEMPTS):
-            floor = MIN_VCPU if attempt < VCPU_ATTEMPTS - 1 else 0
-            try:
-                pod_id = create_pod(shard, required - successful(results), vcpu_floor=floor)
-                break
-            except RuntimeError as exc:
-                if attempt == VCPU_ATTEMPTS - 1:
-                    raise
-                print(f"no pod with >={MIN_VCPU} vCPU ({exc}); retrying", flush=True)
+    needs_upload = (not pod_id or dead or rp.read_state().get("status") not in
+                    {"uploaded", "analysis_started", "analysis_complete", "results_downloaded"})
+    # THE SLOT COMES FIRST. Creating the pod before queueing for an upload slot
+    # is invisible at 1-2 pods and ruinous at 16: with UPLOAD_SLOTS=2, the other
+    # fourteen would bill $0.22/h each while waiting their turn to receive a
+    # bundle. Waiting here costs nothing because no pod exists yet.
+    slot = acquire_upload_slot() if needs_upload else None
+    try:
+        if not pod_id or dead:
+            # Hunt for a well-provisioned host first; settle for any pod on the last
+            # attempt so a thin market can never stall the shard entirely.
+            for attempt in range(VCPU_ATTEMPTS):
+                floor = MIN_VCPU if attempt < VCPU_ATTEMPTS - 1 else 0
+                try:
+                    pod_id = create_pod(shard, required - successful(results), vcpu_floor=floor)
+                    break
+                except RuntimeError as exc:
+                    if attempt == VCPU_ATTEMPTS - 1:
+                        raise
+                    print(f"no pod with >={MIN_VCPU} vCPU ({exc}); retrying", flush=True)
+    except BaseException:
+        if slot:
+            release_upload_slot(slot)
+        raise
     shard_rel = str(shard.relative_to(ROOT))
     try:
         command = command or rp.wait_for_ssh(pod_id)
-        if rp.read_state().get("status") not in {"uploaded", "analysis_started",
-                                                 "analysis_complete", "results_downloaded"}:
+        if needs_upload:
             healthy, detail = gpu_healthy(command)
             if not healthy:
                 raise RuntimeError(f"pod GPU unusable before upload: {detail}")
             if prewarm(command):
                 print("dependency install started; uploading bundle alongside it", flush=True)
             upload(command, bundle, results)
+        if slot:                       # analysis does not need the uplink
+            release_upload_slot(slot)
+            slot = None
         drive(command, shard_rel, results)
         rp.save_state(status="results_downloaded", result_rows=len(successful(results)))
     finally:
+        if slot:
+            release_upload_slot(slot)
         if command:
             try:
                 fetch_delta(command, shard_rel, results)
