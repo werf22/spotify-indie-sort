@@ -9,3 +9,8 @@ nohup.out
 .env
 .DS_Store
 .cache.db
+
+# Rust build output — regenerable with `cargo build --release`
+onetagger-db/target/
+# vendored dependency; its own .git internals must not be tracked
+vendor/onetagger/.git/
