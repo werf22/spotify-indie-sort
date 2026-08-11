@@ -653,3 +653,27 @@ the generated remote script.
 stored in `audio_analysis_artifacts.payload_blob` (json+zlib), so
 `prune_analyzed_clips.py` deleting the file after import loses nothing — the
 `imported.ok` short-circuit is what makes its absence safe.
+
+## D-042 — The rhythm tail gets the CPU it was leaving idle
+
+**Decision:** `rhythm_full` runs at `OMP_NUM_THREADS = quota/4` instead of
+`quota/8`; the pod-side launcher prints `rhythm_threads=` so the setting is
+visible in every run log.
+
+**Why:** measured on live pod shard-0151 (quota 17.85 CPUs): `/proc/loadavg`
+read 8.44 and the GPU averaged 6 % over 20 samples spanning a minute, with
+`rhythm_full` the only surviving stage. The arithmetic matches exactly — the
+adaptive probe picks 4 windows, the HPSS pool runs them concurrently, and each
+was capped at 2 OMP threads: 4x2 = 8. Rhythm is the tail of every shard (~46 %
+of its wall clock), so half the paid CPU sat idle for nearly half of each run.
+
+**Not done, deliberately:** running several TRACKS concurrently inside the
+rhythm stage would fill the box completely, but torch, librosa and beat_this
+are not installed locally, so identical-output could not be proven without
+spending GPU credit on a validation run. Thread count cannot change per-window
+results; track-level concurrency could, and unvalidated numeric changes are how
+the fp16 experiment (D-036) went wrong. Revisit when credit allows a paid A/B.
+
+**Verified:** `bash -n` passes on the generated remote script; a monitor is
+armed to report `rhythm_threads=` and the resulting load from the first pod
+that runs it.
