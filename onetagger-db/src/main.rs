@@ -30,6 +30,10 @@ fn main() -> Result<()> {
     env_logger::init();
     let a = Args::parse();
     let mut db = Connection::open(&a.db).context("opening music.db")?;
+    // The daemon, orchestrator and shard importer all write to this SQLite file;
+    // without a busy timeout a batch aborts with "database is locked" and leaves
+    // its current track stranded in 'processing'.
+    db.busy_timeout(std::time::Duration::from_secs(30))?;
     db.execute_batch("CREATE TABLE IF NOT EXISTS onetagger_enrichment_status(spotify_id TEXT NOT NULL,source TEXT NOT NULL,status TEXT NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,last_error TEXT,updated_at TEXT NOT NULL,PRIMARY KEY(spotify_id,source)); CREATE INDEX IF NOT EXISTS idx_ot_status ON onetagger_enrichment_status(source,status);")?;
     let mut cfg = TaggerConfig::default();
     let mut platform: Box<dyn AutotaggerSource> = match a.source.as_str() {
@@ -69,7 +73,14 @@ fn main() -> Result<()> {
         x => anyhow::bail!("unsupported source: {x}"),
     };
     let rows = {
-        let mut s=db.prepare("SELECT t.spotify_id,t.title,t.artist_names,t.isrc,t.duration_ms FROM tracks t LEFT JOIN onetagger_enrichment_status s ON s.spotify_id=t.spotify_id AND s.source=?1 WHERE s.spotify_id IS NULL OR (s.status='failed' AND s.attempts<3) ORDER BY t.spotify_id LIMIT ?2")?;
+        // Also reclaim rows abandoned in 'processing': a run that dies between
+        // marking a track and resolving it used to orphan that track forever,
+        // because this selector only ever looked at missing-or-failed rows.
+        // 603 bandcamp tracks sat unreachable from 2026-07-18 that way, and the
+        // lane reported "ok=0, failed=0" every cycle as if it had finished.
+        // HOW TO TWEAK: '-1 hour' is the age at which a processing row is
+        // considered abandoned; keep it well above the slowest single lookup.
+        let mut s=db.prepare("SELECT t.spotify_id,t.title,t.artist_names,t.isrc,t.duration_ms FROM tracks t LEFT JOIN onetagger_enrichment_status s ON s.spotify_id=t.spotify_id AND s.source=?1 WHERE s.spotify_id IS NULL OR (s.status='failed' AND s.attempts<3) OR (s.status='processing' AND s.updated_at < datetime('now','-1 hour')) ORDER BY t.spotify_id LIMIT ?2")?;
         let mapped = s.query_map(params![&a.source, a.limit as i64], |r| {
             Ok((
                 r.get::<_, String>(0)?,
@@ -135,7 +146,12 @@ fn persist(
     t: &onetagger_tagger::Track,
     accuracy: f64,
 ) -> Result<()> {
-    let tx = db.transaction()?;
+    // BEGIN IMMEDIATE, not the default deferred transaction. A deferred tx
+    // takes a read lock first and then tries to upgrade to write; if any other
+    // process wrote in between, SQLite returns BUSY_SNAPSHOT *immediately* and
+    // busy_timeout does not retry it. With four writers on this database that
+    // aborted almost every batch after one track, leaving it in 'processing'.
+    let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
     let raw = serde_json::to_string(t)?;
     tx.execute("UPDATE tracks SET album=COALESCE(?1,album),release_date=COALESCE(?2,release_date),isrc=COALESCE(?3,isrc),updated_at=CURRENT_TIMESTAMP WHERE spotify_id=?4",params![t.album,t.release_date.map(|x|x.to_string()),t.isrc,id])?;
     if t.bpm.is_some() || t.key.is_some() {
