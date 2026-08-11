@@ -943,3 +943,25 @@ takes 0.4-0.9 h. Since that cap is the last line of defence when the local runne
 is dead, it now uses measured wall clock per TRACK (17 s, the worst of the last
 twelve shards against a ~8 s median) — 1.92 h for 200 tracks. Worst-case idle
 billing across a full fleet drops from ~$18 to ~$7.
+
+## D-049 — A big local upload can starve the pipeline's control plane
+
+**Incident 2026-08-11:** pushing this repository to GitHub for the first time
+(266 MB packed) saturated the same home uplink the pipeline uses. DNS lookups
+for `api.runpod.io` began failing ("no such host"), every `runpodctl` call
+errored, shard runners died, and two pods (0187, 0190) were left billing with no
+runner. The orchestrator correctly detected `unexplained_spend` and set target=0,
+and its orphan sweep would have deleted both after the 10-minute grace; the pods
+were terminated by hand to stop the bleed sooner.
+
+**What this proves about the guarantees.** Every local protection — the runner's
+terminate, the orphan sweep, the watchdogs — needs the network to act. When the
+uplink is saturated or down, none of them can run. The ONLY guarantee that
+survives is the server-side `--stop-after`/`--terminate-after`, enforced by
+RunPod itself. That is exactly why D-048 cut it from 5.1 h to 1.92 h: it is not a
+formality, it is the last line that holds when the machine cannot reach the API.
+
+**Rule:** do not push large artifacts, run bulk transfers, or otherwise saturate
+the uplink while paid pods are running. The pipeline's control plane shares that
+link with its own 1.3 GB bundle uploads, and starving it converts a cheap local
+operation into paid idle time on every live pod.
