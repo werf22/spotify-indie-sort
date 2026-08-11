@@ -839,3 +839,41 @@ truly fixed cost (container start, model download) and cost that scales with
 shard size (the bundle upload) is not yet known. If the fixed part dominates,
 larger shards would amortise it further; 400 tracks instead of 200 is a one-line
 change in the builder, at the price of a 2.6 GB bundle and more disk.
+
+## D-046 — The FreqBlog review backlog has no safe automatic accepts
+
+**Decision:** `resolve_freqblog_review.py` rejects only the 210 candidates whose
+title AND artist are both below 0.5 similarity, and accepts nothing. 3,478 stay
+in review. An earlier plan to auto-accept ~1,089 "exact" matches was abandoned
+after measuring what it would actually have written.
+
+**Why the acceptance rule is vacuous, and correctly so:** acceptance required
+`fb.norm(title)` and `fb.norm(artist)` to be identical to the provider's. But a
+candidate that satisfies that already scores 1.0 in `identity_confidence()` and
+is auto-accepted, so it never reaches review. The same holds for a matching
+ISRC, which short-circuits to `isrc_exact`. By construction the review bucket
+contains only genuine ambiguity.
+
+**Why the looser rule was dangerous.** The 1,089 figure came from normalising
+with parenthetical suffixes stripped. Of the 1,084 that rule matches, **1,083
+have titles that differ inside the brackets** — and for DJ material the bracket
+is often the whole point:
+
+| ours | FreqBlog would have supplied |
+|---|---|
+| Truth Hurts (DaBaby Remix) | Truth Hurts |
+| Vivo | Vivo (Slow Motion Mix) |
+| Extreme Ways | Extreme Ways (Bourne's Legacy) |
+
+Accepting those writes the original's BPM and energy onto a remix, and a slow-
+motion mix's onto an original, across a thousand tracks. That is exactly the
+harm the review queue exists to prevent, and the proposal contradicted the very
+principle it was argued under ("a wrong BPM is worse than a missing one").
+
+**Verified:** dry run first, then applied; every candidate row backed up to
+`data/backup_freqblog_review_20260811T104719Z.json` before any write. Result:
+accepted=0 rejected=210 failed=0 kept=3,478. Final status spread — success
+64,125, not_found 3,684, needs_review 3,478, failed 11, queued 10.
+
+**What would make the rest resolvable:** an ISRC or duration cross-check, or
+listening. Not string similarity — that ceiling has been reached.
