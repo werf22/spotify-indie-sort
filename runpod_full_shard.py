@@ -69,6 +69,53 @@ def successful(results: Path) -> set[tuple[str, str]]:
     return found
 
 
+MAX_PAIR_ATTEMPTS = 3  # a (track, stage) pair that failed this often has a
+                       # deterministic cause (unreadable clip, degenerate
+                       # embedding); retrying it buys a GPU pod that CANNOT
+                       # succeed. Raise only if a transient cause is proven.
+
+
+def poisoned(results: Path, pending: set[tuple[str, str]]) -> dict[tuple[str, str], str]:
+    """Pending pairs that already failed MAX_PAIR_ATTEMPTS times, with the last error.
+
+    Without this a single unanalysable track keeps a 200-track shard forever
+    "incomplete", so the orchestrator re-buys a pod for it on every cycle —
+    observed on shard-0130: 21 identical EffNet failures, 21 paid launches.
+    """
+    if not results.is_file() or not pending:
+        return {}
+    attempts: dict[tuple[str, str], int] = {}
+    last: dict[tuple[str, str], str] = {}
+    with results.open(encoding="utf-8") as handle:
+        for line in handle:
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            key = (row.get("spotify_id"), row.get("stage"))
+            if key in pending and row.get("status") != "success":
+                attempts[key] = attempts.get(key, 0) + 1
+                last[key] = str(row.get("error") or "unknown")[:200]
+    return {key: last[key] for key, count in attempts.items()
+            if count >= MAX_PAIR_ATTEMPTS}
+
+
+def analysable(manifest: Path, results: Path) -> set[tuple[str, str]]:
+    """Required pairs minus the ones proven unanalysable (see poisoned()).
+
+    Quarantined pairs are written to quarantine.json next to the results so the
+    loss is auditable instead of silent — the shard then counts as complete and
+    its other 199 tracks get imported.
+    """
+    required = required_pairs(manifest)
+    dead = poisoned(results, required - successful(results))
+    if dead:
+        (results.parent / "quarantine.json").write_text(
+            json.dumps({f"{tid}:{stage}": err for (tid, stage), err in sorted(dead.items())},
+                       indent=2, ensure_ascii=False), encoding="utf-8")
+    return required - set(dead)
+
+
 def required_pairs(manifest: Path) -> set[tuple[str, str]]:
     pairs = set()
     with manifest.open(encoding="utf-8", newline="") as handle:
@@ -397,7 +444,7 @@ def main() -> None:
     shard = args.shard.resolve()
     manifest, bundle = shard / "manifest.csv", shard / "bundle.tar"
     results, state = shard / "results.jsonl", shard / "runpod_state.json"
-    required = required_pairs(manifest)
+    required = analysable(manifest, results)
     if required <= successful(results):
         run_import(results, manifest)  # idempotent; heals crashed-before-import runs
         print(f"Shard already complete, import verified: {shard}")
@@ -433,6 +480,7 @@ def main() -> None:
             except Exception:
                 pass  # best effort; incremental copies already banked the work
         rp.terminate(pod_id)
+    required = analysable(manifest, results)  # re-check: this run may have proven a pair dead
     if not required <= successful(results):
         raise SystemExit("Shard is incomplete")
     run_import(results, manifest)
