@@ -892,3 +892,54 @@ accepted=0 rejected=210 failed=0 kept=3,478. Final status spread — success
 
 **What would make the rest resolvable:** an ISRC or duration cross-check, or
 listening. Not string similarity — that ceiling has been reached.
+
+## D-047 — A pod is never created until the uplink is free to feed it
+
+**Decision:** `acquire_upload_slot()` is taken BEFORE `create_pod()` and released
+the moment the bundle has landed; analysis does not need the uplink.
+
+**Why:** the runner created its pod and then queued for one of `UPLOAD_SLOTS=2`.
+At the 1-5 pods a low balance allowed this was invisible. The moment the balance
+was topped up to $11.57 the orchestrator scaled to its 16-pod cap and the defect
+became live: nine pods existed, two held slots, and **six were billing $0.22/h
+each purely to wait their turn to receive a bundle** — $1.32/h for nothing. Those
+six were terminated by hand and their shards requeued.
+
+Waiting before creation costs nothing, because no pod exists yet. The slot is
+released on every exit path, including a failed pod creation.
+
+**Verified:** four processes against an isolated lock directory — exactly two
+acquire immediately (0.2 s) and two wait for a release (10.2 s).
+
+## D-048 — The pod cannot stop itself, and parallelism is bounded by the uplink
+
+**Three findings from auditing "a pod must never bill while idle".**
+
+**The self-stop guard had never fired.** `run.sh` gated it on
+`[[ -n "${RUNPOD_POD_ID:-}" ]]`, but RunPod injects that variable into PID 1 and
+`/etc/rp_environment`, never into an ssh session — so the test was always false.
+`run.sh` now sources that file (with a `/proc/1/environ` fallback) and logs the
+id it resolved.
+
+**Even with the id, a pod cannot stop itself.** The `RUNPOD_API_KEY` RunPod
+injects is rejected by RunPod's own API — "Error: Unauthorized", verified on a
+live pod both from the environment and after explicitly configuring the key.
+This is now documented at the call site so no future reader counts it as a layer
+of protection. What actually holds, in order: the runner terminates its pod on
+completion; the orchestrator's orphan sweep deletes any pod no live runner
+explains; and `--stop-after`/`--terminate-after` are enforced by RunPod itself,
+surviving the local machine dying entirely.
+
+**MAX_PARALLEL 16 → 8, bounded by the uplink.** A 1.3 GB bundle through one of
+two slots takes ~9 min, so the home line can start ~13 shards/h, and a shard
+holds its pod ~0.45 h — about 6 pods can be kept genuinely busy. 16 was correct
+when a shard ran ~2 h and the upload was a rounding error; D-037 cut the shard to
+0.45 h and inverted the ratio. Runners above the limit are harmless since D-047,
+but they add nothing and their polling contends for `runpodctl`.
+
+**Related, same audit:** `estimate_caps()` still summed PER_STAGE_SECONDS as if
+the four stages ran in series, producing a 5.1 h server-side cap for a shard that
+takes 0.4-0.9 h. Since that cap is the last line of defence when the local runner
+is dead, it now uses measured wall clock per TRACK (17 s, the worst of the last
+twelve shards against a ~8 s median) — 1.92 h for 200 tracks. Worst-case idle
+billing across a full fleet drops from ~$18 to ~$7.
