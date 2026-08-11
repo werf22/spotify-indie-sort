@@ -708,3 +708,33 @@ sometimes — that is now harmless, because an orphan self-heals within the hour
 **Also:** `data/music.db-wal` had grown to 4.48 GiB because a long-lived reader
 held checkpoints back. `wal_checkpoint(TRUNCATE)` took it to zero and returned
 free disk from 51 to 54 GiB.
+
+## D-044 — CPU allocation, not GPU, decides what a pod costs per track
+
+**Decision:** `create_pod()` accepts a `vcpu_floor` and immediately returns any
+host below it; the runner hunts for >= `MIN_VCPU` (16) for two attempts, then
+accepts whatever is free so a thin market cannot stall a shard.
+
+**Why:** three live pods measured on the same day, all RTX 3090, all $0.22/h:
+
+| shard | advertised vcpuCount | enforced cgroup quota | RAM |
+|---|---|---|---|
+| shard-0159 | 8 | (cgroup v1, no quota file) | 30 GB |
+| shard-0153 | 21 | 17.9 | 41 GB |
+| shard-0155 | 32 | 27.2 | 62 GB |
+
+The same hourly price buys a 4x spread in CPU. Since rhythm (HPSS) and essentia
+(TensorFlow) are CPU-bound, and wall clock is what is billed, the thin host is
+straightforwardly worse value at identical cost. `vcpuCount` is readable from
+`pod get` seconds after creation — before the 1.3 GB upload — so a rejection
+costs a few cents of billing at most.
+
+**Corrects an earlier claim:** D-039 was written as though pods have ~17.85 CPUs
+and the code had been using a quarter of them. The true statement is that the
+allocation *varies* between hosts, which is exactly why deriving thread counts
+from the cgroup quota is right and any hardcoded number is wrong. On the 6-CPU
+pod the new code computes 2/2/1 threads and `/proc/loadavg` read 5.65 — that
+host was already saturated and gained nothing; the 17.9 and 27.2 hosts are where
+the win is.
+
+**Verified:** measured directly over SSH on all three live pods; module compiles.
