@@ -624,6 +624,16 @@ cycle — 21 identical failures, 21 paid launches. Retrying a deterministic
 failure is the purest form of the thing this pipeline must never do: a pod
 that bills without being able to produce work.
 
+**Correction 2026-08-11 (same day):** as first written this rule counted EVERY
+failure, including ones caused by the pod rather than the track. The wedged-GPU
+host in D-041 wrote 375 CUDA failures into shard-0153; three such runs would
+have retired 375 analysable tracks and let the shard report itself complete
+without them — silent data loss wearing a clean finish. `poisoned()` now ignores
+errors naming an environmental cause (CUDA, cuDNN, OOM, missing module, model
+download, connection/timeout). Verified against the real files: those 375
+failures quarantine nothing and all 800 pairs stay required, while shard-0130's
+deterministic EffNet failure is still classified as a track fault.
+
 **Verified:** shard-0130 imported 799 stage-results for 200 tracks immediately
 after the change; a scan of every shard's results found this is the only
 poisoned pair in the corpus (all other failures were transient CUDA errors that
