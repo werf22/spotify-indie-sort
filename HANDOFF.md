@@ -16,18 +16,41 @@ resumes on its own within ~10 minutes of a top-up.
 four stages (rhythm, MAEST, Essentia, CLAP). 9,355 prepared clips are already
 on disk waiting for shards, so GPU time — not local work — is the constraint.
 
-**What got 2.5x cheaper today** (all measured, not estimated):
+**What got cheaper today** (all measured on live pods, not estimated):
 - D-037 runs all four stages concurrently on one pod: 37 min/shard instead of
   ~57, i.e. **$0.00066/track** against the $0.0017 lifetime ledger average.
-- D-039 sizes every thread pool from the container's real cgroup quota. A live
-  pod allows 17.85 CPUs; the code had assumed ~6 and `nproc` reports the
-  128-core host, so under a quarter of the paid CPU was in use.
+- D-044 is the big one still to prove itself: three pods, all RTX 3090, all
+  $0.22/h, had enforced CPU quotas of 6, 17.9 and 27.2. The same money buys a
+  4x spread in CPU, and since rhythm (HPSS) and essentia (TensorFlow) are
+  CPU-bound, wall clock — the thing actually billed — tracks CPU, not GPU. The
+  runner now rejects hosts under 16 vCPU for two attempts, then takes what is
+  free so a thin market cannot stall a shard.
+- D-039 derives every thread pool from the container's real cgroup quota, which
+  is what makes the above safe: no hardcoded CPU count is correct.
+- D-042 gives the rhythm tail 4x its previous threads; it is the only stage
+  still alive for roughly the last 46% of a shard.
 - D-040 quarantines a (track, stage) pair after 3 identical failures. One
   unanalysable clip had been holding 199 finished tracks hostage and re-buying
-  a pod on every orchestrator cycle — 21 paid launches for one dead track.
+  a pod every orchestrator cycle — 21 paid launches for one dead track.
 - D-041 proves the GPU computes before uploading 1.3 GB, and counts progress in
   successes rather than bytes. A pod with a wedged CUDA driver had billed a
   full run while failing all 375 tracks, invisible to the byte-growth watchdog.
+- D-043 fixed the one enrichment lane that was quietly stuck: 603 bandcamp
+  tracks orphaned in `processing` since 2026-07-18, unreachable by a selector
+  that only looked at missing-or-failed rows. Orphans now self-heal hourly.
+
+**Enrichment state — everything else is genuinely finished**, not idle: all
+71,306 tracks carry a terminal status for ReccoBeats, TheAudioDB, MusicBrainz,
+Last.fm and Deezer. The 6,207 tracks with no Deezer row simply have no ISRC,
+which is what Deezer matches on.
+
+**One decision waiting for the owner:** FreqBlog has 3,686 tracks in
+`needs_review`. Of those, 1,089 have an exactly-matching normalised title AND
+artist (almost certainly correct, just below the auto-accept threshold), 1,894
+match on one field only, and 703 match on neither. Only 20% are already covered
+by our own 4-stage analysis, so the rest would genuinely gain data. Auto-
+accepting changes the meaning of data in a DJ database — wrong BPM or key is
+worse than a missing value — so it was left for an explicit decision.
 
 **Disk:** 51 GiB free. Acquisition is paused by the disk guard (`paused=1` in
 sync_control) — that gates music DOWNLOADING only, not clip prep or analysis,
