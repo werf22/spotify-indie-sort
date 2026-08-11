@@ -241,14 +241,27 @@ rm -f "$SHARD/run.done" "$SHARD/run.fail"
 # caps stop the four processes from oversubscribing the ~6 vCPUs. Exit codes
 # are collected per stage: done only when every stage succeeded.
 set +e
-OMP_NUM_THREADS=2 TF_NUM_INTRAOP_THREADS=2 TF_NUM_INTEROP_THREADS=1 \
+# Size thread pools from the container's REAL cgroup quota. nproc reports the
+# host (128 on a measured pod) while the quota allowed 17.85 CPUs, and the
+# previous hardcoded caps assumed 6 — so most of the paid allocation sat idle.
+CPUS=$(python3 -c "
+from pathlib import Path
+try:
+    q,p=Path('/sys/fs/cgroup/cpu.max').read_text().split()
+    print(max(1,int(float(q)/float(p))) if q!='max' else 4)
+except Exception:
+    import os; print(os.cpu_count() or 4)")
+ESSENTIA_T=$(( CPUS / 4 )); [ "$ESSENTIA_T" -lt 2 ] && ESSENTIA_T=2
+FEATURE_T=$(( CPUS / 8 )); [ "$FEATURE_T" -lt 1 ] && FEATURE_T=1
+echo "cpu quota=$CPUS essentia_threads=$ESSENTIA_T feature_threads=$FEATURE_T"
+OMP_NUM_THREADS=$ESSENTIA_T TF_NUM_INTRAOP_THREADS=$ESSENTIA_T TF_NUM_INTEROP_THREADS=2 \
   python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage essentia_full --device cuda &
 ESSENTIA_PID=$!
-OMP_NUM_THREADS=1 python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage rhythm_full --device cuda &
+OMP_NUM_THREADS=$FEATURE_T python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage rhythm_full --device cuda &
 RHYTHM_PID=$!
-OMP_NUM_THREADS=1 python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage maest_full --device cuda &
+OMP_NUM_THREADS=$FEATURE_T python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage maest_full --device cuda &
 MAEST_PID=$!
-OMP_NUM_THREADS=1 python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage clap_full --device cuda &
+OMP_NUM_THREADS=$FEATURE_T python cloud_audio_full.py --manifest "$SHARD/manifest.csv" --output "$SHARD/results.jsonl" --stage clap_full --device cuda &
 CLAP_PID=$!
 RC=0
 for pid in "$ESSENTIA_PID" "$RHYTHM_PID" "$MAEST_PID" "$CLAP_PID"; do

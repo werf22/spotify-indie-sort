@@ -24,6 +24,41 @@ from pathlib import Path
 import numpy as np
 
 
+def available_cpus() -> int:
+    """CPUs this container may actually use, not the host's core count.
+
+    RunPod pods report the HOST's nproc (128 on the machine measured), while
+    cgroup quota allows far less — 17.85 CPUs on that same pod. Sizing pools
+    from nproc oversubscribes; sizing from a guess (we assumed 6) wastes most
+    of the allocation. Read the quota and let every pool scale to the pod.
+    """
+    try:                                    # cgroup v2
+        quota, period = Path("/sys/fs/cgroup/cpu.max").read_text().split()
+        if quota != "max":
+            return max(1, int(float(quota) / float(period)))
+    except Exception:
+        pass
+    try:                                    # cgroup v1
+        quota = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read_text())
+        period = int(Path("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read_text())
+        if quota > 0:
+            return max(1, quota // period)
+    except Exception:
+        pass
+    return os.cpu_count() or 4
+
+
+def hpss_workers() -> int:
+    """Threads for the rhythm stage's HPSS pool.
+
+    Four stages share the pod, and rhythm's HPSS is the heaviest CPU user, so
+    take about half the allocation and leave the rest for Essentia-TF and the
+    two feature extractors. Capped at 8: HPSS parallelism flattens out and
+    more threads only add memory traffic.
+    """
+    return max(2, min(8, available_cpus() // 2))
+
+
 def append(path: Path, payload: dict) -> None:
     """Append one result line, safe against concurrent stage processes.
 
@@ -294,7 +329,7 @@ def run_rhythm(row: dict, device: str) -> dict:
         """
         chosen = [(i, windows[i]) for i in indices]
         out = {}
-        with ThreadPoolExecutor(max_workers=min(4, len(chosen) or 1)) as pool:
+        with ThreadPoolExecutor(max_workers=min(hpss_workers(), len(chosen) or 1)) as pool:
             futures = {i: pool.submit(lambda clip=clip: librosa.effects.hpss(clip)[1])
                        for i, (start, clip) in chosen}
             for i, (start, clip) in chosen:
