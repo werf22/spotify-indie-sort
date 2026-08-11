@@ -4,26 +4,40 @@ This is the canonical cold-start document for the next AI agent. Read it
 before changing code, restarting services, creating cloud resources, calling a
 paid API, or modifying Spotify playlists.
 
-Last manually verified: **2026-07-20, afternoon, Europe/Bratislava**. Live
-counters will continue changing while the background workers run.
+**STATUS 2026-08-11 (late morning) — ONE BLOCKER: RunPod credit.**
 
-**STATUS 2026-07-29 (evening) — ONE BLOCKER: RunPod credit.**
+**DO THIS NOW:** nothing local is blocked. The pipeline is healthy and running
+itself. The only action that moves the finish line is topping up RunPod:
+**~$9 finishes the remaining 13,341 tracks, $15 gives margin.** Balance was
+$3.39 at 08:45Z burning $0.68/h across 3 pods, so it parks itself in ~5 h and
+resumes on its own within ~10 minutes of a top-up.
 
-The scope changed completely today: the indexer had never been automated,
-so ~17,700 already-downloaded files were invisible to the pipeline. After
-the rescan the target is the whole collection — **25,674 eligible tracks**
-(≤15 min, local file present), of which **11,785 are fully analyzed**
-(2,846 of those are local-only, outside the Spotify catalog).
+**Where the audio analysis stands:** 18,695 of 32,036 eligible tracks have all
+four stages (rhythm, MAEST, Essentia, CLAP). 9,355 prepared clips are already
+on disk waiting for shards, so GPU time — not local work — is the constraint.
 
-*Every local step is finished or self-running.* 12,778 prepared clips sit
-on disk ready to go, so nothing local blocks progress. What remains is
-purely GPU time: **~13,900 tracks × ~$0.0014 ≈ $20**. Spend to date:
-89 shards, 83 GPU-hours, $18.40. The balance runs the pipeline down
-gracefully — pod count scales with funds and parks at $1 — so topping up
-is the only action needed; the orchestrator resumes within ~10 minutes.
+**What got 2.5x cheaper today** (all measured, not estimated):
+- D-037 runs all four stages concurrently on one pod: 37 min/shard instead of
+  ~57, i.e. **$0.00066/track** against the $0.0017 lifetime ledger average.
+- D-039 sizes every thread pool from the container's real cgroup quota. A live
+  pod allows 17.85 CPUs; the code had assumed ~6 and `nproc` reports the
+  128-core host, so under a quarter of the paid CPU was in use.
+- D-040 quarantines a (track, stage) pair after 3 identical failures. One
+  unanalysable clip had been holding 199 finished tracks hostage and re-buying
+  a pod on every orchestrator cycle — 21 paid launches for one dead track.
+- D-041 proves the GPU computes before uploading 1.3 GB, and counts progress in
+  successes rather than bytes. A pod with a wedged CUDA driver had billed a
+  full run while failing all 375 tracks, invisible to the byte-growth watchdog.
 
-*Verified at park time:* zero pods billing, no shard state claiming a
-pod, 146 GiB free.
+**Disk:** 51 GiB free. Acquisition is paused by the disk guard (`paused=1` in
+sync_control) — that gates music DOWNLOADING only, not clip prep or analysis,
+and leaving it paused protects the headroom the shards need. Resume manually
+with `sync_control.py resume-all` when the collection work is done.
+
+**Note on results.jsonl:** imported shards get theirs deleted by
+prune_analyzed_clips.py. That is safe and intended — the per-window timelines
+live in `audio_analysis_artifacts.payload_blob` (json+zlib), and the runner now
+short-circuits on `imported.ok` so a stripped shard can never re-buy a pod.
 
 *The full loop is now automatic* (D-031/D-032): hourly index → duration
 re-verification of fuzzy matches → identity assignment → Opus prep →
