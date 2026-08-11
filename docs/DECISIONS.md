@@ -794,6 +794,16 @@ created since the commit. The number to check on the next shard is the gap
 between `created_at` and the first result row, which should fall by roughly the
 shorter of the upload and install times.
 
+**Baseline correction, measured after the fact:** shard-0164 (28 vCPU, created
+BEFORE this commit, so no prewarm) reached its first result 11.4 min after pod
+creation — against the 20.2 min mean overhead computed from the earlier
+mixed-CPU fleet. The overhead is therefore NOT fixed: `python -m venv` and
+`pip install` of torch/librosa/essentia are CPU-bound, so the D-044 pods already
+halve it. Two consequences: D-044's real benefit is larger than the 8%
+end-to-end figure suggested (that sample only captured the analysis third), and
+D-045 must be judged against the ~11 min high-vCPU baseline, not against 20.2 —
+comparing to the old number would credit the prewarm with D-044's gain.
+
 **Remaining lever, unmeasured:** of the 20.2 min overhead, the split between
 truly fixed cost (container start, model download) and cost that scales with
 shard size (the bundle upload) is not yet known. If the fixed part dominates,
