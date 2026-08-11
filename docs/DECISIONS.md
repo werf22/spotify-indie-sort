@@ -794,6 +794,19 @@ created since the commit. The number to check on the next shard is the gap
 between `created_at` and the first result row, which should fall by roughly the
 shorter of the upload and install times.
 
+**Verified in production 2026-08-11 10:25Z** by observing two pods side by side,
+one created either side of the commit:
+
+| | shard-0163 (no prewarm) | shard-0165 (prewarm) |
+|---|---|---|
+| bundle on pod | 1.06 GB, nearly complete | 11.7 MB, still uploading |
+| venv | absent | `musicdb-venv/bin/python` already built |
+| install state | not started | `.setup_running` present, pip running |
+
+shard-0165 had its virtualenv built while its bundle was 1% transferred, which
+is precisely the overlap this change exists to create; shard-0163, whose bundle
+had almost fully landed, had not begun installing anything.
+
 **Baseline correction, measured after the fact:** shard-0164 (28 vCPU, created
 BEFORE this commit, so no prewarm) reached its first result 11.4 min after pod
 creation — against the 20.2 min mean overhead computed from the earlier
