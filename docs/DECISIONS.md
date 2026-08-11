@@ -747,4 +747,13 @@ pod the new code computes 2/2/1 threads and `/proc/loadavg` read 5.65 — that
 host was already saturated and gained nothing; the 17.9 and 27.2 hosts are where
 the win is.
 
+**Verified in production 2026-08-11 09:36Z:** the first two pods created under
+the floor were accepted at **25 and 32 vCPU**, both at the same $0.22/h — against
+the 8 vCPU that shard-0159 drew from the same market an hour earlier without it.
+Neither creation logged a rejection, so the feared create/terminate churn cost
+nothing on a normal market. Leak safety confirmed by reading `sweep_orphans()`:
+it matches on `pod_id`, and a rejected pod's id is never written to a shard state
+file, so a failed terminate lands in the `tracked is None` branch and the pod is
+deleted on the next sweep rather than billing unnoticed.
+
 **Verified:** measured directly over SSH on all three live pods; module compiles.
