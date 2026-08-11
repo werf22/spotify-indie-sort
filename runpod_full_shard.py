@@ -42,6 +42,8 @@ POLL_SECONDS = 60          # how often the runner checks the pod
 SETUP_GRACE_MIN = 40       # no-progress allowance while models install/download (setup is silent; slow hosts need it)
 STALL_MIN = 15             # abort when results stop growing this long (post-grace)
 BARREN_MIN = 8             # abort when rows keep arriving but NONE succeed
+MIN_VCPU = 16              # reject hosts thinner than this (same $/h buys 8-32)
+VCPU_ATTEMPTS = 3          # hunts for a fat pod, then takes whatever is free
 DONE_SELF_STOP_MIN = 15    # pod stops itself this long after done/fail markers
 MAX_RELAUNCH = 2           # remote pipeline restarts before giving up
 PER_STAGE_SECONDS = {"rhythm_full": 30, "maest_full": 10,
@@ -137,11 +139,22 @@ def estimate_caps(pending: set[tuple[str, str]]) -> tuple[timedelta, timedelta]:
     return stop, stop + timedelta(minutes=30)
 
 
-def create_pod(shard: Path, pending: set[tuple[str, str]]) -> str:
+def create_pod(shard: Path, pending: set[tuple[str, str]], vcpu_floor: int = 0) -> str:
+    """Create one bounded pod. `vcpu_floor` rejects CPU-starved hosts.
+
+    Measured on three live pods, all RTX 3090 at the SAME $0.22/h: enforced
+    cgroup quotas of 6, 17.9 and 27.2 CPUs (advertised vcpuCount 8, 21, 32 —
+    the advertised number does track the real quota). Every stage in this
+    pipeline is CPU-bound at some point (HPSS in rhythm, TensorFlow in
+    essentia), so an 8-vCPU host does the same shard for the same hourly price
+    while taking far longer. vcpuCount is readable seconds after creation, long
+    before the 1.3 GB upload, so a thin pod costs pennies to reject.
+    """
     started = rp.now()
     stop_off, term_off = estimate_caps(pending)
     failures = []
     payload = selected_gpu = None
+    selected_vcpus = 0
     for gpu in rp.GPU_CANDIDATES:
         command = [
             str(rp.RUNPODCTL), "pod", "create", "--template-id", "runpod-torch-v280",
@@ -177,14 +190,20 @@ def create_pod(shard: Path, pending: set[tuple[str, str]]) -> str:
             rp.terminate(candidate_id)
             failures.append(f"{gpu}: ${hourly:.3f}/h over ${rp.MAX_HOURLY_USD:.2f} ceiling")
             continue
+        vcpus = int(details.get("vcpuCount") or 0)
+        if vcpu_floor and vcpus and vcpus < vcpu_floor:
+            rp.terminate(candidate_id)
+            failures.append(f"{gpu}: {vcpus} vCPU below {vcpu_floor} floor")
+            continue
         pod_id, selected_gpu, selected_hourly = candidate_id, gpu, hourly
+        selected_vcpus = vcpus
         break
     else:
         raise RuntimeError("No bounded GPU available: " + " | ".join(failures))
     rp.save_state(pod_id=pod_id, status="created", created_at=rp.iso(started),
                   gpu=selected_gpu, ssh_command=None, termination_response=None,
                   result_rows=0, pending_pairs=len(pending),
-                  hourly_cost_usd=selected_hourly or None,
+                  hourly_cost_usd=selected_hourly or None, vcpu_count=selected_vcpus or None,
                   stop_after=rp.iso(started + stop_off),
                   terminate_after=rp.iso(started + term_off))
     return pod_id
@@ -521,7 +540,17 @@ def main() -> None:
     dead = saved.get("status") in {"terminated", "termination_unconfirmed"}
     command = saved.get("ssh_command") if not dead else None
     if not pod_id or dead:
-        pod_id = create_pod(shard, required - successful(results))
+        # Hunt for a well-provisioned host first; settle for any pod on the last
+        # attempt so a thin market can never stall the shard entirely.
+        for attempt in range(VCPU_ATTEMPTS):
+            floor = MIN_VCPU if attempt < VCPU_ATTEMPTS - 1 else 0
+            try:
+                pod_id = create_pod(shard, required - successful(results), vcpu_floor=floor)
+                break
+            except RuntimeError as exc:
+                if attempt == VCPU_ATTEMPTS - 1:
+                    raise
+                print(f"no pod with >={MIN_VCPU} vCPU ({exc}); retrying", flush=True)
     shard_rel = str(shard.relative_to(ROOT))
     try:
         command = command or rp.wait_for_ssh(pod_id)
