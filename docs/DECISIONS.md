@@ -807,6 +807,23 @@ shard-0165 had its virtualenv built while its bundle was 1% transferred, which
 is precisely the overlap this change exists to create; shard-0163, whose bundle
 had almost fully landed, had not begun installing anything.
 
+**What is and is not proven.** The MECHANISM is proven: on shard-0165 the
+dependency install wrote `.setup_done` a full 6 minutes BEFORE `full-shard.tar`
+finished arriving, so the entire install was hidden inside the upload window —
+time that was previously spent after the upload, in series.
+
+The SAVING is not yet quantified, and the obvious comparison misleads. The
+end-to-end setup gap was 11.9 min for shard-0165 (with prewarm) against 11.4 min
+for shard-0164 (without) — apparently no gain. That comparison is confounded:
+the two pods uploaded under different contention (UPLOAD_SLOTS=2 shares one home
+uplink), the gap is sampled on a 60 s poll, and n=1 on each side. Do not read it
+either way. To measure the saving properly, compare `.setup_done` minus prewarm
+start against the same shard's upload duration across several shards, or run a
+deliberate A/B with the prewarm disabled while upload contention is held equal.
+
+Leaving it enabled costs nothing regardless: the path is fail-safe, and hiding
+the install inside the upload cannot be slower than running it afterwards.
+
 **Baseline correction, measured after the fact:** shard-0164 (28 vCPU, created
 BEFORE this commit, so no prewarm) reached its first result 11.4 min after pod
 creation — against the 20.2 min mean overhead computed from the earlier
