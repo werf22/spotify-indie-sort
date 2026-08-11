@@ -628,3 +628,28 @@ that bills without being able to produce work.
 after the change; a scan of every shard's results found this is the only
 poisoned pair in the corpus (all other failures were transient CUDA errors that
 later succeeded on retry).
+
+## D-041 — A pod must prove its GPU works, and progress is counted in successes
+
+**Decision:** three changes to `runpod_full_shard.py`: `gpu_healthy()` runs a
+tiny CUDA matmul over SSH *before* the 1.3 GB bundle upload; a `BARREN_MIN`
+watchdog aborts after 8 minutes of result rows with zero successes; and the
+pod-side CPU probe falls back through cgroup v1 and never to `os.cpu_count()`.
+
+**Why:** pod `music-db-shard-0153` was handed a host with a wedged CUDA driver.
+`nvidia-smi` answered (0 %, 1 MiB) but every context raised "CUDA unknown
+error", so all 375 attempted tracks failed. The stall watchdog watched
+`results.jsonl` grow — and it *was* growing, because a failure row is the same
+size as a success row. The pod billed a full run for nothing. The same host had
+no `/sys/fs/cgroup/cpu.max` at all, which exposed the second bug: the D-039
+probe's fallback was `os.cpu_count()`, i.e. the 128-core host, which would have
+set 32 Essentia threads inside an 18-CPU slice.
+
+**Verified:** the wedged pod was terminated on discovery; a stripped, imported
+shard now exits with "already imported" and creates no pod; `bash -n` passes on
+the generated remote script.
+
+**Related:** the per-window timelines that `results.jsonl` holds are already
+stored in `audio_analysis_artifacts.payload_blob` (json+zlib), so
+`prune_analyzed_clips.py` deleting the file after import loses nothing — the
+`imported.ok` short-circuit is what makes its absence safe.
