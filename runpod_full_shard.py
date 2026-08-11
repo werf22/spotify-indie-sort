@@ -47,10 +47,15 @@ VCPU_ATTEMPTS = 2          # one floored sweep, then take whatever is free
                            # (bounds the create/terminate churn a thin market causes)
 DONE_SELF_STOP_MIN = 15    # pod stops itself this long after done/fail markers
 MAX_RELAUNCH = 2           # remote pipeline restarts before giving up
-PER_STAGE_SECONDS = {"rhythm_full": 30, "maest_full": 10,
-                     "essentia_full": 12, "clap_full": 10}
-CAP_SAFETY = 1.35          # multiplier on the per-stage estimate
-CAP_BASE_MIN = 25          # fixed setup+margin minutes added to the cap
+# Wall-clock seconds per TRACK, not per stage-pair: since D-037 the four stages
+# run concurrently, so a shard's duration is set by the slowest stage, not by
+# their sum. The old model summed 62 s of per-stage time per track and produced
+# a 5.1 h cap for a shard that actually takes 0.4-0.9 h — meaning a wedged pod
+# whose local runner had died could bill five hours before the server-side stop.
+# 17 s is the worst of the last twelve measured shards (median is ~8 s).
+WALL_SECONDS_PER_TRACK = 17
+CAP_SAFETY = 1.5           # multiplier on the wall-clock estimate
+CAP_BASE_MIN = 30          # fixed setup+upload margin added to the cap
 IMPORT_LOCK = ROOT / "data" / "cloud_full_shards" / "import.lock"
 
 
@@ -148,11 +153,17 @@ def required_pairs(manifest: Path) -> set[tuple[str, str]]:
 
 
 def estimate_caps(pending: set[tuple[str, str]]) -> tuple[timedelta, timedelta]:
-    """Stop/terminate offsets sized to the actual pending work of this shard."""
-    seconds = sum(PER_STAGE_SECONDS.get(stage, 15) for _, stage in pending)
-    stop = timedelta(minutes=CAP_BASE_MIN, seconds=seconds * CAP_SAFETY)
-    stop = max(timedelta(minutes=45), min(stop, timedelta(hours=6)))
-    return stop, stop + timedelta(minutes=30)
+    """Stop/terminate offsets sized to the actual pending work of this shard.
+
+    These are the LAST line of defence: they only matter when the local runner
+    has died and no watchdog is left to notice. Everything else — the barren
+    check, the stall check, the orphan sweep — acts within minutes. So this cap
+    should comfortably clear a healthy shard and nothing more.
+    """
+    tracks = len({track for track, _ in pending})       # stages run concurrently
+    stop = timedelta(minutes=CAP_BASE_MIN, seconds=tracks * WALL_SECONDS_PER_TRACK * CAP_SAFETY)
+    stop = max(timedelta(minutes=60), min(stop, timedelta(hours=3)))
+    return stop, stop + timedelta(minutes=20)
 
 
 def create_pod(shard: Path, pending: set[tuple[str, str]], vcpu_floor: int = 0) -> str:
@@ -370,6 +381,15 @@ def remote_script(shard_rel: str) -> str:
     return f"""set -uo pipefail
 cd /workspace
 SHARD="{shard_rel}"
+# RunPod injects RUNPOD_POD_ID into PID 1 and /etc/rp_environment, NOT into ssh
+# sessions. Without this the self-stop guard below tested an unset variable and
+# so never fired even once — a dead guard is worse than no guard, because the
+# cost model assumed a finished pod would stop itself within minutes.
+if [[ -f /etc/rp_environment ]]; then source /etc/rp_environment; fi
+if [[ -z "${{RUNPOD_POD_ID:-}}" && -r /proc/1/environ ]]; then
+  export RUNPOD_POD_ID="$(tr '\0' '\n' < /proc/1/environ | sed -n 's/^RUNPOD_POD_ID=//p')"
+fi
+echo "self-stop guard armed for pod ${{RUNPOD_POD_ID:-UNKNOWN}}"
 trap 'touch "$SHARD/run.fail"' ERR
 # A prewarm may already be installing dependencies (started during the upload).
 # Wait for it rather than racing it into the same venv; fall through to doing
@@ -400,6 +420,15 @@ rm -f "$SHARD/run.done" "$SHARD/run.fail"
     sleep 240
     if [[ -f "$SHARD/run.done" || -f "$SHARD/run.fail" ]]; then
       sleep {DONE_SELF_STOP_MIN * 60}
+      # Best effort only, and known NOT to work on current pods: the
+      # RUNPOD_API_KEY RunPod injects is rejected by its own API ("Error:
+      # Unauthorized", verified on a live pod both from the environment and
+      # after an explicit `runpodctl config --apiKey`). A pod therefore CANNOT
+      # be relied on to stop itself. The guarantees that do hold are all
+      # outside the pod: the runner terminates it on completion, the
+      # orchestrator's orphan sweep deletes any pod no live runner explains,
+      # and --stop-after/--terminate-after are enforced by RunPod itself and
+      # survive the local machine dying entirely.
       if [[ -f "$SHARD/run.done" || -f "$SHARD/run.fail" ]] \\
          && command -v runpodctl >/dev/null 2>&1 && [[ -n "${{RUNPOD_POD_ID:-}}" ]]; then
         runpodctl stop pod "$RUNPOD_POD_ID" || true
