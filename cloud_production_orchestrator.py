@@ -280,9 +280,22 @@ def main() -> None:
                 done, ready, target_n = completed_count(), ready_count(), target_count()
                 funds, hourly = balance()
                 swept = sweep_orphans(active)
+                # Compare POD COUNT, not recorded prices: a runner that has just
+                # spawned has no hourly_cost_usd yet, so summing prices made
+                # expected spend look like $0.22 against a real $0.90 and
+                # tripped "unexplained_spend", freezing new launches while the
+                # balance drained. Ours are all named music-db-*, and the sweep
+                # above has already removed any pod no live runner explains, so
+                # "more of our pods alive than shards we launched" is the real
+                # signal — and it is immune to state-write timing.
+                try:
+                    ours = [x for x in (ctl_json("pod", "list") or [])
+                            if str(x.get("name") or "").startswith("music-db-")]
+                except Exception:
+                    ours = []
                 expected_spend = sum(
                     float(shard_state(s).get("hourly_cost_usd") or 0) for s in active)
-                overspend = hourly > expected_spend + SPEND_TOLERANCE and not swept
+                overspend = len(ours) > len(active) and not swept
                 if done >= target_n and not active and not incomplete_shards():
                     write_status(phase="complete", completed_tracks=done,
                                  ready_tracks=ready, balance_usd=funds,
