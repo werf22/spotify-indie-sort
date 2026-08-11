@@ -43,7 +43,8 @@ SETUP_GRACE_MIN = 40       # no-progress allowance while models install/download
 STALL_MIN = 15             # abort when results stop growing this long (post-grace)
 BARREN_MIN = 8             # abort when rows keep arriving but NONE succeed
 MIN_VCPU = 16              # reject hosts thinner than this (same $/h buys 8-32)
-VCPU_ATTEMPTS = 3          # hunts for a fat pod, then takes whatever is free
+VCPU_ATTEMPTS = 2          # one floored sweep, then take whatever is free
+                           # (bounds the create/terminate churn a thin market causes)
 DONE_SELF_STOP_MIN = 15    # pod stops itself this long after done/fail markers
 MAX_RELAUNCH = 2           # remote pipeline restarts before giving up
 PER_STAGE_SECONDS = {"rhythm_full": 30, "maest_full": 10,
@@ -78,6 +79,18 @@ MAX_PAIR_ATTEMPTS = 3  # a (track, stage) pair that failed this often has a
                        # embedding); retrying it buys a GPU pod that CANNOT
                        # succeed. Raise only if a transient cause is proven.
 
+# Failures caused by the POD, not by the track. These must never count toward
+# the quarantine: one host with a wedged CUDA driver wrote 375 of them in a
+# single run (D-041), and counting those would have permanently retired 375
+# perfectly analysable tracks — silent data loss dressed up as a clean finish.
+ENVIRONMENTAL_ERRORS = ("CUDA", "cuDNN", "No CUDA GPUs", "out of memory",
+                        "ModuleNotFoundError", "Can't load the model",
+                        "Connection", "Timeout", "device-side assert")
+
+
+def environmental(error: str) -> bool:
+    return any(token.lower() in (error or "").lower() for token in ENVIRONMENTAL_ERRORS)
+
 
 def poisoned(results: Path, pending: set[tuple[str, str]]) -> dict[tuple[str, str], str]:
     """Pending pairs that already failed MAX_PAIR_ATTEMPTS times, with the last error.
@@ -98,8 +111,11 @@ def poisoned(results: Path, pending: set[tuple[str, str]]) -> dict[tuple[str, st
                 continue
             key = (row.get("spotify_id"), row.get("stage"))
             if key in pending and row.get("status") != "success":
+                error = str(row.get("error") or "unknown")[:200]
+                if environmental(error):
+                    continue          # the pod failed, not the track
                 attempts[key] = attempts.get(key, 0) + 1
-                last[key] = str(row.get("error") or "unknown")[:200]
+                last[key] = error
     return {key: last[key] for key, count in attempts.items()
             if count >= MAX_PAIR_ATTEMPTS}
 
