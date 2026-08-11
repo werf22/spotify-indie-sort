@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from musicdb import connect, record_source_run
+import jsonl_io
 
 
 RHYTHM_SOURCE = "audio-full:beat-this-v2"
@@ -58,7 +59,7 @@ def manifests(path: Path) -> dict[str, dict]:
 
 def successes(path: Path) -> dict[tuple[str, str], dict]:
     rows = {}
-    with path.open(encoding="utf-8") as handle:
+    with jsonl_io.open_jsonl(path) as handle:
         for line in handle:
             try:
                 row = json.loads(line)

@@ -21,6 +21,7 @@ import json
 from collections import Counter
 from pathlib import Path
 from statistics import median
+import jsonl_io
 
 ROOT = Path(__file__).resolve().parent
 SHARDS = ROOT / "data" / "cloud_full_shards"
@@ -53,8 +54,9 @@ def summarize(timeline: list) -> dict:
 
 def main() -> None:
     tracks = []
-    for results in sorted(SHARDS.glob("shard-*/results.jsonl")):
-        for line in results.open(encoding="utf-8"):
+    for results in sorted(SHARDS.glob("shard-*/results.jsonl*")):
+        with jsonl_io.open_jsonl(results) as handle:
+          for line in handle:
             try:
                 row = json.loads(line)
             except json.JSONDecodeError:

@@ -23,6 +23,7 @@ import json
 import os
 import subprocess
 from pathlib import Path
+import jsonl_io
 
 ROOT = Path(__file__).resolve().parent
 PROBE = ROOT / "data" / "fp16_probe"
@@ -36,8 +37,9 @@ FIELDS = ["spotify_id", "track_name", "artist_names", "album_name", "isrc",
 def stored_results() -> dict[tuple[str, str], dict]:
     """The float32 answers we already paid for, keyed by (track, stage)."""
     found = {}
-    for results in sorted(SHARDS.glob("shard-*/results.jsonl")):
-        for line in results.open(encoding="utf-8"):
+    for results in sorted(SHARDS.glob("shard-*/results.jsonl*")):
+        with jsonl_io.open_jsonl(results) as handle:
+          for line in handle:
             try:
                 row = json.loads(line)
             except json.JSONDecodeError:

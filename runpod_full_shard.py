@@ -30,6 +30,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import jsonl_io
 import runpod_pilot as rp
 
 
@@ -40,6 +41,7 @@ ALL_STAGES = {"rhythm_full", "maest_full", "essentia_full", "clap_full"}
 POLL_SECONDS = 60          # how often the runner checks the pod
 SETUP_GRACE_MIN = 40       # no-progress allowance while models install/download (setup is silent; slow hosts need it)
 STALL_MIN = 15             # abort when results stop growing this long (post-grace)
+BARREN_MIN = 8             # abort when rows keep arriving but NONE succeed
 DONE_SELF_STOP_MIN = 15    # pod stops itself this long after done/fail markers
 MAX_RELAUNCH = 2           # remote pipeline restarts before giving up
 PER_STAGE_SECONDS = {"rhythm_full": 30, "maest_full": 10,
@@ -56,9 +58,9 @@ def row_count(manifest: Path) -> int:
 
 def successful(results: Path) -> set[tuple[str, str]]:
     found = set()
-    if not results.is_file():
+    if not jsonl_io.exists(results):
         return found
-    with results.open(encoding="utf-8") as handle:
+    with jsonl_io.open_jsonl(results) as handle:
         for line in handle:
             try:
                 row = json.loads(line)
@@ -82,11 +84,11 @@ def poisoned(results: Path, pending: set[tuple[str, str]]) -> dict[tuple[str, st
     "incomplete", so the orchestrator re-buys a pod for it on every cycle —
     observed on shard-0130: 21 identical EffNet failures, 21 paid launches.
     """
-    if not results.is_file() or not pending:
+    if not jsonl_io.exists(results) or not pending:
         return {}
     attempts: dict[tuple[str, str], int] = {}
     last: dict[tuple[str, str], str] = {}
-    with results.open(encoding="utf-8") as handle:
+    with jsonl_io.open_jsonl(results) as handle:
         for line in handle:
             try:
                 row = json.loads(line)
@@ -195,6 +197,29 @@ UPLOAD_SLOTS = 2  # concurrent 1.5 GB bundle uploads; more saturates the home
 UPLOAD_ATTEMPTS = 3  # a stalled consumer link should not scrap a paid pod
 
 
+def gpu_healthy(command: str) -> tuple[bool, str]:
+    """Prove the pod's GPU actually computes, BEFORE paying to upload 1.3 GB.
+
+    RunPod occasionally hands out a host whose driver is wedged: nvidia-smi
+    answers but every CUDA context fails. Such a pod bills full price and fails
+    100% of tracks, and the old byte-growth watchdog could not see it because
+    failure rows grow results.jsonl exactly like successes do (observed on
+    shard-0153: 375 tracks, 375 CUDA errors, still "progressing").
+    """
+    probe = ("python -c \"import torch;"
+             "assert torch.cuda.is_available();"
+             "x=torch.randn(64,64,device='cuda');"
+             "assert float((x@x).sum().abs())>=0;"
+             "print('gpu-ok',torch.cuda.get_device_name(0))\" 2>&1 | tail -2")
+    try:
+        proc = subprocess.run(rp.ssh_args(command) + [probe],
+                              text=True, cwd=ROOT, timeout=180, capture_output=True)
+    except subprocess.TimeoutExpired:
+        return False, "gpu probe timed out"
+    out = (proc.stdout or proc.stderr or "").strip()
+    return ("gpu-ok" in out), " ".join(out.split())[:200]
+
+
 def upload(command: str, bundle: Path, results: Path) -> None:
     target, port, identity = rp.connection_parts(command)
     args = ["scp", *rp.SSH_HARDENING]
@@ -293,11 +318,19 @@ set +e
 # previous hardcoded caps assumed 6 — so most of the paid allocation sat idle.
 CPUS=$(python3 -c "
 from pathlib import Path
-try:
-    q,p=Path('/sys/fs/cgroup/cpu.max').read_text().split()
-    print(max(1,int(float(q)/float(p))) if q!='max' else 4)
-except Exception:
-    import os; print(os.cpu_count() or 4)")
+def quota():
+    try:                                   # cgroup v2
+        q,p=Path('/sys/fs/cgroup/cpu.max').read_text().split()
+        if q!='max': return int(float(q)/float(p))
+    except Exception: pass
+    try:                                   # cgroup v1 (older RunPod hosts)
+        q=int(Path('/sys/fs/cgroup/cpu/cpu.cfs_quota_us').read_text())
+        p=int(Path('/sys/fs/cgroup/cpu/cpu.cfs_period_us').read_text())
+        if q>0: return q//p
+    except Exception: pass
+    return 8                               # NEVER os.cpu_count(): that is the
+                                           # 128-core HOST, not our slice
+print(max(2,min(32,quota())))")
 ESSENTIA_T=$(( CPUS / 4 )); [ "$ESSENTIA_T" -lt 2 ] && ESSENTIA_T=2
 FEATURE_T=$(( CPUS / 8 )); [ "$FEATURE_T" -lt 1 ] && FEATURE_T=1
 echo "cpu quota=$CPUS essentia_threads=$ESSENTIA_T feature_threads=$FEATURE_T"
@@ -386,6 +419,10 @@ def drive(command: str, shard_rel: str, results: Path) -> None:
     deadline = datetime.fromisoformat(state["terminate_after"].replace("Z", "+00:00"))
     launched_at = rp.now()
     last_size, last_growth = -1, time.monotonic()
+    # Progress is measured in SUCCESSES: a broken GPU writes failure rows just
+    # as fast as a healthy one writes results, so byte growth alone is not
+    # evidence that the pod is doing anything worth paying for.
+    last_ok, last_ok_growth = len(successful(results)), time.monotonic()
     relaunches = ssh_failures = 0
     status = poll(command, shard_rel)
     if status is None or not (status["alive"] or status["done"] or status["fail"]):
@@ -404,6 +441,9 @@ def drive(command: str, shard_rel: str, results: Path) -> None:
         if status["size"] != last_size:
             last_size, last_growth = status["size"], time.monotonic()
             fetch_delta(command, shard_rel, results)
+            ok_now = len(successful(results))
+            if ok_now > last_ok:
+                last_ok, last_ok_growth = ok_now, time.monotonic()
         if status["done"]:
             fetch_delta(command, shard_rel, results)
             rp.save_state(status="analysis_complete")
@@ -413,6 +453,10 @@ def drive(command: str, shard_rel: str, results: Path) -> None:
             raise RuntimeError(f"remote pipeline failed: {status['log']}")
         grace = (rp.now() - launched_at) < timedelta(minutes=SETUP_GRACE_MIN)
         stalled = (time.monotonic() - last_growth) > STALL_MIN * 60
+        # Rows arriving but none of them succeeding = a pod that cannot work.
+        if not grace and (time.monotonic() - last_ok_growth) > BARREN_MIN * 60:
+            raise RuntimeError(f"{BARREN_MIN} min of results with no successes "
+                               f"(rows grew, work did not); log: {status['log']}")
         if not status["alive"] and not grace:
             if relaunches < MAX_RELAUNCH:
                 relaunches += 1
@@ -434,6 +478,10 @@ def run_import(results: Path, manifest: Path) -> None:
             str(ROOT / ".venv" / "bin" / "python"), str(ROOT / "import_full_audio_results.py"),
             "--results", str(results), "--manifest", str(manifest),
         ], cwd=ROOT, check=True, timeout=1800)
+    # No archiving here: the per-window timelines are already stored in the DB
+    # (audio_analysis_artifacts.payload_blob, json+zlib), so results.jsonl is a
+    # redundant copy once imported. prune_analyzed_clips.py reclaims it, and the
+    # imported.ok check in main() is what makes its absence safe.
     (results.parent / "imported.ok").write_text(rp.iso(rp.now()) + "\n", encoding="utf-8")
 
 
@@ -445,6 +493,9 @@ def main() -> None:
     manifest, bundle = shard / "manifest.csv", shard / "bundle.tar"
     results, state = shard / "results.jsonl", shard / "runpod_state.json"
     required = analysable(manifest, results)
+    if (shard / "imported.ok").is_file():
+        print(f"Shard already imported: {shard}")
+        return
     if required <= successful(results):
         run_import(results, manifest)  # idempotent; heals crashed-before-import runs
         print(f"Shard already complete, import verified: {shard}")
@@ -470,6 +521,9 @@ def main() -> None:
         command = command or rp.wait_for_ssh(pod_id)
         if rp.read_state().get("status") not in {"uploaded", "analysis_started",
                                                  "analysis_complete", "results_downloaded"}:
+            healthy, detail = gpu_healthy(command)
+            if not healthy:
+                raise RuntimeError(f"pod GPU unusable before upload: {detail}")
             upload(command, bundle, results)
         drive(command, shard_rel, results)
         rp.save_state(status="results_downloaded", result_rows=len(successful(results)))
