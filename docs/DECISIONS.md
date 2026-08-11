@@ -807,7 +807,22 @@ shard-0165 had its virtualenv built while its bundle was 1% transferred, which
 is precisely the overlap this change exists to create; shard-0163, whose bundle
 had almost fully landed, had not begun installing anything.
 
-**What is and is not proven.** The MECHANISM is proven: on shard-0165 the
+**SAVING QUANTIFIED 2026-08-11 11:00Z — ~4.8 min per shard.** Measured on a
+single pod, which is the only way this comparison is valid: on shard-0166 the
+dependency install took **4.8 min** and completed **0.3 min before** the bundle
+finished arriving, so it was entirely hidden inside the upload window.
+shard-0167 shows the same pattern (install done 0.1 min before the bundle).
+Since the install is fully overlapped, the saving equals its duration: ~4.8 min
+off a ~25-30 min shard, i.e. **16-19% of wall clock**, taking the measured
+$0.00066/track to roughly $0.00053.
+
+Note this is smaller than the change was predicted to give, because the premise
+was wrong in the pipeline's favour: the install was assumed to take 8-10 min but
+takes 4.8 on a well-provisioned pod — pip is CPU-bound, so D-044's fat pods had
+already shortened it. The saving is real but bounded by how long the install
+takes, never by how long the upload takes.
+
+**What was and was not proven before this measurement.** The MECHANISM is proven: on shard-0165 the
 dependency install wrote `.setup_done` a full 6 minutes BEFORE `full-shard.tar`
 finished arriving, so the entire install was hidden inside the upload window —
 time that was previously spent after the upload, in series.
