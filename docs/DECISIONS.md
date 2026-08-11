@@ -757,3 +757,45 @@ file, so a failed terminate lands in the `tracked is None` branch and the pod is
 deleted on the next sweep rather than billing unnoticed.
 
 **Verified:** measured directly over SSH on all three live pods; module compiles.
+
+## D-045 — Two thirds of a shard was overhead, and half of it was serialised for no reason
+
+**Decision:** `prewarm()` uploads the 483-byte requirements file immediately
+after the GPU proof and starts apt+venv+pip detached on the pod, so the
+dependency install runs *while* the 1.3 GB bundle uploads.
+
+**Why:** the cost model was wrong, and measuring it corrected several claims
+made earlier the same day. Across 11 shards:
+
+| | minutes |
+|---|---|
+| fixed overhead per shard | 20.2 |
+| actual analysis per shard | 9.6 |
+| total | 29.8 |
+
+**68% of every paid shard was overhead.** D-039, D-042 and D-044 were all
+optimising the 9.6-minute third — which is why D-044's 3-4x CPU gain produced
+only an 8% end-to-end improvement (shard-0161 at 0.418 h against a 0.453 h
+average for the previous nine). Two overhead blocks are independent: receiving
+the bundle, and installing torch/librosa/essentia. They ran back to back purely
+because the installer lived inside `run.sh`, which cannot start until the upload
+lands.
+
+**Fail-safe by construction:** if `prewarm()` cannot start, or the install dies
+halfway, `run.sh` performs the identical setup itself. It waits up to 15 minutes
+for an in-flight prewarm rather than racing it into the same venv, and bundle
+extraction is now keyed on `$SHARD/clips` existing rather than on `.setup_done`,
+because a successful prewarm sets that flag having never seen the bundle. The
+worst outcome is no speedup, never a broken shard.
+
+**Verified:** `bash -n` passes on the generated `run.sh` and on the prewarm body
+exactly as it lands on the pod. NOT yet verified in production — no pod has been
+created since the commit. The number to check on the next shard is the gap
+between `created_at` and the first result row, which should fall by roughly the
+shorter of the upload and install times.
+
+**Remaining lever, unmeasured:** of the 20.2 min overhead, the split between
+truly fixed cost (container start, model download) and cost that scales with
+shard size (the bundle upload) is not yet known. If the fixed part dominates,
+larger shards would amortise it further; 400 tracks instead of 200 is a one-line
+change in the builder, at the price of a 2.6 GB bundle and more disk.
