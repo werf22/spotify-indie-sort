@@ -590,3 +590,41 @@ the file becomes a function of reality rather than of a process lifetime.
 
 **Verified:** seed_from_disk found all 10,348 clips, the rebuilt manifest let
 the builder produce shard-0146 immediately.
+
+## D-039 — Thread pools are sized from the cgroup quota, never from a guess
+
+**Decision:** both the pod-side stage launcher (`runpod_full_shard.py`) and the
+analyser (`cloud_audio_full.py`) read `/sys/fs/cgroup/cpu.max` and derive their
+thread counts from it: essentia gets quota/4, the feature stages quota/8, and
+the HPSS pool `max(2, min(8, quota/2))`.
+
+**Why:** the previous caps (`OMP_NUM_THREADS=1`, `TF_NUM_INTRAOP_THREADS=2`,
+HPSS pool of 4) were written against an assumed ~6 vCPU container. Measured on
+a live pod, `cat /sys/fs/cgroup/cpu.max` returned `1785000 100000` — 17.85 CPUs.
+Under a quarter of the paid CPU allocation was in use while the GPU stages
+waited on CPU-side HPSS and feature extraction. `nproc` is worse than useless
+here: it reports the 128-core host, so sizing from it would oversubscribe the
+quota by 7x and thrash.
+
+**Verified:** the quota reader falls back through cgroup v1 to `os.cpu_count()`
+and returned 10 on the local machine; `bash -n` passes on the generated remote
+script.
+
+## D-040 — A pair that cannot be analysed is quarantined, not retried forever
+
+**Decision:** `analysable()` subtracts every (track, stage) pair that has failed
+`MAX_PAIR_ATTEMPTS` (3) times from the shard's required set, records it with its
+last error in `quarantine.json`, and lets the shard complete and import.
+
+**Why:** completeness was defined as "every required pair succeeded", so one
+deterministically-failing track blocked its whole shard. shard-0130 held 199
+finished tracks hostage to a single clip whose EffNet embedding comes back
+empty, and the orchestrator re-bought a GPU pod for that one pair on every
+cycle — 21 identical failures, 21 paid launches. Retrying a deterministic
+failure is the purest form of the thing this pipeline must never do: a pod
+that bills without being able to produce work.
+
+**Verified:** shard-0130 imported 799 stage-results for 200 tracks immediately
+after the change; a scan of every shard's results found this is the only
+poisoned pair in the corpus (all other failures were transient CUDA errors that
+later succeeded on retry).
