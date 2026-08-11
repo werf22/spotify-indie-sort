@@ -55,6 +55,18 @@ overhead is not fixed. Measure the overhead split before tuning threads again.
   tracks orphaned in `processing` since 2026-07-18, unreachable by a selector
   that only looked at missing-or-failed rows. Orphans now self-heal hourly.
 
+**Enrichment backlogs closed 2026-08-11:**
+- Bandcamp: the 603 orphans reclaimed by D-043 have all resolved — 512 became
+  successes, 92 no-match. The lane now reports zeros because it is genuinely
+  exhausted; the last 55 failures have attempts=3 and a real cause (49 are
+  "Missing artist tag!", i.e. tracks with no artist metadata at all).
+- FreqBlog review: 210 rejected as unrelated, 3,478 kept, NOTHING accepted —
+  see D-046. Do not try to clear the rest with looser string matching: of the
+  1,084 that a parenthesis-stripping rule would match, 1,083 differ inside the
+  brackets, so it would put the original's BPM on "Truth Hurts (DaBaby Remix)"
+  and a slow-motion mix's on "Vivo". Resolving these needs ISRC/duration
+  cross-checks or listening.
+
 **Enrichment state — everything else is genuinely finished**, not idle: all
 71,306 tracks carry a terminal status for ReccoBeats, TheAudioDB, MusicBrainz,
 Last.fm and Deezer. The 6,207 tracks with no Deezer row simply have no ISRC,
