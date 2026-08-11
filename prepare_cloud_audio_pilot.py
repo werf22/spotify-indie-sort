@@ -179,6 +179,45 @@ def extract(ffmpeg: str, source: Path, target: Path, duration: float, seconds: f
     return start
 
 
+def seed_from_disk(output: Path, rows: list[dict]) -> list[dict]:
+    """Manifest rows for every clip already on disk that still needs analysis.
+
+    The manifest is the shard builder's only view of what can be scheduled,
+    but each pass used to rebuild it from that pass's own progress. A pass
+    that was killed early therefore published a fragment, and since every
+    later pass re-selected the same tracks in the same order it republished
+    the same fragment: the file stuck at 200 rows while 10,348 finished clips
+    sat on disk and the GPU pipeline idled with credit available.
+
+    Deriving the rows from the clips directory instead makes the manifest a
+    function of reality rather than of one pass's lifetime. `rows` supplies
+    the metadata (title/artist/isrc) for tracks this pass knows about; clips
+    without a matching row still get a minimal entry, since the analysis
+    stages only need spotify_id and clip_path.
+    """
+    clips = output / "clips"
+    if not clips.is_dir():
+        return []
+    known = {row["spotify_id"]: row for row in rows}
+    seeded = []
+    for clip in sorted(clips.glob("*.opus")):
+        if clip.name.endswith(".partial.opus"):
+            continue
+        row = known.get(clip.stem)
+        if row:
+            seeded.append(row)
+            continue
+        seeded.append({
+            "spotify_id": clip.stem, "track_name": "", "artist_names": "",
+            "album_name": "", "isrc": "", "source_path": "",
+            "clip_path": str(clip), "segment_start": "0.000",
+            "segment_seconds": "0.000", "coverage_mode": "full_track",
+            "genre_tags": "", "mood_tags": "", "rhythm_pattern": "unknown",
+            "prepared_at": "",
+        })
+    return seeded
+
+
 def merge_with_existing(path: Path, records: list[dict]) -> list[dict]:
     """Union this pass's records with still-valid rows from the old manifest.
 
@@ -272,7 +311,8 @@ def main() -> None:
             if failure:
                 failures.append(failure)
             if index % 25 == 0:
-                write_manifest(args.output / "manifest.csv", records)
+                write_manifest(args.output / "manifest.csv",
+                               seed_from_disk(args.output, records))
                 print(f"pilot: {index}/{len(selected)} ready={len(records)} failed={len(failures)}", flush=True)
                 # A clip may only be pruned once its analysis is in the
                 # database, so while the GPU stage is stalled (no credit,
@@ -287,7 +327,7 @@ def main() -> None:
                           f"drains the backlog", flush=True)
                     stopped_for_disk = True
                     break
-    write_manifest(args.output / "manifest.csv", records)
+    write_manifest(args.output / "manifest.csv", seed_from_disk(args.output, records))
     (args.output / "failures.json").write_text(json.dumps(failures, ensure_ascii=False, indent=2), encoding="utf-8")
     total_bytes = sum(Path(row["clip_path"]).stat().st_size for row in records)
     print(f"pilot: ready={len(records)} failed={len(failures)} size_mib={total_bytes/1024/1024:.1f}")

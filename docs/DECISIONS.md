@@ -569,3 +569,24 @@ VRAM fits comfortably (three small models on 16-24 GB cards). Expected
 effect is a further ~30-40% wall-clock cut per shard; the honest number
 will come from the cost ledger once new-code shards complete, since bundles
 bake the analysis code at build time and old/new shards currently mix.
+
+## D-038 — The manifest is derived from disk, not from one pass's progress
+
+**Decision:** `prepare_cloud_audio_pilot.py` now rebuilds `manifest.csv` from
+every clip present in the clips directory (`seed_from_disk`) on every write,
+using the current pass's rows only as the metadata source.
+
+**Why:** the manifest is the shard builder's sole view of schedulable work,
+but each pass rewrote it from that pass's own record list. A pass killed
+early (daemon restart, the 2 h job timeout) therefore published a fragment —
+and because every later pass re-selected the same tracks in the same order,
+it republished the same fragment. Found stuck at exactly 200 rows while
+10,348 finished clips sat on disk: the orchestrator reported
+`waiting_for_full_tracks`, ran zero pods and idled with $5.79 of credit and
+15,018 tracks outstanding. The earlier merge fix (D-034 era) prevented a
+partial pass from *deleting* prior rows but could not add rows the fragment
+never contained; deriving from disk removes the whole failure class, since
+the file becomes a function of reality rather than of a process lifetime.
+
+**Verified:** seed_from_disk found all 10,348 clips, the rebuilt manifest let
+the builder produce shard-0146 immediately.
