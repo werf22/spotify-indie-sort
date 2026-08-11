@@ -16,6 +16,30 @@ resumes on its own within ~10 minutes of a top-up.
 four stages (rhythm, MAEST, Essentia, CLAP). 9,355 prepared clips are already
 on disk waiting for shards, so GPU time — not local work — is the constraint.
 
+**The repo is now on GitHub** — https://github.com/werf22/spotify-indie-sort,
+public, `origin` configured. Before the first push, tracked files were cut from
+2,836 (855 MB) to 167 (58 MB) by untracking Rust build output and a vendored
+dependency's .git internals. Secret scan before publishing came back clean:
+every credential is read from the environment, `.env` and `data/` are ignored,
+and no secret-shaped string appears in any tracked file or in history.
+
+**NEVER saturate the uplink while pods are running.** That first push (266 MB)
+starved the pipeline's control plane: DNS lookups for api.runpod.io started
+failing, every runpodctl call errored, runners died and left two pods billing
+with no one managing them. Full account in D-049. The local protections all need
+the network to act; when the link is gone, only the server-side deadline holds.
+
+**What guarantees a pod never bills while idle** (audited 2026-08-11):
+a pod is not created until an upload slot is free (D-047, proven live: 9 runners,
+2 pods, 7 waiting without pods); the GPU must compute before the 1.3 GB upload
+(D-041); progress is counted in successes, not bytes (D-041); stalls abort after
+15 min; the runner terminates its pod on completion; the orphan sweep deletes any
+pod no live runner explains after a 10-min grace; and RunPod's own
+--stop-after/--terminate-after, now 1.92 h instead of 5.1 h (D-048), is the only
+one that survives the local machine dying. The pod CANNOT stop itself — its
+injected API key is rejected by RunPod's own API, and the guard that pretended
+otherwise had never once fired.
+
 **READ THIS BEFORE OPTIMISING ANYTHING:** a shard's paid time is NOT mostly
 analysis. Measured across 11 shards: 20.2 min of overhead against 9.6 min of
 actual work — 68% of every paid shard. And that overhead is not fixed either;
