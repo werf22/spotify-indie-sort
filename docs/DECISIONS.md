@@ -677,3 +677,34 @@ the fp16 experiment (D-036) went wrong. Revisit when credit allows a paid A/B.
 **Verified:** `bash -n` passes on the generated remote script; a monitor is
 armed to report `rhythm_threads=` and the resulting load from the first pod
 that runs it.
+
+## D-043 — A lane that reports zeros must be provably finished, not merely quiet
+
+**Decision:** the OneTagger selector reclaims rows left in `processing` for over
+an hour; the binary sets `busy_timeout(30s)` and opens `BEGIN IMMEDIATE`
+transactions. The 603 already-orphaned bandcamp rows were reset to
+`failed/attempts=0` so the existing retry path picks them up (prior rows backed
+up to `data/backup_onetagger_processing_20260811T085848Z.json`).
+
+**Why:** every enricher was logging `ok=0, failed=0` each cycle, which reads as
+"nothing left to do". For most lanes that was true — all 71,306 tracks have a
+terminal status row. For bandcamp it was not: 603 tracks had been marked
+`processing` on 2026-07-18 by a batch that died, and the selector only ever
+looked at rows that were missing or `failed AND attempts<3`. Silence is not
+evidence of completion, and a status value that no query can ever select is a
+leak with no error message attached.
+
+The lock race is the same class of problem: the default deferred transaction
+takes a read lock and upgrades on first write, which returns `BUSY_SNAPSHOT`
+*immediately* — `busy_timeout` never retries it. With the daemon, orchestrator,
+importer and audio verifier all writing, nearly every batch died after one
+track and left that track in `processing`, feeding the orphan pool.
+
+**Verified:** the reclaimed rows are now selected (the lane moved rows for the
+first time since 2026-08-02); `cargo build --release` clean. Note the deep audio
+verifier holds the write lock for long stretches, so batches still lose the race
+sometimes — that is now harmless, because an orphan self-heals within the hour.
+
+**Also:** `data/music.db-wal` had grown to 4.48 GiB because a long-lived reader
+held checkpoints back. `wal_checkpoint(TRUNCATE)` took it to zero and returned
+free disk from 51 to 54 GiB.
