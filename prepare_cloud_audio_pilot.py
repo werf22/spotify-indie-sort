@@ -298,7 +298,15 @@ def main() -> None:
         raise SystemExit("ffmpeg and ffprobe are required")
     clips = args.output / "clips"
     clips.mkdir(parents=True, exist_ok=True)
-    selected = select_balanced(candidates(connect()), args.limit)
+    # Drop tracks whose clip already exists BEFORE applying the limit. The
+    # candidate query is ORDER BY spotify_id, so a bounded pass otherwise spends
+    # itself re-validating the same already-finished prefix on every run:
+    # measured, --limit 300 took 25 s and produced only 39 new clips because 261
+    # of the 300 were already done. Filtering first makes the limit mean "300
+    # clips to CREATE", which is what every caller assumes it means.
+    pending = [row for row in candidates(connect())
+               if not (clips / f"{row['spotify_id']}.{args.codec}").is_file()]
+    selected = select_balanced(pending, args.limit)
     records, failures = [], []
     worker = lambda row: prepare_row(
         row, clips, args.codec, args.seconds, ffmpeg, ffprobe, args.full_track
