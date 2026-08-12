@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -70,17 +71,27 @@ def log(message: str) -> None:
         pass
 
 
+# A runner is a PYTHON process running the script — not any process whose
+# command line merely mentions it. Matching loosely is dangerous in the
+# permissive direction: a monitor, a grep, or an editor holding the filename
+# would make an abandoned pod look managed and spare it from the reaper.
+# Caught live: a shell wrapper containing the string was counted as a runner
+# while no runner existed at all.
+RUNNER_RE = re.compile(r"^\S*[Pp]ython\S*\s+\S*runpod_full_shard\.py\s+--shard\s+(\S+)")
+
+
 def live_runner_shards() -> set[str]:
-    """Shard names that currently have a runner process babysitting them."""
+    """Shard names that currently have a real runner process babysitting them."""
     try:
-        out = subprocess.run(["pgrep", "-fl", "runpod_full_shard.py"],
+        out = subprocess.run(["ps", "-eo", "args="],
                              capture_output=True, text=True, timeout=30).stdout
     except (subprocess.TimeoutExpired, OSError):
-        return set()                      # unknown: treat as none, but see caller
+        return set()                      # unknown: the caller must not kill on this
     found = set()
     for line in out.splitlines():
-        if "shard-" in line:
-            found.add("shard-" + line.rsplit("shard-", 1)[1].strip())
+        match = RUNNER_RE.match(line.strip())
+        if match:
+            found.add(Path(match.group(1)).name)
     return found
 
 
@@ -155,13 +166,12 @@ def reap(dry_run: bool) -> int:
 
     # If pgrep itself failed we cannot distinguish "no runners" from "cannot
     # tell", and killing on a false negative would destroy healthy paid work.
-    raw = live_runner_shards()
-    runners_known = True
     try:
-        subprocess.run(["pgrep", "-f", "runpod_full_shard.py"],
-                       capture_output=True, timeout=30)
-    except (subprocess.TimeoutExpired, OSError):
+        subprocess.run(["ps", "-eo", "args="], capture_output=True, timeout=30, check=True)
+        runners_known = True
+    except (subprocess.TimeoutExpired, OSError, subprocess.CalledProcessError):
         runners_known = False
+    raw = live_runner_shards() if runners_known else set()
 
     killed = 0
     for pod in ours:
