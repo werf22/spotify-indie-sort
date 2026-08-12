@@ -14,3 +14,6 @@ nohup.out
 onetagger-db/target/
 # vendored dependency; its own .git internals must not be tracked
 vendor/onetagger/.git/
+
+# Spotlight exclusion marker for the 59 GB data tree (local only)
+data/.metadata_never_index
