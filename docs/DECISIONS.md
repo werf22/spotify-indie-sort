@@ -965,3 +965,37 @@ formality, it is the last line that holds when the machine cannot reach the API.
 the uplink while paid pods are running. The pipeline's control plane shares that
 link with its own 1.3 GB bundle uploads, and starving it converts a cheap local
 operation into paid idle time on every live pod.
+
+## D-050 — A pod must prove it is working, on a 75-minute leash
+
+**Decision:** `pod_reaper.py` runs every 2 minutes under the daemon and
+terminates any `music-db-*` pod that cannot show it is working. Four verdicts:
+
+| verdict | condition | action |
+|---|---|---|
+| UNMANAGED | no runner process owns the shard | kill after 3 min |
+| EXPIRED | older than `MAX_POD_MINUTES` (75) | kill |
+| STALLED | past setup grace, no results in 12 min | kill |
+| WORKING | the shard's results file grew recently | leave alone |
+
+**Why a separate process.** The runner babysits its own pod and the orchestrator
+sweeps orphans, but on 2026-08-11 both died together when a large upload
+saturated the uplink, and two pods billed unwatched (D-049). A guard that shares
+a process — or a failure mode — with the thing it guards is not a guard.
+
+**Why it judges local files, not SSH.** Results are pulled to
+`data/cloud_full_shards/<shard>/results.jsonl` as they are produced, so growth in
+that file is direct proof of paid work being done. The check costs nothing,
+cannot hang, and stays honest when SSH is unreachable — exactly when pods get
+abandoned. An SSH-based check would go blind in the one situation it exists for.
+
+**The leash is layered so the story is consistent:** the reaper kills an idle pod
+at 75 min; if the reaper itself is dead, RunPod's own `--stop-after` kills it at
+90 min (down from 5.1 h before this work). A healthy shard measures 25-55 min, so
+both limits clear real work comfortably.
+
+**Verified:** nine synthetic cases cover every branch. The critical one is the
+safety case — when `pgrep` cannot report which runners exist, the reaper does NOT
+kill on the UNMANAGED rule and falls through to the progress check, so a failing
+local tool can never wipe out healthy paid work. A dry run against the live
+account was clean, and the daemon was restarted so the guard is active.
