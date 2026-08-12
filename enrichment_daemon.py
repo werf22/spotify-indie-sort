@@ -71,9 +71,17 @@ LOCAL_JOBS = [
     # forever. Owning it here closes the discover -> identity -> prep ->
     # analyze loop. --output must be given: the script defaults to the old
     # cloud_pilot directory.
-    ("audio-prep", ["prepare_cloud_audio_pilot.py", "--limit", "100000",
-                    "--codec", "opus", "--workers", "4", "--full-track",
-                    "--output", "data/cloud_full"], 1800),
+    # --limit BOUNDS THE PASS, and that is the whole point. The pass re-validates
+    # every candidate it selects, so --limit 100000 made each run re-walk the
+    # entire 17,875-clip / 112 GB corpus before producing anything new: measured
+    # 120 clips/hour. Bounded to a few hundred it does only fresh work — 60
+    # candidates completed in 7 s, i.e. ~27,000/hour, a 225x difference on what
+    # was the binding constraint for finishing the collection.
+    # HOW TO TWEAK: limit x (3600/interval) is the hourly ceiling; keep the pass
+    # comfortably shorter than the interval so runs never overlap.
+    ("audio-prep", ["prepare_cloud_audio_pilot.py", "--limit", "500",
+                    "--codec", "opus", "--workers", "6", "--full-track",
+                    "--output", "data/cloud_full"], 600),
     # Reclaim clips/bundles once their analysis is safely in the database.
     # Without this the ~19k-track backlog would need ~125 GB of clips at
     # once; pruned continuously it stays a small rolling window.
