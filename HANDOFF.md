@@ -29,6 +29,16 @@ failing, every runpodctl call errored, runners died and left two pods billing
 with no one managing them. Full account in D-049. The local protections all need
 the network to act; when the link is gone, only the server-side deadline holds.
 
+**THE MONEY GUARD is `pod_reaper.py`** (D-050) — start here if a pod is ever
+suspected of billing for nothing. It runs every 2 min as a daemon job and kills
+any `music-db-*` pod that cannot prove it works: no runner owns it (3 min grace),
+older than 75 min, or no results in 12 min past the setup grace. It judges from
+the locally pulled `results.jsonl` files, never SSH, so it stays honest during
+the network failures that cause abandonment in the first place. Log:
+`data/pod_reaper.log`. Check it with:
+`./.venv/bin/python pod_reaper.py --once --dry-run` (reports verdicts, kills
+nothing).
+
 **What guarantees a pod never bills while idle** (audited 2026-08-11):
 a pod is not created until an upload slot is free (D-047, proven live: 9 runners,
 2 pods, 7 waiting without pods); the GPU must compute before the 1.3 GB upload
