@@ -46,6 +46,14 @@ JOBS = [
 # Local maintenance jobs do not need an internet connection. Heavy model
 # inference is cloud-first by default so the laptop remains cool.
 LOCAL_JOBS = [
+    # THE MONEY GUARD. Every 2 minutes, terminate any pod that cannot show it is
+    # working: no runner owns it, no results in 12 min, or past the 75 min hard
+    # time box. It judges from the locally pulled results files, so it stays
+    # honest when SSH is unreachable — which is precisely when pods get
+    # abandoned (D-049: two pods billed unmanaged after an upload saturated the
+    # uplink and killed every runner). Runs here because the daemon is itself
+    # supervised by launchd, so the guard restarts if it ever dies.
+    ("pod-reaper", ["pod_reaper.py", "--once"], 120),
     ("audio-verification", ["run_audio_verification.py"], 10),
     # Discover newly downloaded audio and give it a database identity. Both
     # steps are offline and idempotent. Without this the indexer only ever ran

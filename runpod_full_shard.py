@@ -162,7 +162,11 @@ def estimate_caps(pending: set[tuple[str, str]]) -> tuple[timedelta, timedelta]:
     """
     tracks = len({track for track, _ in pending})       # stages run concurrently
     stop = timedelta(minutes=CAP_BASE_MIN, seconds=tracks * WALL_SECONDS_PER_TRACK * CAP_SAFETY)
-    stop = max(timedelta(minutes=60), min(stop, timedelta(hours=3)))
+    # Ceiling sits just above pod_reaper.MAX_POD_MINUTES (75) so the two guards
+    # tell one story: the reaper kills an idle pod at 75 min, and if the reaper
+    # itself is dead RunPod kills it at 90. Both are far above a healthy shard
+    # (0.4-0.9 h measured) and far below the old 5.1 h.
+    stop = max(timedelta(minutes=60), min(stop, timedelta(minutes=90)))
     return stop, stop + timedelta(minutes=20)
 
 
