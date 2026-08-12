@@ -42,7 +42,12 @@ POLL_SECONDS = 60          # how often the runner checks the pod
 SETUP_GRACE_MIN = 40       # no-progress allowance while models install/download (setup is silent; slow hosts need it)
 STALL_MIN = 15             # abort when results stop growing this long (post-grace)
 BARREN_MIN = 8             # abort when rows keep arriving but NONE succeed
-MIN_VCPU = 16              # reject hosts thinner than this (same $/h buys 8-32)
+MIN_VCPU = 12              # reject only the thinnest hosts. 16 was too greedy for
+                           # the actual market: the log showed 21 rejections in
+                           # 300 lines (8 and 12 vCPU offers), each costing a
+                           # create+terminate cycle, to chase a measured 8%
+                           # end-to-end gain (D-044). 12 still skips the 8-vCPU
+                           # hosts, which a load of 5.65/6 showed are saturated.
 VCPU_ATTEMPTS = 2          # one floored sweep, then take whatever is free
                            # (bounds the create/terminate churn a thin market causes)
 DONE_SELF_STOP_MIN = 15    # pod stops itself this long after done/fail markers
