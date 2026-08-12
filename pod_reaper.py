@@ -77,7 +77,18 @@ def log(message: str) -> None:
 # would make an abandoned pod look managed and spare it from the reaper.
 # Caught live: a shell wrapper containing the string was counted as a runner
 # while no runner existed at all.
-RUNNER_RE = re.compile(r"^\S*[Pp]ython\S*\s+\S*runpod_full_shard\.py\s+--shard\s+(\S+)")
+# Anchored on a python interpreter so a shell wrapper or grep cannot pose as a
+# runner, but the PATHS must tolerate spaces: this project lives under
+# "/Users/jakub/Appky Claude/...". An earlier \S*-based pattern could not span
+# that space, matched nothing, and so declared every pod unmanaged — the reaper
+# then killed healthy pods every 3 minutes and stalled the pipeline completely.
+# `(?!-)` rejects `python -c "...runpod_full_shard.py --shard ..."` and `python
+# -m ...`: a real runner is invoked as `python <path>/runpod_full_shard.py`, so
+# the token after the interpreter is a PATH, never a flag. Without this an
+# unrelated python one-liner quoting the pattern registers as a runner and can
+# spare the very pod the reaper exists to kill.
+RUNNER_RE = re.compile(
+    r"^\S*[Pp]ython[0-9.]*\s+(?!-)\S*.*?runpod_full_shard\.py\s+--shard\s+(.+?)\s*$")
 
 
 def live_runner_shards() -> set[str]:
