@@ -79,9 +79,17 @@ LOCAL_JOBS = [
     # was the binding constraint for finishing the collection.
     # HOW TO TWEAK: limit x (3600/interval) is the hourly ceiling; keep the pass
     # comfortably shorter than the interval so runs never overlap.
-    ("audio-prep", ["prepare_cloud_audio_pilot.py", "--limit", "500",
+    # The limit must AMORTISE the pass's fixed cost, not just bound its work.
+    # Building the candidate set (with its per-track tag lookups) now spans
+    # 26,881 rows since the T7 collection was attached, and every pass pays it
+    # in full: at --limit 500 that overhead swamped the transcoding and output
+    # fell to ~60-100 clips/hour with no ffmpeg even running. A pass large
+    # enough to dwarf the setup restores the measured ~1.6 clips/s.
+    # HOW TO TWEAK: keep limit x (3600/interval) above what the uplink can ship
+    # in an hour (~460 tracks); beyond that, bigger is simply cheaper per clip.
+    ("audio-prep", ["prepare_cloud_audio_pilot.py", "--limit", "5000",
                     "--codec", "opus", "--workers", "6", "--full-track",
-                    "--output", "data/cloud_full"], 600),
+                    "--output", "data/cloud_full"], 3600),
     # Reclaim clips/bundles once their analysis is safely in the database.
     # Without this the ~19k-track backlog would need ~125 GB of clips at
     # once; pruned continuously it stays a small rolling window.
