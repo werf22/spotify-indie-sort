@@ -40,6 +40,7 @@ import html
 import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import time
 import xml.etree.ElementTree as ET
@@ -63,6 +64,22 @@ FIELD_MAP = {
     "Danceability": "REMIXER",
     "Valence":      "PRODUCER",
 }
+
+
+def traktor_running() -> bool:
+    """Never touch the collection while Traktor is open.
+
+    Traktor holds the whole collection in memory and rewrites the file when it
+    quits, silently discarding anything written from outside while it ran. A
+    completed 413k-field write vanished from disk within minutes of landing —
+    the survivor was the pre-write state. Whatever the exact rewriter was,
+    writing while Traktor can save is a race we must never enter.
+    """
+    try:
+        return subprocess.run(["pgrep", "-x", "Traktor"], capture_output=True,
+                              timeout=10).returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
 
 
 def connect() -> sqlite3.Connection:
@@ -201,11 +218,20 @@ def main() -> None:
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--restore", action="store_true")
+    parser.add_argument("--verify", action="store_true",
+                        help="re-check that previously written fields are still on disk")
     args = parser.parse_args()
 
     db = connect()
     ensure_table(db)
     db.commit()
+
+    if args.verify:
+        return verify(db)
+
+    if (args.write or args.restore) and traktor_running():
+        raise SystemExit("Traktor is running — quit it first. Writing now would be "
+                         "silently overwritten the moment Traktor saves its state.")
 
     if args.restore:
         return restore(db)
@@ -248,8 +274,11 @@ def main() -> None:
                 continue
             new = str(new)
             existing = re.search(rf'(?<![A-Z_]){attr}="([^"]*)"', tag)
-            old = existing.group(1) if existing else None
-            if old == html.escape(new, quote=True) or old == new:
+            # The file stores XML-escaped text. Back up the HUMAN value: storing
+            # the escaped form made --restore escape it a second time, so a
+            # label like "Drum & Bass Rec" would come back as "Drum &amp;amp;…".
+            old = html.unescape(existing.group(1)) if existing else None
+            if old == new:
                 continue
             changes.append((key, attr, old, new, stamp))
             stats["fields"] += 1
@@ -276,6 +305,26 @@ def main() -> None:
         print("\ndry run — nothing written. Pass --write to apply.")
         return
 
+    # GATE 1 — prove the TRANSFORM before touching the real file: a sample of
+    # every attribute's written values must be findable in the new text. This is
+    # the check whose absence let a run report success while 6 of 7 attributes
+    # never landed.
+    samples: dict[str, list[str]] = {}
+    for _key, attr, _old, new, _stamp in changes:
+        samples.setdefault(attr, [])
+        if len(samples[attr]) < 40:
+            samples[attr].append(str(new))
+    failed_attrs = []
+    for attr, vals in sorted(samples.items()):
+        present = sum(1 for v in vals
+                      if f'{attr}="{html.escape(v, quote=True)}"' in new_text)
+        print(f"    pre-swap verify {attr:11} {present}/{len(vals)}", flush=True)
+        if present < len(vals):
+            failed_attrs.append(attr)
+    if failed_attrs:
+        raise SystemExit(f"transform verification FAILED for {failed_attrs}; "
+                         f"the collection was not touched")
+
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     copy = BACKUP_DIR / f"collection.before-write.{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}.nml"
     shutil.copy2(NML, copy)
@@ -293,12 +342,25 @@ def main() -> None:
     tmp.replace(NML)
     print(f"  collection written and validated ({n_new:,} entries)", flush=True)
 
+    # GATE 2 — re-read from DISK and verify the same samples: catches anything
+    # between our buffer and the filesystem, and records the fingerprint that a
+    # later --verify compares against to expose an external rewriter.
+    disk = NML.read_text(encoding="utf-8", errors="replace")
+    for attr, vals in sorted(samples.items()):
+        present = sum(1 for v in vals
+                      if f'{attr}="{html.escape(v, quote=True)}"' in disk)
+        print(f"    on-disk verify  {attr:11} {present}/{len(vals)}", flush=True)
+    stat = NML.stat()
+    print(f"  on disk: {stat.st_size:,} bytes, mtime "
+          f"{time.strftime('%H:%M:%S', time.localtime(stat.st_mtime))}", flush=True)
+
     with db:
         db.execute("BEGIN IMMEDIATE")
         db.executemany("""INSERT OR REPLACE INTO traktor_field_backup
             (entry_key,attribute,old_value,new_value,written_at) VALUES(?,?,?,?,?)""", changes)
     print(f"\nDONE · {stats['fields']:,} fields written across {stats['matched']:,} tracks")
     print(f"every previous value is stored — undo with: traktor_tags.py --restore")
+    print(f"re-check any time with: traktor_tags.py --verify")
 
 
 def restore(db: sqlite3.Connection) -> None:
@@ -344,6 +406,39 @@ def restore(db: sqlite3.Connection) -> None:
         db.execute("UPDATE traktor_field_backup SET restored_at=? WHERE restored_at IS NULL",
                    (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),))
     print(f"restored {restored:,} fields to their previous values")
+
+
+def verify(db: sqlite3.Connection) -> None:
+    """Are the written fields still on disk? Exposes an external rewriter.
+
+    The first write attempt passed its aggregate checks and then the file was
+    found holding the PRE-write content minutes later — something (most likely
+    Traktor saving its in-memory state, possibly a cloud sync revert) replaced
+    it. This check makes that failure loud instead of silent.
+    """
+    text = NML.read_text(encoding="utf-8", errors="replace")
+    stat = NML.stat()
+    print(f"collection: {stat.st_size:,} bytes, mtime "
+          f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(stat.st_mtime))}")
+    rows = db.execute("""SELECT attribute, new_value FROM traktor_field_backup
+                         WHERE restored_at IS NULL""").fetchall()
+    if not rows:
+        print("no unrestored writes recorded — nothing to verify")
+        return
+    samples: dict[str, list[str]] = {}
+    for r in rows:
+        samples.setdefault(r["attribute"], [])
+        if len(samples[r["attribute"]]) < 60:
+            samples[r["attribute"]].append(str(r["new_value"]))
+    drift = False
+    for attr, vals in sorted(samples.items()):
+        present = sum(1 for v in vals
+                      if f'{attr}="{html.escape(v, quote=True)}"' in text)
+        ok = present == len(vals)
+        drift = drift or not ok
+        print(f"  {'OK   ' if ok else 'DRIFT'} {attr:11} {present}/{len(vals)} sampled values on disk")
+    print("\nVERDICT:", "written values are on disk" if not drift else
+          "FILE NO LONGER MATCHES THE WRITE — an external process rewrote it")
 
 
 if __name__ == "__main__":
