@@ -76,8 +76,28 @@ def source_rank(source: str) -> int:
     return best
 
 
+def is_english(tag: str) -> bool:
+    """Reject tags carrying non-English letters.
+
+    Owner rule: tags are English, always, and are never translated. The library
+    holds 113,319 that are not — almost all from Deezer, which localises genre
+    names, so "elektronická" and "tanečná" sit alongside the English "electronic"
+    and "dance" meaning exactly the same thing. Judging by LETTERS, not by bytes,
+    keeps legitimate English tags that merely contain a symbol, such as
+    "33 1/3 rpm" written with a fraction glyph.
+    """
+    # Compare the character AS IT IS. Normalising to NFD first was the bug in
+    # the first version: it decomposes "á" into "a" + a combining accent, so the
+    # ASCII test then passed and every Slovak tag was let through.
+    for ch in tag or "":
+        if ch.isalpha() and not ("a" <= ch <= "z" or "A" <= ch <= "Z"):
+            return False
+    return True
+
+
 def best_tag(candidates: list[dict]) -> str:
     """Pick one tag: most trusted source first, then highest confidence."""
+    candidates = [c for c in candidates if is_english((c.get("tag") or ""))]
     if not candidates:
         return ""
     ranked = sorted(candidates,

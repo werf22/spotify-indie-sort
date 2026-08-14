@@ -16,7 +16,12 @@ SOURCE = "deezer"
 
 
 def get(path: str) -> dict:
-    req = Request(API + path, headers={"User-Agent": "local-dj-music-db/1.0"})
+    # Accept-Language pins Deezer's genre names to English. Without it the API
+    # localises them to the account's locale and the library filled with Slovak
+    # genres — 57,386 rows of "elektronická", 33,323 of "tanečná" — which are the
+    # same genres under names nothing else in the pipeline can match.
+    req = Request(API + path, headers={"User-Agent": "local-dj-music-db/1.0",
+                                       "Accept-Language": "en-US,en;q=0.9"})
     data = json.loads(urlopen(req, timeout=30).read())
     if data.get("error"):
         if (data["error"] or {}).get("code") == 800:
