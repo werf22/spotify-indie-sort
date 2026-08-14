@@ -87,7 +87,12 @@ LOCAL_JOBS = [
     # enough to dwarf the setup restores the measured ~1.6 clips/s.
     # HOW TO TWEAK: keep limit x (3600/interval) above what the uplink can ship
     # in an hour (~460 tracks); beyond that, bigger is simply cheaper per clip.
-    ("audio-prep", ["prepare_cloud_audio_pilot.py", "--limit", "5000",
+    # DISABLED 2026-08-14: this invocation wedges — 19 min alive for 12 s of CPU,
+    # six worker threads idle, no ffmpeg spawned — while the identical command at
+    # --limit 300 completes in 188 s. Until that is root-caused, prep_loop.sh runs
+    # the proven small-batch form with a hard timeout per batch. Re-enable only
+    # after reproducing a healthy large pass.
+    ("audio-prep-DISABLED", ["prepare_cloud_audio_pilot.py", "--limit", "5000",
                     "--codec", "opus", "--workers", "6", "--full-track",
                     "--output", "data/cloud_full"], 3600),
     # Reclaim clips/bundles once their analysis is safely in the database.
