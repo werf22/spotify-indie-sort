@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<title>Music Database</title>
+<style>
+  :root { --bg:#12131a; --panel:#1b1d27; --line:#2a2d3a; --ink:#e6e7ee; --dim:#8f93a8; --accent:#6d8cff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+         background:var(--bg); color:var(--ink); }
+  header { padding:10px 14px; background:var(--panel); border-bottom:1px solid var(--line);
+           display:flex; gap:8px; align-items:center; flex-wrap:wrap; position:sticky; top:0; z-index:5; }
+  button, select, input { background:#232636; color:var(--ink); border:1px solid var(--line);
+           border-radius:6px; padding:6px 10px; font-size:13px; }
+  button { cursor:pointer; } button:hover { border-color:var(--accent); }
+  button.primary { background:var(--accent); color:#0b0d14; border-color:var(--accent); font-weight:600; }
+  #stats { color:var(--dim); margin-left:auto; }
+  .wrap { overflow:auto; height:calc(100vh - 96px); }
+  table { border-collapse:collapse; width:max-content; min-width:100%; }
+  th, td { border-bottom:1px solid var(--line); border-right:1px solid var(--line);
+           padding:5px 8px; text-align:left; white-space:nowrap; max-width:340px;
+           overflow:hidden; text-overflow:ellipsis; }
+  th { background:var(--panel); position:sticky; top:0; cursor:grab; user-select:none; font-weight:600; }
+  th.drag { opacity:.4; }
+  td[contenteditable="true"]:focus { outline:2px solid var(--accent); background:#1d2030; }
+  td.ro { color:var(--dim); }
+  tr:hover td { background:#191c28; }
+  tr.sel td { background:#1e2438; }
+  #cols { padding:8px 14px; background:#161824; border-bottom:1px solid var(--line);
+          display:none; flex-wrap:wrap; gap:4px 14px; max-height:180px; overflow:auto; }
+  #cols label { color:var(--dim); cursor:pointer; }
+  #cols input { margin-right:5px; }
+  footer { padding:8px 14px; background:var(--panel); border-top:1px solid var(--line);
+           display:flex; gap:8px; align-items:center; }
+  .drop { position:fixed; inset:0; background:rgba(109,140,255,.15); border:3px dashed var(--accent);
+          display:none; align-items:center; justify-content:center; font-size:20px; z-index:50; }
+  .drop.on { display:flex; }
+  #toast { position:fixed; bottom:60px; left:50%; transform:translateX(-50%); background:#232636;
+           border:1px solid var(--accent); padding:9px 16px; border-radius:8px; display:none; z-index:60; }
+</style>
+</head>
+<body>
+<header>
+  <input id="search" placeholder="Hľadať názov, interpreta, album, cestu…" style="width:280px">
+  <select id="missing">
+    <option value="">všetky tracky</option>
+    <option value="path">bez cesty k súboru</option>
+    <option value="analysis">bez dokončenej analýzy</option>
+  </select>
+  <button id="toggleCols">Stĺpce</button>
+  <button id="bulk">Hromadná úprava</button>
+  <button id="replace">Find &amp; Replace</button>
+  <button id="swap">Swap</button>
+  <button id="addFiles">+ Súbory</button>
+  <button id="addFolder">+ Priečinok</button>
+  <button id="resume" class="primary">Resume analysis</button>
+  <span id="stats"></span>
+</header>
+<div id="cols"></div>
+<div class="wrap"><table><thead><tr id="head"></tr></thead><tbody id="body"></tbody></table></div>
+<footer>
+  <button id="prev">‹ Späť</button>
+  <span id="pageInfo"></span>
+  <button id="next">Ďalej ›</button>
+  <span style="color:var(--dim)">Klik na riadok = označiť · dvojklik na bunku = upraviť · ťahaním hlavičky sa mení poradie</span>
+</footer>
+<div class="drop" id="drop">Pusti súbory alebo priečinky sem</div>
+<div id="toast"></div>
+
+<script>
+const state = { offset:0, limit:100, total:0, sort:"title", cols:[], visible:[], editable:[], selected:new Set(), rows:[] };
+const $ = id => document.getElementById(id);
+const toast = m => { const t=$("toast"); t.textContent=m; t.style.display="block"; setTimeout(()=>t.style.display="none", 3000); };
+const api = async (path, opts) => { const r = await fetch(path, opts); const j = await r.json();
+  if (j.error) { toast("Chyba: " + j.error); throw new Error(j.error); } return j; };
+
+const LS = "musicapp.columns";
+function saveCols(){ localStorage.setItem(LS, JSON.stringify(state.visible)); }
+function loadCols(){ try { return JSON.parse(localStorage.getItem(LS)) || null; } catch { return null; } }
+
+async function init(){
+  const c = await api("/api/columns");
+  state.cols = c.all; state.editable = c.editable;
+  state.visible = loadCols() || ["title","artist_names","album","tag_genre","bpm_analysis","key_freqblog","path"];
+  state.visible = state.visible.filter(x => state.cols.includes(x));
+  renderColPicker();
+  await refresh(); await stats();
+}
+
+function renderColPicker(){
+  $("cols").innerHTML = state.cols.map(c =>
+    `<label><input type="checkbox" data-c="${c}" ${state.visible.includes(c)?"checked":""}>${c}</label>`).join("");
+  $("cols").querySelectorAll("input").forEach(i => i.onchange = () => {
+    const c = i.dataset.c;
+    if (i.checked) state.visible.push(c); else state.visible = state.visible.filter(x=>x!==c);
+    saveCols(); render();
+  });
+}
+
+async function refresh(){
+  const q = new URLSearchParams({ offset:state.offset, limit:state.limit, sort:state.sort,
+                                  search:$("search").value, missing:$("missing").value });
+  const data = await api("/api/page?" + q);
+  state.total = data.total; state.rows = data.rows; render();
+}
+
+async function stats(){
+  const s = await api("/api/stats");
+  $("stats").textContent = `${s.tracks.toLocaleString()} trackov · ${s.with_path.toLocaleString()} s cestou · ${s.analysed.toLocaleString()} zanalyzovaných · ${s.tags.toLocaleString()} tagov`;
+}
+
+function render(){
+  $("head").innerHTML = state.visible.map(c => `<th draggable="true" data-c="${c}">${c}</th>`).join("");
+  $("body").innerHTML = state.rows.map(r => {
+    const id = r.spotify_id;
+    const tds = state.visible.map(c => {
+      const ed = state.editable.includes(c);
+      const v = r[c] === null || r[c] === undefined ? "" : String(r[c]);
+      return `<td data-c="${c}" data-id="${id}" class="${ed?"":"ro"}" ${ed?'contenteditable="true"':""}>${
+        v.replace(/[<>&]/g, s => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[s]))}</td>`;
+    }).join("");
+    return `<tr data-id="${id}" class="${state.selected.has(id)?"sel":""}">${tds}</tr>`;
+  }).join("");
+  const from = state.total ? state.offset+1 : 0;
+  $("pageInfo").textContent = `${from.toLocaleString()}–${Math.min(state.offset+state.limit, state.total).toLocaleString()} z ${state.total.toLocaleString()}   ·   označené: ${state.selected.size}`;
+  wireTable();
+}
+
+function wireTable(){
+  $("body").querySelectorAll("tr").forEach(tr => {
+    tr.onclick = e => { if (e.target.isContentEditable && document.activeElement===e.target) return;
+      const id = tr.dataset.id;
+      state.selected.has(id) ? state.selected.delete(id) : state.selected.add(id);
+      tr.classList.toggle("sel"); $("pageInfo").textContent = $("pageInfo").textContent.replace(/označené: \d+/, "označené: "+state.selected.size); };
+  });
+  $("body").querySelectorAll('td[contenteditable="true"]').forEach(td => {
+    let before = td.textContent;
+    td.onfocus = () => before = td.textContent;
+    td.onblur = async () => {
+      if (td.textContent === before) return;
+      await api("/api/cell", { method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ id: td.dataset.id, column: td.dataset.c, value: td.textContent }) });
+      toast("Uložené");
+    };
+  });
+  let dragged = null;
+  $("head").querySelectorAll("th").forEach(th => {
+    th.ondragstart = () => { dragged = th.dataset.c; th.classList.add("drag"); };
+    th.ondragend = () => th.classList.remove("drag");
+    th.ondragover = e => e.preventDefault();
+    th.ondrop = e => { e.preventDefault();
+      const target = th.dataset.c;
+      if (!dragged || dragged === target) return;
+      const v = state.visible.filter(x => x !== dragged);
+      v.splice(v.indexOf(target), 0, dragged);
+      state.visible = v; saveCols(); render(); };
+    th.ondblclick = () => { state.sort = th.dataset.c; state.offset = 0; refresh(); };
+  });
+}
+
+function selectedIds(){
+  if (state.selected.size) return [...state.selected];
+  return state.rows.map(r => r.spotify_id);   // nothing picked = the whole page
+}
+
+$("search").onchange = () => { state.offset=0; refresh(); };
+$("missing").onchange = () => { state.offset=0; refresh(); };
+$("prev").onclick = () => { state.offset = Math.max(0, state.offset - state.limit); refresh(); };
+$("next").onclick = () => { if (state.offset + state.limit < state.total) { state.offset += state.limit; refresh(); } };
+$("toggleCols").onclick = () => { const c=$("cols"); c.style.display = c.style.display==="flex" ? "none":"flex"; };
+
+$("bulk").onclick = async () => {
+  const col = prompt("Ktorý stĺpec upraviť?\n" + state.editable.join(", ")); if (!col) return;
+  const val = prompt(`Nová hodnota pre '${col}' u ${selectedIds().length} trackov:`); if (val === null) return;
+  const r = await api("/api/bulk", { method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ column: col, ids: selectedIds(), value: val }) });
+  toast(`Upravených ${r.changed}`); refresh();
+};
+
+$("replace").onclick = async () => {
+  const col = prompt("V ktorom stĺpci hľadať?\n" + state.editable.join(", ")); if (!col) return;
+  const find = prompt("Nájsť:"); if (!find) return;
+  const rep = prompt("Nahradiť čím?"); if (rep === null) return;
+  const r = await api("/api/replace", { method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ column: col, ids: selectedIds(), find, replace: rep }) });
+  toast(`Zmenených ${r.changed} riadkov`); refresh();
+};
+
+$("swap").onclick = async () => {
+  const a = prompt("Prvý stĺpec:\n" + state.editable.join(", ")); if (!a) return;
+  const b = prompt("Druhý stĺpec:"); if (!b) return;
+  const r = await api("/api/swap", { method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ left:a, right:b, ids: selectedIds() }) });
+  toast(`Vymenené u ${r.changed} trackov`); refresh();
+};
+
+async function addPaths(paths){
+  if (!paths.length) return;
+  await api("/api/add", { method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ paths }) });
+  toast(`Pridané: ${paths.length}. Analýza sa spustí sama.`);
+  setTimeout(stats, 4000);
+}
+$("addFiles").onclick = async () => addPaths((await api("/api/pick")).paths);
+$("addFolder").onclick = async () => addPaths((await api("/api/pick?folders=1")).paths);
+$("resume").onclick = async () => { await api("/api/resume", { method:"POST" });
+  toast("Analýza sa rozbieha pre všetko, čo ňou ešte neprešlo."); };
+
+// Finder drops carry real file:// URLs, which is the only way a browser can
+// hand over an actual path — file objects alone cannot.
+const drop = $("drop");
+document.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("on"); });
+document.addEventListener("dragleave", e => { if (e.relatedTarget === null) drop.classList.remove("on"); });
+document.addEventListener("drop", async e => {
+  e.preventDefault(); drop.classList.remove("on");
+  const uris = (e.dataTransfer.getData("text/uri-list") || "").split(/\r?\n/).filter(u => u.startsWith("file://"));
+  const paths = uris.map(u => decodeURIComponent(u.replace("file://","")));
+  if (paths.length) addPaths(paths);
+  else toast("Nepodarilo sa zistiť cestu — použi tlačidlo + Súbory.");
+});
+
+init();
+</script>
+</body>
+</html>
