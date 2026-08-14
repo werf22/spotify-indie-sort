@@ -12,14 +12,14 @@ NOT the constraint ($13 for the whole remainder) and neither is credit ($19.40,
 28 h of running). An overnight window carries ~25 GB, i.e. 4,000-5,000 tracks.
 Any plan that promises "all of it by morning" is wrong on arithmetic.
 
-**DEFECT 1, worked around not fixed:** the daemon's `audio-prep` job WEDGES —
-19 min alive for 12 s of CPU, six worker threads idle, no ffmpeg ever spawned,
-log silent. Ruled out: the DB write lock (obtainable in 4 s) and T7 read speed
-(32 GB/s). The same command at `--limit 300` completes in 188 s and at 40 in 27 s.
-`prep_loop.sh` now runs that proven small-batch form continuously with a 600 s
-per-batch kill-and-retry; the daemon job is renamed `audio-prep-DISABLED` with
-the evidence at the call site. Re-enable ONLY after reproducing a healthy large
-pass. Log: `data/prep_loop.log`.
+**THE EXTERNAL DISK IS PART OF THE SYSTEM.** 80,437 of the 116,939 known audio
+files live on the T7 drive; only 36,502 are on the MacBook. Reading from an
+unplugged volume does not fail, it BLOCKS — that is what made clip prep look
+deadlocked for a night (six worker threads idle, no ffmpeg, 12 s of CPU across 19
+minutes). Prep now drops candidates whose source is not present, so an absent T7
+slows the pipeline to local-only work instead of hanging it, and its tracks
+resume by themselves when the disk returns. `data/prep_loop.log` states the
+disk's presence every cycle — read that FIRST when throughput looks wrong.
 
 **DEFECT 2, fixed but worth knowing:** `pod_reaper.py` spent a night killing every
 RESUMED shard's pod within minutes — "no results in 2053 min (age 3 min)" —
