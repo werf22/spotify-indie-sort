@@ -192,7 +192,18 @@ def _rows_for_ids(db: sqlite3.Connection, ids: list[str], marks: str) -> list[di
         row["Genre"] = _joined(tags, ["genre", "genre_audio_candidate"], row.get("Genre"))
         row["Mood"] = _joined(tags, ["mood", "mood_candidate"], row.get("Mood"))
         row["Label"] = (row.get("label") or "").strip()
-        row["Valence"] = derive.band(row.get("valence"))
+        # Owner rule 2026-08-14: Energy, Danceability and Valence go in as the
+        # ORIGINAL float (0-1, two decimals), never as Low/Medium/High words.
+        for column, source in (("Energy", "energy"), ("Danceability", "danceability"),
+                               ("Valence", "valence")):
+            value = row.get(source)
+            try:
+                number = float(value)
+                if number > 1.0:            # a provider on a 0-100 scale
+                    number /= 100.0
+                row[column] = f"{number:.2f}"
+            except (TypeError, ValueError):
+                row[column] = ""
         out.append(row)
     return out
 
@@ -364,8 +375,12 @@ def main() -> None:
 
 
 def restore(db: sqlite3.Connection) -> None:
+    # ORDER BY written_at DESC so that when several write generations touched
+    # the same field, the dict below is last overwritten by the EARLIEST row —
+    # restore must return the value from before the FIRST write, not an
+    # intermediate value we ourselves wrote in between.
     rows = db.execute("""SELECT entry_key, attribute, old_value FROM traktor_field_backup
-                         WHERE restored_at IS NULL""").fetchall()
+                         WHERE restored_at IS NULL ORDER BY written_at DESC""").fetchall()
     if not rows:
         print("nothing to restore")
         return
