@@ -999,3 +999,29 @@ safety case — when `pgrep` cannot report which runners exist, the reaper does 
 kill on the UNMANAGED rule and falls through to the progress check, so a failing
 local tool can never wipe out healthy paid work. A dry run against the live
 account was clean, and the daemon was restarted so the guard is active.
+
+## D-053 — 96 kbps clips REJECTED: one track's tempo moved
+
+**Decision:** clips stay at 192 kbps. The upload wall (~55 h for the remaining
+collection at the measured 685 KB/s) stands; there is no shortcut.
+
+**The experiment:** 25 tracks whose 192 kbps answers are already in the database
+were re-analysed from 96 kbps clips on one pod, all four stages.
+
+| measure | result |
+|---|---|
+| BPM identical (<0.5) | **24/25 — one track drifted 5.00 BPM** |
+| genre top-1 identical | 25/25 |
+| mood/instrument labels retained | 50/50 (100%) |
+
+**Why this is a rejection and not a pass.** The acceptance bar was written before
+the data existed: adopt only if BPM is identical on EVERY track. 5 BPM is not a
+rounding difference, it is a mis-mixed transition, and at 4% it would put roughly
+a thousand tracks in this library on the wrong tempo. Genre and mood survived
+intact, which is exactly what would make it easy to argue the other way — the
+pre-registered threshold is what stops that.
+
+**Cost of the answer:** ~$0.60. The probe pod also idled ~2.5 h after finishing
+because it never wrote its done-marker and nothing was watching it —
+`pod_reaper.py` only guards `music-db-*` pods, so a differently-named pod bills
+unwatched. Worth fixing before the next probe.
