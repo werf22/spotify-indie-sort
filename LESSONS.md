@@ -14,3 +14,4 @@
      Example shape (kept in this comment so it never loads as a real entry — replace with
      the first real lesson, don't append after it):
      - [<YYYY-MM-DD>] <lesson, imperative: "always X in this project" / "never Y here"> — <why: what broke or what it prevents> -->
+- [2026-08-14] Tags in this database are English, always — never translated, never localised. Deezer localises genre names to the account locale and had written 113,319 non-English tags (57,386 "elektronická", 33,323 "tanečná"); enrich_deezer.py now sends Accept-Language: en-US and music_app/derive.py refuses to surface a non-English value. The existing 113,319 rows are still there — cleaning them is a data migration and needs the owner's approval.
