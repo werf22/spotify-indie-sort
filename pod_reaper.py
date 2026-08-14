@@ -55,7 +55,10 @@ LOG = ROOT / "data" / "pod_reaper.log"
 # --- POLICY (safe to tweak) ----------------------------------------------
 REAP_INTERVAL = 120     # seconds between passes
 MAX_POD_MINUTES = 75    # HARD time box: a shard needs ~12 min setup + ~30 min work
-SETUP_GRACE_MIN = 20    # no results expected before this (create, ssh, upload, install)
+SETUP_GRACE_MIN = 45    # no results expected before this. Must exceed the real
+                        # upload time or the reaper kills pods mid-transfer: at
+                        # the measured 685 KB/s a 1.3 GB bundle needs ~32 min,
+                        # and killing then throws away everything already sent.
 NO_PROGRESS_MIN = 12    # after grace, results must grow within this or the pod dies
 UNMANAGED_GRACE_MIN = 3 # a pod whose shard has no runner process (covers spawn races)
 
@@ -157,9 +160,16 @@ def judge(pod: dict, runners: set[str], runners_known: bool) -> tuple[str, str]:
     if runners_known and shard.name not in runners and age > UNMANAGED_GRACE_MIN:
         return "KILL", f"no runner process owns {shard.name} (age {age:.0f} min)"
 
-    size, idle_min = results_progress(shard)
-    if age <= SETUP_GRACE_MIN and size == 0:
-        return "WORKING", f"in setup grace ({age:.0f}/{SETUP_GRACE_MIN} min)"
+    size, file_idle = results_progress(shard)
+    # A pod cannot be blamed for time that predates it. A RESUMED shard already
+    # has a results file from an earlier run, and its mtime can be days old —
+    # which killed brand-new pods with "no results in 2053 min (age 3 min)" all
+    # night, over and over, because the grace below only applied to an EMPTY
+    # file. Clamping to the pod's own age fixes both halves of that.
+    idle_min = min(file_idle, age)
+    if age <= SETUP_GRACE_MIN:
+        return "WORKING", (f"in setup grace ({age:.0f}/{SETUP_GRACE_MIN} min, "
+                           f"{size/1e6:.1f} MB carried over)")
     if idle_min > NO_PROGRESS_MIN:
         return "KILL", (f"no results in {idle_min:.0f} min "
                         f"(age {age:.0f} min, {size/1e6:.1f} MB pulled)")
