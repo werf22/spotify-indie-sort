@@ -1,33 +1,45 @@
 # Handoff: Spotify DJ Music Intelligence Database
 
-This is the canonical cold-start document for the next AI agent. Read it
-before changing code, restarting services, creating cloud resources, calling a
-paid API, or modifying Spotify playlists.
+This is the canonical cold-start document for the next AI agent. Read it before
+changing code, restarting services, creating cloud resources, calling a paid API,
+or modifying Spotify playlists.
 
-**STATUS 2026-08-11 (late morning) — ONE BLOCKER: RunPod credit.**
+**STATUS 2026-08-14 (early morning) — running unattended, two known defects.**
 
-**DO THIS NOW:** nothing local is blocked. The pipeline is healthy and running
-itself. The only action that moves the finish line is topping up RunPod:
-**~$9 finishes the remaining 13,341 tracks, $15 gives margin.** Balance was
-$3.39 at 08:45Z burning $0.68/h across 3 pods, so it parks itself in ~5 h and
-resumes on its own within ~10 minutes of a top-up.
+**THE HARD LIMIT, state it before promising anything:** the uplink measures
+685 KB/s. 25,665 tracks remain, which is 136 GB and ~55 h of pure upload. GPU is
+NOT the constraint ($13 for the whole remainder) and neither is credit ($19.40,
+28 h of running). An overnight window carries ~25 GB, i.e. 4,000-5,000 tracks.
+Any plan that promises "all of it by morning" is wrong on arithmetic.
 
-**Where the audio analysis stands:** 18,695 of 32,036 eligible tracks have all
-four stages (rhythm, MAEST, Essentia, CLAP). 9,355 prepared clips are already
-on disk waiting for shards, so GPU time — not local work — is the constraint.
+**DEFECT 1, worked around not fixed:** the daemon's `audio-prep` job WEDGES —
+19 min alive for 12 s of CPU, six worker threads idle, no ffmpeg ever spawned,
+log silent. Ruled out: the DB write lock (obtainable in 4 s) and T7 read speed
+(32 GB/s). The same command at `--limit 300` completes in 188 s and at 40 in 27 s.
+`prep_loop.sh` now runs that proven small-batch form continuously with a 600 s
+per-batch kill-and-retry; the daemon job is renamed `audio-prep-DISABLED` with
+the evidence at the call site. Re-enable ONLY after reproducing a healthy large
+pass. Log: `data/prep_loop.log`.
 
-**The repo is now on GitHub** — https://github.com/werf22/spotify-indie-sort,
-public, `origin` configured. Before the first push, tracked files were cut from
-2,836 (855 MB) to 167 (58 MB) by untracking Rust build output and a vendored
-dependency's .git internals. Secret scan before publishing came back clean:
-every credential is read from the environment, `.env` and `data/` are ignored,
-and no secret-shaped string appears in any tracked file or in history.
+**DEFECT 2, fixed but worth knowing:** `pod_reaper.py` spent a night killing every
+RESUMED shard's pod within minutes — "no results in 2053 min (age 3 min)" —
+because it read the results FILE's mtime, which on a resume predates the pod, and
+its setup grace only applied to an EMPTY file. Idle is now clamped to the pod's
+own age and the grace applies on age alone (45 min, to cover a real 32-minute
+upload). The regression is locked in as `tests_pod_reaper.py`; run it after ANY
+change to that file — 11 branches, all must pass.
 
-**NEVER saturate the uplink while pods are running.** That first push (266 MB)
-starved the pipeline's control plane: DNS lookups for api.runpod.io started
-failing, every runpodctl call errored, runners died and left two pods billing
-with no one managing them. Full account in D-049. The local protections all need
-the network to act; when the link is gone, only the server-side deadline holds.
+**What is running unattended right now:** the orchestrator (launchd, auto-restart)
+building shards and driving pods; `prep_loop.sh` making clips; `pod_reaper.py`
+every 2 min as a daemon job; `index_audio_files.py` walking all of T7 to fill in
+the 16,214 tracks that still have no path. Watch with `pipeline_status.py`.
+
+**Unfinished experiment:** the 96 kbps clip A/B (D-053) would halve the upload
+wall from 55 h to 27 h. Its first two runs died — one on a non-UTF-8 byte from
+the pod (fixed in `runpod_pilot.run`, which every runner shares), one incomplete.
+BPM decides it: a tempo that moves is a wrong number in a DJ library, not a
+tolerable quality trade. Build with `validate_bitrate.py --build`, run
+`probe_bitrate_run.py`, compare with `--compare`.
 
 **THE MONEY GUARD is `pod_reaper.py`** (D-050) — start here if a pod is ever
 suspected of billing for nothing. It runs every 2 min as a daemon job and kills
