@@ -182,6 +182,25 @@ def reap(dry_run: bool) -> int:
         log("could not list pods (API unreachable); will retry next pass")
         return 0
     ours = [p for p in pods if str(p.get("name") or "").startswith("music-db-")]
+    # Anything else on the account still costs money. The bitrate probe billed
+    # ~2.5 h unwatched after finishing, purely because its name did not start
+    # with music-db- and nothing here looked at it. Ours get the full evidence
+    # test; a foreign pod gets the hard time box only, and is always LOGGED so
+    # no pod can ever bill silently unnoticed.
+    others = [p for p in pods if not str(p.get("name") or "").startswith("music-db-")]
+    for pod in others:
+        name, pod_id = str(pod.get("name") or ""), str(pod.get("id") or "")
+        uptime_min = float(pod.get("uptimeSeconds") or 0) / 60
+        if uptime_min > MAX_POD_MINUTES:
+            log(f"KILL {name} ({pod_id}): non-shard pod past the "
+                f"{MAX_POD_MINUTES} min box (up {uptime_min:.0f} min)")
+            if not dry_run:
+                try:
+                    rp.terminate(pod_id)
+                except Exception as exc:
+                    log(f"     terminate failed: {type(exc).__name__}")
+        else:
+            log(f"NOTE {name} ({pod_id}): non-shard pod billing, up {uptime_min:.0f} min")
     if not ours:
         return 0
 
