@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import sqlite3
 import time
+
+import derive
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -116,7 +118,8 @@ def analysis_columns() -> list[str]:
 
 
 def all_columns() -> list[str]:
-    return (list(COLUMNS) + list(FEATURE_COLUMNS)
+    # Interpreted columns come FIRST: they are the answer, the rest is evidence.
+    return (derive.DERIVED_COLUMNS + list(COLUMNS) + list(FEATURE_COLUMNS)
             + analysis_columns() + [f"tag_{t}" for t in tag_types()])
 
 
@@ -189,15 +192,24 @@ def page(offset: int, limit: int, search: str = "", sort: str = "title",
                             if isinstance(value, float):
                                 value = round(value, 3)
                             row[f"{prefix}_{field}"] = value
-            for tag_type in tag_types():
-                joined: dict[str, list[str]] = {}
-                for r in db.execute(
-                        f"""SELECT spotify_id, tag FROM tags
-                            WHERE tag_type=? AND spotify_id IN ({marks})""",
-                        [tag_type] + ids):
-                    joined.setdefault(r["spotify_id"], []).append(r["tag"])
-                for row in rows:
-                    row[f"tag_{tag_type}"] = ", ".join(sorted(joined.get(row["spotify_id"], [])))
+            # One pass over this page's tags: build both the raw joined columns
+            # and the per-type candidate lists the interpreter ranks.
+            joined: dict[tuple, set] = {}
+            candidates: dict[str, dict[str, list[dict]]] = {}
+            for r in db.execute(
+                    f"""SELECT spotify_id, tag_type, tag, source, confidence FROM tags
+                        WHERE spotify_id IN ({marks})""", ids):
+                key = (r["spotify_id"], r["tag_type"])
+                joined.setdefault(key, set()).add(r["tag"])
+                candidates.setdefault(r["spotify_id"], {}).setdefault(
+                    r["tag_type"], []).append(
+                        {"tag": r["tag"], "source": r["source"],
+                         "confidence": r["confidence"]})
+            for row in rows:
+                sid = row["spotify_id"]
+                for tag_type in tag_types():
+                    row[f"tag_{tag_type}"] = ", ".join(sorted(joined.get((sid, tag_type), ())))
+                row.update(derive.interpret(row, candidates.get(sid, {})))
         return {"total": total, "rows": rows}
     finally:
         db.close()
