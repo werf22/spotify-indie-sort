@@ -304,8 +304,17 @@ def main() -> None:
     # measured, --limit 300 took 25 s and produced only 39 new clips because 261
     # of the 300 were already done. Filtering first makes the limit mean "300
     # clips to CREATE", which is what every caller assumes it means.
+    # Never hand the transcoder a file that is not there. An unplugged external
+    # disk is the common case — 80,437 of these sources live on T7 — and reading
+    # from one does not fail, it BLOCKS: six worker threads sat idle for 19
+    # minutes with no ffmpeg ever spawned and 12 s of CPU burned, which looked
+    # exactly like a deadlock in our own code. Checking existence first is cheap
+    # (an absent volume means the path simply is not there) and it degrades
+    # gracefully: while T7 is away the pass quietly works through the local
+    # tracks instead, and picks the rest up by itself once the disk is back.
     pending = [row for row in candidates(connect())
-               if not (clips / f"{row['spotify_id']}.{args.codec}").is_file()]
+               if not (clips / f"{row['spotify_id']}.{args.codec}").is_file()
+               and Path(row["path"]).exists()]
     selected = select_balanced(pending, args.limit)
     records, failures = [], []
     worker = lambda row: prepare_row(

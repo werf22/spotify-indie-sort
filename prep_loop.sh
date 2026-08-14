@@ -15,6 +15,15 @@ cd "/Users/jakub/Appky Claude/spotify-indie-sort"
 BATCH=300
 HARD_TIMEOUT=600
 while true; do
+  # Report the external disk's state each cycle so a stall is never a mystery.
+  # Work does NOT wait for it: prep skips absent sources, so local tracks keep
+  # flowing while T7 is unplugged, and T7's own tracks resume by themselves the
+  # moment it reappears — no restart, no intervention.
+  if [ -d /Volumes/T7 ]; then
+    echo "$(date -u +%FT%TZ) T7 present" >> data/prep_loop.log
+  else
+    echo "$(date -u +%FT%TZ) T7 ABSENT — working local tracks only, will resume T7 on reconnect" >> data/prep_loop.log
+  fi
   before=$(ls data/cloud_full/clips/*.opus 2>/dev/null | wc -l | tr -d ' ')
   ./.audio-venv/bin/python prepare_cloud_audio_pilot.py --limit $BATCH --codec opus \
       --workers 6 --full-track --output data/cloud_full >> data/prep_loop.log 2>&1 &
