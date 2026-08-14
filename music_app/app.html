@@ -81,7 +81,11 @@ function loadCols(){ try { return JSON.parse(localStorage.getItem(LS)) || null; 
 async function init(){
   const c = await api("/api/columns");
   state.cols = c.all; state.editable = c.editable;
-  state.visible = loadCols() || ["title","artist_names","album","tag_genre","bpm_analysis","key_freqblog","path"];
+  // Default view leads with what the GPU analysis found — the rhythm character
+  // is the whole point of analysing a DJ library, and it was invisible before.
+  state.visible = loadCols() || ["title","artist_names","rhythm_rhythm_pattern",
+    "rhythm_bpm","key_freqblog","rhythm_broken_beat_score","rhythm_four_on_floor_score",
+    "rhythm_syncopation_score","tag_genre","tag_subgenre","tag_mood","tag_tempo_band","path"];
   state.visible = state.visible.filter(x => state.cols.includes(x));
   renderColPicker();
   await refresh(); await stats();

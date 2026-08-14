@@ -54,9 +54,43 @@ FEATURE_COLUMNS = {
     "valence":       ("freqblog", "valence"),
 }
 
-# Tag columns are comma-joined tags of one tag_type.
-TAG_COLUMNS = ["genre", "style", "mood", "instrument", "audio_style_candidate",
-               "acoustic_character", "label", "country", "format"]
+# Tag columns are DISCOVERED, never hardcoded. A fixed list silently hid most of
+# the library: it carried nine types while the database holds far more, missing
+# subgenre (541k rows), tempo_band, energy_band, harmonic_mode, voice and others.
+# Anything the pipeline starts producing appears here on its own.
+def discover_tag_types(limit: int = 40) -> list[str]:
+    db = connect()
+    try:
+        return [r[0] for r in db.execute(
+            """SELECT tag_type FROM tags WHERE tag_type IS NOT NULL
+               GROUP BY tag_type ORDER BY COUNT(*) DESC LIMIT ?""", (limit,))]
+    finally:
+        db.close()
+
+
+_TAG_CACHE: list[str] = []
+
+
+def tag_types() -> list[str]:
+    global _TAG_CACHE
+    if not _TAG_CACHE:
+        _TAG_CACHE = discover_tag_types()
+    return _TAG_CACHE
+
+
+# The GPU analysis is the most valuable data here and it lives in
+# audio_analysis_artifacts.payload_blob (json+zlib), NOT in tags — so a
+# tags-only view showed none of it. These are the scalar fields worth a column;
+# the per-window timelines and embeddings stay out (they are not readable data).
+ANALYSIS_FIELDS = {
+    "rhythm_full": ["rhythm_pattern", "broken_beat_score", "four_on_floor_score",
+                    "beat_presence", "syncopation_score", "tempo_stability",
+                    "rhythm_regularity", "kick_on_quarter_ratio",
+                    "offbeat_kick_ratio", "beat_confidence", "bpm"],
+    "maest_full": ["trust_level"],
+    "essentia_full": ["patch_count"],
+    "clap_full": ["coverage_mode"],
+}
 
 
 def connect(write: bool = False) -> sqlite3.Connection:
@@ -76,8 +110,14 @@ def connect(write: bool = False) -> sqlite3.Connection:
     raise RuntimeError("unreachable")
 
 
+def analysis_columns() -> list[str]:
+    return [f"{stage.split('_')[0]}_{field}"
+            for stage, fields in ANALYSIS_FIELDS.items() for field in fields]
+
+
 def all_columns() -> list[str]:
-    return list(COLUMNS) + list(FEATURE_COLUMNS) + [f"tag_{t}" for t in TAG_COLUMNS]
+    return (list(COLUMNS) + list(FEATURE_COLUMNS)
+            + analysis_columns() + [f"tag_{t}" for t in tag_types()])
 
 
 def editable_columns() -> list[str]:
@@ -128,7 +168,28 @@ def page(offset: int, limit: int, search: str = "", sort: str = "title",
                     for row in rows:
                         if row["spotify_id"] == r["spotify_id"]:
                             row[name] = r["v"]
-            for tag_type in TAG_COLUMNS:
+            # Analysis payloads: decompress only the page's rows, never more.
+            import json as _json, zlib as _zlib
+            for r in db.execute(
+                    f"""SELECT spotify_id, stage, payload_blob FROM audio_analysis_artifacts
+                        WHERE spotify_id IN ({marks}) AND stage IN
+                        ('rhythm_full','maest_full','essentia_full','clap_full')""", ids):
+                fields = ANALYSIS_FIELDS.get(r["stage"]) or []
+                if not fields:
+                    continue
+                try:
+                    payload = _json.loads(_zlib.decompress(r["payload_blob"]).decode())
+                except Exception:
+                    continue
+                prefix = r["stage"].split("_")[0]
+                for row in rows:
+                    if row["spotify_id"] == r["spotify_id"]:
+                        for field in fields:
+                            value = payload.get(field)
+                            if isinstance(value, float):
+                                value = round(value, 3)
+                            row[f"{prefix}_{field}"] = value
+            for tag_type in tag_types():
                 joined: dict[str, list[str]] = {}
                 for r in db.execute(
                         f"""SELECT spotify_id, tag FROM tags
