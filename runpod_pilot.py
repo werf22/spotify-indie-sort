@@ -53,7 +53,11 @@ def iso(value: datetime) -> str:
 
 
 def run(args: list[str], timeout: int = 60, check: bool = True) -> subprocess.CompletedProcess:
-    proc = subprocess.run(args, cwd=ROOT, capture_output=True, text=True, timeout=timeout)
+    # errors='replace': pod output is not guaranteed valid UTF-8 (progress bars,
+    # non-ASCII tags in track names, a transfer truncated mid-codepoint). A
+    # decode error here used to kill the whole run rather than the one line.
+    proc = subprocess.run(args, cwd=ROOT, capture_output=True, text=True,
+                          errors='replace', timeout=timeout)
     if check and proc.returncode:
         raise RuntimeError(f"command failed ({proc.returncode}): {' '.join(args[:3])}: {(proc.stderr or proc.stdout)[-1500:]}")
     return proc

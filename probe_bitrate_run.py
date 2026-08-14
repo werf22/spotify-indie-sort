@@ -115,13 +115,13 @@ def run_probe() -> None:
                 print(f"upload attempt {attempt} failed ({str(exc)[:80]}); retrying", flush=True)
                 time.sleep(20 * attempt)
         write = subprocess.run(rp.ssh_args(command) + ["cat > /workspace/probe.sh"],
-                               input=REMOTE, text=True, capture_output=True, timeout=60)
+                               input=REMOTE, text=True, errors='replace', capture_output=True, timeout=60)
         if write.returncode:
             raise SystemExit("writing probe.sh failed: " + write.stderr[-300:])
         start = subprocess.run(
             rp.ssh_args(command)
             + ["nohup bash /workspace/probe.sh > /workspace/probe.log 2>&1 & echo go"],
-            text=True, capture_output=True, timeout=60)
+            text=True, errors='replace', capture_output=True, timeout=60)
         if start.returncode or "go" not in start.stdout:
             raise SystemExit("launch failed: " + (start.stderr or start.stdout)[-300:])
         print("detached probe running; polling for the done marker", flush=True)
@@ -133,7 +133,7 @@ def run_probe() -> None:
                 query = subprocess.run(
                     rp.ssh_args(command)
                     + ["ls /workspace/probe.done 2>/dev/null; echo @@; tail -c 300 /workspace/probe.log 2>/dev/null"],
-                    text=True, capture_output=True, timeout=30)
+                    text=True, errors='replace', capture_output=True, timeout=30)
             except subprocess.TimeoutExpired:
                 continue
             if query.returncode:

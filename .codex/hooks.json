@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/Users/jakub/Appky Claude/spotify-indie-sort/.codex/hooks/auto-commit.sh'"
+          }
+        ]
+      }
+    ]
+  }
+}
