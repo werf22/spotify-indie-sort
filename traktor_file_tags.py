@@ -70,6 +70,20 @@ def ensure_tables(db: sqlite3.Connection) -> None:
             detail TEXT, updated_at TEXT NOT NULL);""")
 
 
+def exists(path: Path) -> bool:
+    """is_file() that survives a bad sector.
+
+    An unreadable file on T7 raised OSError 5 straight out of `stat`, which
+    killed the whole sweep at 20,267 of 112,184 files — one damaged track
+    stopping ninety thousand healthy ones. Media errors are per-file news, never
+    a reason to abandon the run.
+    """
+    try:
+        return path.is_file()
+    except OSError:
+        return False
+
+
 def frames_for(handle) -> str:
     if isinstance(handle, MP4):
         return "mp4"
@@ -259,7 +273,7 @@ def main() -> None:
                 done += 1
                 if vals is None or not any(vals.values()):
                     outcome = "no_values"
-                elif not path.is_file():
+                elif not exists(path):
                     outcome = "missing"          # unplugged disk: skip, never block
                 else:
                     try:
