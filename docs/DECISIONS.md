@@ -1025,3 +1025,41 @@ pre-registered threshold is what stops that.
 because it never wrote its done-marker and nothing was watching it —
 `pod_reaper.py` only guards `music-db-*` pods, so a differently-named pod bills
 unwatched. Worth fixing before the next probe.
+
+## D-063 — the Comment column was being eaten one track at a time (2026-08-15)
+
+The owner labels every track's energy in Traktor's **Comment** column ("06
+Energy"). Loading a track made that label turn into a musical key, "Em".
+
+**It was not our write.** Every backup says so: the collection held 1,179
+key-comments on 14 Aug, BEFORE our first write, and exactly ZERO Comment values
+changed between the pre-write backup and now. Traktor's own rolling backups date
+the rot precisely: 603 in June, 700 a week later, 1,138, 1,179 by 10 July, 1,180
+now. This has been running for months, one track per play.
+
+**Cause.** 120 of 120 checked files carry a musical key inside their OWN comment
+tag (`©cmt`), written by some earlier tagger; the key is a duplicate, since the
+real key already lives in Traktor's KEY field. Traktor re-reads a file's tags
+when the track is loaded, so the file's key overwrites the collection's energy.
+On a 1,500-file sample, **56.5% of files still disagreed with the collection** —
+about 50,000 tracks primed to flip on their next play. Our file-tag sweep did not
+write this, but it changed 92k file mtimes, which is exactly what makes Traktor
+re-read them, so it would have accelerated the loss sharply.
+
+**Fix — `traktor_comment_pin.py`, two phases.**
+`--repair` recovered the originals for **577** already-flipped entries from
+Traktor's own backups (keys 1,180 → 603; energy labels +577). The remaining 603
+flipped before the oldest surviving backup and are not recoverable from anything
+on this machine.
+`--pin` writes the collection's Comment INTO each file's comment tag, so the file
+and the collection finally agree and a re-import is a no-op. 61,886 files.
+
+**Two judgement calls, stated rather than buried.** Overwriting the file's key is
+correct because the key is redundant while the energy label exists nowhere else.
+And 25,281 files are referenced by more than one collection entry, 1,274 of them
+disagreeing about the energy; a file holds one comment, so the majority value
+wins with a deterministic tiebreak — never file order.
+
+Reversible: every comment tag is copied to `comment_pin_backup` before it is
+touched, and `--restore` puts each one back, including deleting the tag again
+where there was none.
