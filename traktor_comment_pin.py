@@ -191,16 +191,27 @@ def repair(db: sqlite3.Connection) -> None:
 
 
 # --------------------------------------------------------------- phase 2
+# ID3 allows MANY comment frames, each with its own description, and Traktor
+# picks one of them. Matching only the empty-description frame left files whose
+# real comment sat in a named one ("COMM:ID3v1 Comment:eng") still holding junk
+# like "PMEDIA" — 4 in 1,200 would have flipped anyway. So every comment frame is
+# replaced, EXCEPT these technical ones, which are player data and not a comment.
+TECHNICAL_COMM = ("itunnorm", "itunsmpb", "itunes_cddb", "itunmovi", "itunpgap")
+
+
 def comment_frames(handle) -> list[str]:
-    """Names of the comment tags this file actually has."""
+    """Names of every comment tag this file has that a DJ app would display."""
     if handle is None or handle.tags is None:
         return []
     out = []
     for key in handle.tags.keys():
         name = str(key)
-        if name.startswith("©cmt") or name.lower() == "comment" or (
-                name.startswith("COMM") and name.split(":")[1:2] in ([""], [])):
+        if name.startswith("©cmt") or name.lower() == "comment":
             out.append(name)
+        elif name.startswith("COMM"):
+            desc = name.split(":")[1] if ":" in name else ""
+            if not desc.lower().startswith(TECHNICAL_COMM):
+                out.append(name)
     return out
 
 
