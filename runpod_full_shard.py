@@ -249,7 +249,10 @@ UPLOAD_SLOTS = 2  # concurrent 1.5 GB bundle uploads; more saturates the home
                   # uplink and starves the SSH polls of already-running pods
 
 
-UPLOAD_ATTEMPTS = 3  # a stalled consumer link should not scrap a paid pod
+UPLOAD_ATTEMPTS = 3  # whole-transfer retries; each one RESUMES (see push_bundle)
+CHUNK_BYTES = 64 * 1024 * 1024   # resume granularity: ~90 s per chunk on this line
+CHUNK_TIMEOUT = 900              # a single chunk must never hang a pod
+CHUNK_RETRIES = 12               # consecutive chunk failures before giving up  # a stalled consumer link should not scrap a paid pod
 
 
 def gpu_healthy(command: str) -> tuple[bool, str]:
@@ -350,34 +353,107 @@ def prewarm(command: str) -> bool:
         return False
 
 
-def upload(command: str, bundle: Path, results: Path) -> None:
-    target, port, identity = rp.connection_parts(command)
-    args = ["scp", *rp.SSH_HARDENING]
+def _ssh_args(port, identity) -> list[str]:
+    args = ["ssh", *rp.SSH_HARDENING]
     if port:
-        args += ["-P", port]
+        args += ["-p", port]
     if identity:
         args += ["-i", identity]
-    # scp -C compresses; the bundle is Opus (already compressed) but the
-    # manifest/scripts benefit and it costs little. Retry on the network
-    # timeouts that community pods produce: giving up here throws away a
-    # pod we already paid to create.
+    return args
+
+
+def _remote_bytes(ssh: list[str], target: str, path: str) -> int:
+    """How much of the bundle is already on the pod (0 if nothing)."""
+    try:
+        proc = rp.run(ssh + [target, f"stat -c %s {path} 2>/dev/null || echo 0"],
+                      timeout=120)
+        return int((proc.stdout or "0").strip().split()[-1])
+    except Exception:
+        return 0
+
+
+def push_bundle(ssh: list[str], target: str, bundle: Path, remote: str) -> None:
+    """Send the bundle in CHUNKS that resume, instead of one 34-minute stream.
+
+    WHY: a 1.4 GB bundle over this line takes ~34 min, and the upload saturates
+    the very link its own SSH keepalives ride on — so the session was being
+    dropped mid-transfer and `scp` restarted from zero every time. 555 upload
+    attempts in a row failed and not one succeeded; five days of pods were
+    created, billed, and terminated without analysing a single track.
+
+    Each chunk is written straight into place with `dd seek=`, so it is
+    idempotent: after any failure we ask the pod how many bytes it already has
+    and carry on from exactly there. A dropped connection now costs one chunk
+    (~2 min), not the whole transfer, and progress survives retries.
+
+    HOW TO TWEAK: CHUNK_BYTES trades resume granularity against per-chunk
+    overhead — smaller is more resilient on a bad line, larger is slightly
+    faster on a good one.
+    """
+    size = bundle.stat().st_size
+    sent = _remote_bytes(ssh, target, remote)
+    if sent > size:                       # stale/corrupt remnant: start over
+        rp.run(ssh + [target, f"rm -f {remote}"], timeout=120)
+        sent = 0
+    if sent:
+        print(f"resuming upload at {sent/1e6:.0f} MB of {size/1e6:.0f} MB", flush=True)
+
+    stalls = 0
+    while sent < size:
+        count = min(CHUNK_BYTES, size - sent)
+        command = (f"dd of={remote} bs=1M seek={sent // (1 << 20)} "
+                   f"conv=notrunc status=none")
+        try:
+            with bundle.open("rb") as handle:
+                handle.seek(sent)
+                payload = handle.read(count)
+                proc = subprocess.run(ssh + [target, command], input=payload,
+                                      capture_output=True, timeout=CHUNK_TIMEOUT)
+            if proc.returncode:
+                raise RuntimeError((proc.stderr or b"")[-300:].decode("utf-8", "replace"))
+        except Exception as exc:
+            stalls += 1
+            if stalls > CHUNK_RETRIES:
+                raise RuntimeError(f"upload stuck at {sent/1e6:.0f}/{size/1e6:.0f} MB: {exc}")
+            print(f"chunk at {sent/1e6:.0f} MB failed ({str(exc)[:70]}); retrying", flush=True)
+            time.sleep(10 * stalls)
+            sent = _remote_bytes(ssh, target, remote)   # trust the pod, not us
+            continue
+        stalls = 0
+        sent = _remote_bytes(ssh, target, remote)
+        print(f"  uploaded {sent/1e6:.0f}/{size/1e6:.0f} MB", flush=True)
+
+    # Prove the bytes arrived intact before a pod spends GPU time on them.
+    digest = Path(str(bundle) + ".sha256").read_text().split()[0]
+    proc = rp.run(ssh + [target, f"sha256sum {remote} | cut -d' ' -f1"], timeout=600)
+    got = (proc.stdout or "").strip()
+    if got != digest:
+        rp.run(ssh + [target, f"rm -f {remote}"], timeout=120, check=False)
+        raise RuntimeError(f"bundle checksum mismatch (pod {got[:12]} vs local {digest[:12]})")
+    print("bundle verified on the pod", flush=True)
+
+
+def upload(command: str, bundle: Path, results: Path) -> None:
+    target, port, identity = rp.connection_parts(command)
+    ssh = _ssh_args(port, identity)
     for attempt in range(1, UPLOAD_ATTEMPTS + 1):
         try:
-            # 15 min is ~1.5 MB/s for a 1.3 GB bundle — generous for a
-            # working link, but short enough that a stalled transfer is
-            # abandoned quickly. The old 40 min, multiplied by retries,
-            # let a pod idle-bill for up to two hours on a dead link
-            # (observed on shard-0110: 1.5 h in ssh_ready, zero rows).
-            rp.run(args + [str(bundle), f"{target}:/workspace/full-shard.tar"], timeout=900)
+            push_bundle(ssh, target, bundle, "/workspace/full-shard.tar")
             break
         except Exception as exc:
             if attempt == UPLOAD_ATTEMPTS:
                 raise
             print(f"upload attempt {attempt} failed ({str(exc)[:90]}); retrying", flush=True)
             time.sleep(20 * attempt)
+
     if results.is_file() and results.stat().st_size:
+        scp = ["scp", *rp.SSH_HARDENING]
+        if port:
+            scp += ["-P", port]
+        if identity:
+            scp += ["-i", identity]
         try:
-            rp.run(args + [str(results), f"{target}:/workspace/resume-results.jsonl"], timeout=600)
+            rp.run(scp + [str(results), f"{target}:/workspace/resume-results.jsonl"], timeout=600)
         except Exception as exc:
             # Resume data is an optimization; losing it only means the pod
             # redoes work it would otherwise have skipped.

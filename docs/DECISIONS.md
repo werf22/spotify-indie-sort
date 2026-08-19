@@ -1076,3 +1076,32 @@ Fixed with a launchd agent (`~/Library/LaunchAgents/com.jakub.podreaper.plist`,
 reboot, with no terminal and no AI session involved. **Proven, not assumed:**
 the running reaper was killed with `kill -9` (pid 90375) and launchd had a new
 one up 30 s later (pid 90819) — a guard nobody has seen fire is not a guard.
+
+## D-065 — five days of pods that analysed nothing (2026-08-20)
+
+The last full-audio row landed **2026-08-14 08:37**. Every pod created since was
+billed, ran, and terminated with `rows=0`. The logs held the answer in one line,
+repeated: `scp: lost connection`. **555 upload attempts, zero successes.**
+
+**Cause.** A shard bundle is ~1.35 GB and this uplink measures ~685 KB/s, so one
+`scp` must hold a single session open for ~34 minutes — while the upload itself
+saturates the very link its SSH keepalives ride on (`ServerAliveInterval=15`,
+`CountMax=4` → dropped after 60 s of delayed replies). The transfer strangles
+itself, and because `scp` has no resume, all three retries restarted from byte
+zero and died at the same place. This is D-049's lesson one level down: we
+saturated our own control channel.
+
+**Fix — `push_bundle()` in `runpod_full_shard.py`.** The bundle now goes in 64 MB
+chunks written straight into place with `dd seek=`, which makes each chunk
+idempotent. After any failure the pod is asked how many bytes it already holds
+and the transfer continues from exactly there — a drop costs ~90 s, not 34
+minutes. The whole bundle is then `sha256sum`-checked ON THE POD before any GPU
+time is spent on it.
+
+**Verified, not assumed:** the first bundle went up as `470 → 1351 MB` with no
+retries and logged `bundle verified on the pod` — after 555 consecutive failures.
+
+**Also fixed:** while diagnosing, `pkill` on the orchestrator kept "failing" —
+it is supervised by launchd (`com.jakub.music-db-cloud-production`), which
+restarts it. Good design, but it means stopping the pipeline needs
+`launchctl unload`, not `pkill`. Noted here because it cost time twice.
