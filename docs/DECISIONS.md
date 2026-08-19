@@ -1063,3 +1063,16 @@ wins with a deterministic tiebreak — never file order.
 Reversible: every comment tag is copied to `comment_pin_backup` before it is
 touched, and `--restore` puts each one back, including deleting the tag again
 where there was none.
+
+## D-064 — the money guard now outlives the session (2026-08-19)
+
+`pod_reaper.py` is the only thing that terminates RunPod pods billing without
+doing work. It died twice this month simply because the shell that started it
+went away, and nothing noticed — the exact failure D-049 was written about, one
+level up: the watchdog had no watchdog.
+
+Fixed with a launchd agent (`~/Library/LaunchAgents/com.jakub.podreaper.plist`,
+`KeepAlive`), so macOS restarts it within seconds of any death, including a
+reboot, with no terminal and no AI session involved. **Proven, not assumed:**
+the running reaper was killed with `kill -9` (pid 90375) and launchd had a new
+one up 30 s later (pid 90819) — a guard nobody has seen fire is not a guard.
