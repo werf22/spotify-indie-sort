@@ -4,7 +4,40 @@ This is the canonical cold-start document for the next AI agent. Read it before
 changing code, restarting services, creating cloud resources, calling a paid API,
 or modifying Spotify playlists.
 
-**STATUS 2026-08-14 (early morning) — running unattended, two known defects.**
+**STATUS 2026-08-20 — analysis RUNNING again after five dead days.**
+
+**DO THIS NOW:** watch that rows keep landing
+(`SELECT COUNT(*) FROM audio_analysis_artifacts WHERE stage LIKE '%_full'`) and
+that spend stays explained (`pipeline_status.py`). Nothing else is urgent.
+
+**WHAT WAS BROKEN (D-065):** every pod from 14-19 Aug analysed NOTHING. `scp`
+of the 1.35 GB bundle died with "lost connection" 555 times in a row, zero
+successes: one 34-minute session on a 685 KB/s uplink that the upload itself
+saturates, and scp cannot resume, so each retry restarted at byte zero. Fixed
+with `push_bundle()` — 64 MB chunks written via `dd seek=`, resumed from the
+pod's own byte count, then sha256-verified on the pod. Proven: first bundle rose
+470 -> 1351 MB with no retry, logged `bundle verified on the pod`, and 800 rows
+(200 tracks x 4 stages) landed.
+
+**MONEY, honestly:** 37,810 tracks still need analysis (35,283 on T7, 2,678 local
+on the Mac). At the measured $0.0014/track that is **~$53**. The balance after
+the owner's top-up is ~$10.6, i.e. roughly 7,000 tracks. The pipeline parks
+itself at the $1 floor (`MIN_BALANCE`) and waits — it never auto-funds.
+
+**GUARDS (both supervised, neither depends on an AI session):**
+- `com.jakub.podreaper` (launchd, KeepAlive) runs `pod_reaper.py`. It had died
+  silently twice with the session that started it. Proven by killing pid 90375
+  and watching launchd start 90819 thirty seconds later (D-064).
+- `com.jakub.music-db-cloud-production` (launchd) runs the orchestrator. NOTE:
+  `pkill` does not stop it — launchd restarts it. Use `launchctl unload`.
+
+**THE COMMENT COLUMN IS FIXED (D-063):** the owner's "06 Energy" labels were
+being replaced by musical keys ("Em") one track per play, because most files
+carried a key in their own comment tag and Traktor re-reads file tags on load.
+577 already-lost labels were recovered from Traktor's own backups; the collection
+value is now written INTO 30,471 files, so a re-import changes nothing. 99.7%+ of
+a 1,200-file sample agrees. Reversible via `traktor_comment_pin.py --restore`.
+603 entries flipped before the oldest surviving backup and are NOT recoverable.
 
 **THE HARD LIMIT, state it before promising anything:** the uplink measures
 685 KB/s. 25,665 tracks remain, which is 136 GB and ~55 h of pure upload. GPU is
