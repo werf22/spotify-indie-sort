@@ -54,12 +54,19 @@ LOG = ROOT / "data" / "pod_reaper.log"
 
 # --- POLICY (safe to tweak) ----------------------------------------------
 REAP_INTERVAL = 120     # seconds between passes
-MAX_POD_MINUTES = 75    # HARD time box: a shard needs ~12 min setup + ~30 min work
+MAX_POD_MINUTES = 100   # HARD time box. Measured reality after D-065: the
+                        # 1.4 GB bundle needs ~34 min on a 685 KB/s uplink and
+                        # the four stages ~25 min, so a HEALTHY shard runs ~60
+                        # min. At the old 75 a slow night killed pods minutes
+                        # before they delivered. Worst case a wedged pod now
+                        # bills 100 min (~$0.37) before the box ends it.
 SETUP_GRACE_MIN = 45    # no results expected before this. Must exceed the real
                         # upload time or the reaper kills pods mid-transfer: at
                         # the measured 685 KB/s a 1.3 GB bundle needs ~32 min,
                         # and killing then throws away everything already sent.
 NO_PROGRESS_MIN = 12    # after grace, results must grow within this or the pod dies
+# Statuses that mean the runner is actively doing paid work.
+WORKING_STATUSES = {"ssh_ready", "uploading", "uploaded", "analysis_started"}
 UNMANAGED_GRACE_MIN = 3 # a pod whose shard has no runner process (covers spawn races)
 
 
@@ -159,6 +166,21 @@ def judge(pod: dict, runners: set[str], runners_known: bool) -> tuple[str, str]:
     # A pod nobody is driving cannot finish, collect, or terminate itself.
     if runners_known and shard.name not in runners and age > UNMANAGED_GRACE_MIN:
         return "KILL", f"no runner process owns {shard.name} (age {age:.0f} min)"
+
+    # The runner records every step it completes (created -> ssh_ready ->
+    # uploaded -> analysis_started) in runpod_state.json. That file is the ONLY
+    # early proof a pod is working: results.jsonl does not appear until the very
+    # end, so judging on results alone made a healthy shard look dead for its
+    # whole ~34 min upload and ~25 min analysis, and the 45+12 min rule killed
+    # it at 57 min — right before it would have delivered. A pod whose runner is
+    # still reporting progress is working; one whose state has gone quiet is not.
+    try:
+        state_idle = (time.time() - state_file.stat().st_mtime) / 60
+    except OSError:
+        state_idle = 1e9
+    if state.get("status") in WORKING_STATUSES and state_idle <= NO_PROGRESS_MIN:
+        return "WORKING", (f"runner reported '{state.get('status')}' "
+                           f"{state_idle:.0f} min ago (age {age:.0f} min)")
 
     size, file_idle = results_progress(shard)
     # A pod cannot be blamed for time that predates it. A RESUMED shard already
