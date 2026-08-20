@@ -441,9 +441,20 @@ def connect_readonly(path: Path = DB_PATH) -> sqlite3.Connection:
     HOW TO TWEAK: busy_timeout is how long a reader waits (ms) when WAL
     checkpointing briefly blocks readers; 30s is generous.
     """
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=30)
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=30)
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("SELECT 1")          # force the WAL index open NOW
+    except sqlite3.OperationalError:
+        # A WAL database with NO live writer cannot create its -shm index from a
+        # mode=ro handle, and fails with the bare, misleading "unable to open
+        # database file". That is the normal state between shard runs, so the
+        # orchestrator kept dropping into `retrying` with nothing actually wrong.
+        # A plain handle opens fine; monitoring callers only SELECT, so it never
+        # takes the write lock that mode=ro exists to avoid.
+        conn = sqlite3.connect(path, timeout=30)
+        conn.execute("PRAGMA busy_timeout=30000")
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout=30000")
     return conn
 
 
