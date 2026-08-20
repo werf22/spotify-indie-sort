@@ -62,7 +62,13 @@ CYCLE_SECONDS = 45
 # quietly ate the free space down to 29 GiB while eight shards were staged, so
 # stop staging new ones when headroom gets thin. Running shards are never
 # interrupted — they finish and their bundles are pruned on import.
-MIN_FREE_GIB_TO_BUILD = 45.0
+MIN_FREE_GIB_TO_BUILD = 25.0
+# 45 GiB reserved thirty times the ~3 GB a shard actually stages, and with the
+# clip factory filling the same disk it deadlocked: prep ran the free space down
+# to 40 GiB, the builder refused to start below 45, and nothing could ever
+# consume the clips to free space again. 25 GiB still leaves ~8x headroom for a
+# bundle plus its build-ahead spare. The clip factory is the greedy one and must
+# yield first (its own floor is 70 GiB, well above this).
 
 
 def utcnow() -> str:
