@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Reclaims disk from FINISHED analysis work every 20 minutes. Without it
+       the workspace grows until the orchestrator falls below its 45 GiB build
+       floor and silently stops building shards, which is exactly how five days
+       of backlog turned into a stalled pipeline (D-066). Deletes only clips
+       whose track has all four stages, and shard dirs where every track does. -->
+  <key>Label</key><string>com.jakub.music-db-gc</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/jakub/Appky Claude/spotify-indie-sort/.venv/bin/python</string>
+    <string>/Users/jakub/Appky Claude/spotify-indie-sort/gc_analysis_workspace.py</string>
+    <string>--apply</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/jakub/Appky Claude/spotify-indie-sort</string>
+  <key>StartInterval</key><integer>1200</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/jakub/Appky Claude/spotify-indie-sort/data/gc.log</string>
+  <key>StandardErrorPath</key><string>/Users/jakub/Appky Claude/spotify-indie-sort/data/gc.log</string>
+</dict>
+</plist>

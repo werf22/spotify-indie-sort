@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The clip factory: transcodes source audio (Mac + T7) into the clips the
+       GPU shards are built from. It yields at 70 GiB free so the shard builder
+       always keeps its own 45 GiB, and it skips tracks whose source is absent,
+       so unplugging T7 pauses only T7's tracks and reconnecting resumes them
+       with no intervention. KeepAlive because this must survive a dead terminal
+       and a closed laptop lid — it stalled for five days last time nobody
+       supervised it. -->
+  <key>Label</key><string>com.jakub.music-db-prep</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/jakub/Appky Claude/spotify-indie-sort/prep_loop.sh</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/jakub/Appky Claude/spotify-indie-sort</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>60</integer>
+  <key>StandardOutPath</key><string>/Users/jakub/Appky Claude/spotify-indie-sort/data/prep_agent.log</string>
+  <key>StandardErrorPath</key><string>/Users/jakub/Appky Claude/spotify-indie-sort/data/prep_agent.log</string>
+</dict>
+</plist>

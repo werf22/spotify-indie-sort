@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Keeps pod_reaper.py alive FOREVER, independent of any terminal or AI
+       session. The reaper is what terminates RunPod pods that are billing
+       without doing work; twice it died silently when the session that started
+       it ended, leaving paid pods unwatched. KeepAlive means macOS restarts it
+       within seconds, whatever kills it, including a reboot. -->
+  <key>Label</key><string>com.jakub.podreaper</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/jakub/Appky Claude/spotify-indie-sort/.venv/bin/python</string>
+    <string>/Users/jakub/Appky Claude/spotify-indie-sort/pod_reaper.py</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/jakub/Appky Claude/spotify-indie-sort</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>30</integer>
+  <key>StandardOutPath</key><string>/Users/jakub/Appky Claude/spotify-indie-sort/data/pod_reaper.launchd.log</string>
+  <key>StandardErrorPath</key><string>/Users/jakub/Appky Claude/spotify-indie-sort/data/pod_reaper.launchd.log</string>
+  <key>EnvironmentVariables</key>
+  <dict><key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+</dict>
+</plist>
