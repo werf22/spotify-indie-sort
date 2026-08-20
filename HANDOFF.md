@@ -19,6 +19,21 @@ pod's own byte count, then sha256-verified on the pod. Proven: first bundle rose
 470 -> 1351 MB with no retry, logged `bundle verified on the pod`, and 800 rows
 (200 tracks x 4 stages) landed.
 
+**DO NOT RESTART THE ORCHESTRATOR CASUALLY.** `launchctl kickstart -k` kills its
+child runners, which orphans every pod they were driving. The reaper then
+correctly terminates those pods — but a pod 26 minutes into analysis, whose
+1.4 GB upload already cost ~34 min of uplink, is thrown away. Four pods were
+lost that way on 20 Aug. Change code, then wait for the current shards to finish
+before restarting, unless the running code is actually broken.
+
+**PREP IS DELIBERATELY STOPPED.** `com.jakub.music-db-prep` is unloaded. 13,758
+tracks already have clips — about 69 shards, far more than the uplink can carry
+soon. The clip factory writes ~6.5 MB per track into the SAME disk the shard
+builder needs, and it starved the builder into a deadlock (prep ran free space
+to 40 GiB, builder refused below 45, nothing could consume clips to free space).
+Re-enable it with `launchctl load ~/Library/LaunchAgents/com.jakub.music-db-prep.plist`
+only once the backlog is drained and free space is comfortably above 70 GiB.
+
 **MONEY, honestly:** 37,810 tracks still need analysis (35,283 on T7, 2,678 local
 on the Mac). At the measured $0.0014/track that is **~$53**. The balance after
 the owner's top-up is ~$10.6, i.e. roughly 7,000 tracks. The pipeline parks
