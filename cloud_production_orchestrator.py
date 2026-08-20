@@ -21,12 +21,13 @@ import csv
 import fcntl
 import json
 import shutil
+import sqlite3
 import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from musicdb import connect_readonly
+from musicdb import connect_readonly, DB_PATH
 from runpod_full_shard import required_pairs, successful
 
 
@@ -120,12 +121,28 @@ def pending_pool() -> int:
     ids = [i for i in ids if i]
     if not ids:
         return 0
-    with connect_readonly() as db:
-        finished = {r[0] for r in db.execute(
-            """SELECT spotify_id FROM audio_analysis_artifacts
-               WHERE stage IN ('rhythm_full','maest_full','essentia_full','clap_full')
-               GROUP BY spotify_id HAVING COUNT(DISTINCT stage)=4""")}
-    return sum(1 for i in ids if i not in finished)
+    # NOT connect_readonly(): a WAL database with no live writer cannot
+    # materialise its -shm from a mode=ro handle and fails with the bare
+    # "unable to open database file" — which put the orchestrator into
+    # `retrying` the moment no shard was writing. A plain connection reads
+    # fine and, because nothing here runs DDL, never takes the write lock.
+    for attempt in range(3):
+        try:
+            db = sqlite3.connect(DB_PATH, timeout=60)
+            try:
+                db.execute("PRAGMA busy_timeout=60000")
+                finished = {r[0] for r in db.execute(
+                    """SELECT spotify_id FROM audio_analysis_artifacts
+                       WHERE stage IN ('rhythm_full','maest_full','essentia_full','clap_full')
+                       GROUP BY spotify_id HAVING COUNT(DISTINCT stage)=4""")}
+            finally:
+                db.close()
+            return sum(1 for i in ids if i not in finished)
+        except sqlite3.OperationalError:
+            if attempt == 2:
+                raise
+            time.sleep(2 * (attempt + 1))
+    return 0
 
 
 def completed_count() -> int:
