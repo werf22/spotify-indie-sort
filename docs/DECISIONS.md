@@ -1131,3 +1131,40 @@ had their clip, zero missing.
 upload fix cost **$1.12 — $0.00047/track**. The old $0.0014 figure was inflated
 by the wasted spend it averaged in. Finishing all 37,810 remaining tracks is
 therefore ~$18, not ~$53.
+
+## D-067 — the reaper was killing healthy pods minutes before they delivered (2026-08-20)
+
+With uploads fixed, shards still died. The reaper judged "is this pod working?"
+by growth of `results.jsonl` — but that file does not appear until the run is
+well under way, so a healthy shard looked dead for its entire ~34 min upload.
+With `SETUP_GRACE_MIN=45` + `NO_PROGRESS_MIN=12` the verdict landed at 57 min,
+and a healthy shard now needs ~60 (34 upload + ~25 analysis). The guard was
+destroying exactly the work it existed to protect.
+
+**Fix.** The runner already records each step it completes in
+`runpod_state.json` (`ssh_ready` -> `uploaded` -> `analysis_started`). The reaper
+now treats a recent state update in one of those statuses as proof of work, and
+falls back to the results file otherwise. A pod whose runner has gone quiet is
+still reaped; one that is mid-upload is not. `MAX_POD_MINUTES` also went 75 ->
+100 to match measured reality (worst case a wedged pod bills ~$0.37).
+
+**Proven in production:** shard-0339 sat at age 50 min reporting
+`analysis_started`, with a 246 MB results file growing — the old rule would have
+terminated it at 57 min, minutes before delivery.
+
+**Two more defects found the same hour.**
+`connect_readonly()` opened `mode=ro`, which cannot create the WAL index when no
+writer exists — the normal state between shard runs — so the orchestrator kept
+dropping into `retrying` with nothing wrong. It now falls back to a plain handle
+(monitoring callers only SELECT, so no write lock is taken).
+`balance()` mapped a missing `clientBalance` field to `$0.00` via `or 0`, which
+reads as "out of credit" and parks the pipeline. Observed live: the status tool
+reported $0.00 and 0 pods while the account held $9.37 and two pods were
+analysing. A read failure now raises so the caller retries.
+
+**Operational note, learned the expensive way:** restarting the orchestrator
+kills its child runners and orphans their pods. Four pods were lost that way
+today, two of them 26 minutes into analysis, each having already spent ~34 min
+of uplink. Their results were recovered by hand with
+`import_full_audio_results.py` (+38 fully analysed tracks). Change code, then
+WAIT for running shards before restarting.
