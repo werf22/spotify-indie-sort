@@ -1105,3 +1105,29 @@ retries and logged `bundle verified on the pod` — after 555 consecutive failur
 it is supervised by launchd (`com.jakub.music-db-cloud-production`), which
 restarts it. Good design, but it means stopping the pipeline needs
 `launchctl unload`, not `pkill`. Noted here because it cost time twice.
+
+## D-066 — "waiting_for_full_tracks" while 12,256 prepared tracks sat idle (2026-08-20)
+
+With the upload fixed, the orchestrator still built nothing and reported
+`waiting_for_full_tracks`. Two independent blockers, both silent:
+
+**1. A counting bug.** The build gate read `pool = ready - done`, where `ready`
+counts rows in the CURRENT manifest (14,656) and `done` counts every track ever
+analysed (33,868). Once the lifetime total passed the manifest size the
+subtraction went permanently negative and clamped to zero, so the orchestrator
+concluded there was no work while 12,256 tracks with clips already on disk
+waited. Replaced with `pending_pool()`, which compares the manifest against the
+finished set directly — the two numbers now mean the same thing.
+
+**2. The disk, not money.** A shard is only built above `MIN_FREE_GIB_TO_BUILD`
+(45 GiB) and only 12.9 GiB were free: five broken days had piled up 96 GB of
+staged clips plus 20 GB of shard directories, each holding a tar AND a second
+copy of the same clips. `gc_analysis_workspace.py` reclaimed **56.7 GB** — a clip
+only when its track has all four stages, a shard directory only when EVERY track
+in its manifest does. Verified after the sweep: all 12,256 pending tracks still
+had their clip, zero missing.
+
+**Revised cost, measured not estimated:** the 2,400 tracks analysed since the
+upload fix cost **$1.12 — $0.00047/track**. The old $0.0014 figure was inflated
+by the wasted spend it averaged in. Finishing all 37,810 remaining tracks is
+therefore ~$18, not ~$53.

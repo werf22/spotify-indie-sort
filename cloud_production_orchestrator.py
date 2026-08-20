@@ -103,6 +103,31 @@ def ready_count() -> int:
         return sum(1 for _ in csv.DictReader(handle))
 
 
+def pending_pool() -> int:
+    """Prepared tracks that still need analysing.
+
+    NOT `ready - done`. `ready` counts rows in the CURRENT manifest while `done`
+    counts every track ever analysed, so once the lifetime total passed the
+    manifest size the subtraction went negative and clamped to zero — the
+    orchestrator reported "waiting_for_full_tracks" and built nothing while
+    12,256 tracks with clips already on disk sat idle. Compare the manifest
+    against the finished set directly; the two numbers then mean the same thing.
+    """
+    if not MANIFEST.is_file():
+        return 0
+    with MANIFEST.open(encoding="utf-8", newline="") as handle:
+        ids = [row.get("spotify_id") for row in csv.DictReader(handle)]
+    ids = [i for i in ids if i]
+    if not ids:
+        return 0
+    with connect_readonly() as db:
+        finished = {r[0] for r in db.execute(
+            """SELECT spotify_id FROM audio_analysis_artifacts
+               WHERE stage IN ('rhythm_full','maest_full','essentia_full','clap_full')
+               GROUP BY spotify_id HAVING COUNT(DISTINCT stage)=4""")}
+    return sum(1 for i in ids if i not in finished)
+
+
 def completed_count() -> int:
     with connect_readonly() as db:
         return int(db.execute(
@@ -317,7 +342,7 @@ def main() -> None:
                         else:
                             if shutil.disk_usage(ROOT).free / 1024**3 < MIN_FREE_GIB_TO_BUILD:
                                 break  # no headroom to stage another bundle
-                            pool = max(0, ready - done)
+                            pool = pending_pool()
                             built = build(SHARD_SIZE if pool >= SHARD_SIZE else 1)
                             if built is None:
                                 break
@@ -329,7 +354,7 @@ def main() -> None:
                 # the spare costs nothing until a runner picks it up).
                 if target and len(active) >= target:
                     spare = [s for s in incomplete_shards() if s not in active]
-                    pool = max(0, ready - done - len(active) * SHARD_SIZE)
+                    pool = max(0, pending_pool() - len(active) * SHARD_SIZE)
                     if (not spare and pool >= 1
                             and shutil.disk_usage(ROOT).free / 1024**3 >= MIN_FREE_GIB_TO_BUILD):
                         build(SHARD_SIZE if pool >= SHARD_SIZE else 1)
