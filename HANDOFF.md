@@ -26,13 +26,11 @@ correctly terminates those pods — but a pod 26 minutes into analysis, whose
 lost that way on 20 Aug. Change code, then wait for the current shards to finish
 before restarting, unless the running code is actually broken.
 
-**PREP IS DELIBERATELY STOPPED.** `com.jakub.music-db-prep` is unloaded. 13,758
-tracks already have clips — about 69 shards, far more than the uplink can carry
-soon. The clip factory writes ~6.5 MB per track into the SAME disk the shard
-builder needs, and it starved the builder into a deadlock (prep ran free space
-to 40 GiB, builder refused below 45, nothing could consume clips to free space).
-Re-enable it with `launchctl load ~/Library/LaunchAgents/com.jakub.music-db-prep.plist`
-only once the backlog is drained and free space is comfortably above 70 GiB.
+**PREP IS RUNNING AGAIN, and can no longer deadlock.** The clip factory
+(`com.jakub.music-db-prep`) yields at 70 GiB free while the shard builder needs
+only 25 GiB, so prep always leaves the builder room. It deadlocked on 20 Aug
+only because the builder floor was 45 GiB: prep ran free space to 40, the
+builder refused to start, and nothing could consume clips to free space again.
 
 **MONEY, honestly:** 37,810 tracks still need analysis (35,283 on T7, 2,678 local
 on the Mac). At the measured $0.0014/track that is **~$53**. The balance after
@@ -54,8 +52,11 @@ value is now written INTO 30,471 files, so a re-import changes nothing. 99.7%+ o
 a 1,200-file sample agrees. Reversible via `traktor_comment_pin.py --restore`.
 603 entries flipped before the oldest surviving backup and are NOT recoverable.
 
-**THE HARD LIMIT, state it before promising anything:** the uplink measures
-685 KB/s. 25,665 tracks remain, which is 136 GB and ~55 h of pure upload. GPU is
+**THE UPLINK IS FASTER THAN THE DOCS SAY.** The 685 KB/s figure quoted
+everywhere is stale. Measured 20 Aug from pod-creation to analysis-start across
+five shards: median 20 min for a ~1.35 GB bundle, i.e. ~1.15 MB/s. That median
+is also the honest overhead number — every pod bills for ~20 min before its GPU
+does anything, which is the single biggest cost lever left. 25,665 tracks remain, which is 136 GB and ~55 h of pure upload. GPU is
 NOT the constraint ($13 for the whole remainder) and neither is credit ($19.40,
 28 h of running). An overnight window carries ~25 GB, i.e. 4,000-5,000 tracks.
 Any plan that promises "all of it by morning" is wrong on arithmetic.
