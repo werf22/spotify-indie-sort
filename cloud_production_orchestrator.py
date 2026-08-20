@@ -99,8 +99,19 @@ def ctl_json(*args: str, timeout: int = 60):
 
 
 def balance() -> tuple[float, float]:
+    """Account balance and current spend.
+
+    A MISSING field is not a zero balance. `or 0` turned any partial or empty
+    API response into "$0.00", which reads as "out of credit" and parks the whole
+    pipeline in waiting_for_user_credit — unattended, that wastes the night for a
+    transient API blip. Seen live on 20 Aug: the status tool reported $0.00 and
+    0 pods while the account actually held $9.37 and two pods were analysing.
+    Raising instead lets the caller retry, which is what a read failure deserves.
+    """
     data = ctl_json("user")
-    return float(data.get("clientBalance") or 0), float(data.get("currentSpendPerHr") or 0)
+    if not isinstance(data, dict) or "clientBalance" not in data:
+        raise RuntimeError(f"balance read returned no clientBalance: {str(data)[:200]}")
+    return float(data["clientBalance"] or 0), float(data.get("currentSpendPerHr") or 0)
 
 
 def ready_count() -> int:
