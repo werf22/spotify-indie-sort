@@ -1168,3 +1168,37 @@ today, two of them 26 minutes into analysis, each having already spent ~34 min
 of uplink. Their results were recovered by hand with
 `import_full_audio_results.py` (+38 fully analysed tracks). Change code, then
 WAIT for running shards before restarting.
+
+## D-068 — similarity search: "find me the same track, 50 times" (2026-08-21)
+
+First use of the audio EMBEDDINGS the GPU pass has been producing all along.
+`similar_tracks.py` ranks the library against one reference track using all three
+models — CLAP (512d, mood/texture), MAEST (400d, genre/style) and Essentia
+effnet (1280d, general music) — over the ~42,900 tracks that have them.
+
+**Why all three and not the tags.** Tags are a lossy summary; the embeddings are
+what the models actually heard. And each model is confidently wrong in its own
+way, so a track ranking high on all three is similar in every sense we can
+measure. Tag overlap (Jaccard) and BPM/key/rhythm distance are added as smaller
+terms, so the audio decides and the metadata breaks ties.
+
+**The one real subtlety: z-scores, not raw cosines.** Each model's similarities
+are standardised across the whole library before averaging. Raw cosines are not
+comparable between models — one may spread every track over 0.85-0.99 and
+another over 0.1-0.6, and a plain average would silently let the narrow model
+dominate the ranking.
+
+**Two bugs caught before they reached Spotify.**
+The `MODELS` dict held model ids abbreviated from a truncated console dump, so
+every SQL match found nothing and all three models were "skipped" — the run
+produced zero results rather than wrong ones, which is the good failure.
+Worse: `--spotify-only` tested `len(sid) != 22`, but a local-only id looks like
+`local_c1e89649e0ddf452` — **exactly 22 characters**. Nine local files reached the
+first playlist build; Spotify would have rejected them. The test now also checks
+the `local_` prefix.
+
+**Result for iLee — Lila (125 BPM, E-minor, four-on-the-floor):** 50 tracks,
+tag overlap 0.44-0.70, nearly all afro/organic house at 120-125 BPM and mostly
+E-minor. iLee's own "Malaya" surfaced at #49 without any artist hint — a useful
+sanity check. Versions of one song are collapsed to the best-scoring one, since
+"Samsara" alone had taken three of the fifty slots.
