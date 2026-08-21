@@ -50,9 +50,11 @@ def main() -> None:
                           dedupe=not args.no_dedupe)
     print(f"\ntop {len(rows)}:")
     for i, r in enumerate(rows, 1):
-        print(f"{i:3}. {r['score']:6.2f} z={r['audio_z']:5.2f} tag={r['tag_overlap']:.2f} "
+        w = r.get("why", {})
+        print(f"{i:3}. {r['score']:6.2f} audio={w.get('audio', 0):5.2f} tag={w.get('tags', 0):.2f} "
+              f"rhythm={w.get('rhythm', 0):6.2f} key={w.get('key')} "
               f"{str(r['bpm'] or ''):>5} {str(r['key'] or ''):>9}  "
-              f"{r['artist'][:26]:28} {r['title'][:40]}")
+              f"{r['artist'][:24]:26} {r['title'][:36]}")
     if args.json_out:
         Path(args.json_out).write_text(json.dumps(rows, indent=1))
         print(f"\nwrote {args.json_out}")

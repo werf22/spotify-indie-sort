@@ -1238,3 +1238,51 @@ app's own endpoint — `5RoRKzJovcx9ReXVq2Vvrm`, 100 added, 0 skipped.
 `FILE_STRUCTURE.md` are still unfilled templates from the project scaffold, so
 these new files are recorded here and in HANDOFF instead. Filling them is its
 own task, not something to fake in passing.
+
+## D-070 — full transport controls, and a six-signal similarity score (2026-08-21)
+
+**Player.** The audio element had no controls at all — it could start a track and
+nothing else. There is now a real transport bar: play/pause, previous/next,
+a draggable seek bar with elapsed/total time, volume, auto-advance at the end of
+a track, and keyboard control (space, left/right seek 10 s, up/down change
+track). Typing in a field never steals those keys.
+
+Two details worth keeping: the seek slider sets a `seeking` flag while dragged,
+otherwise `timeupdate` fights the user's drag and the handle jumps back; and
+seeking only works because `/api/audio` answers HTTP Range with 206 (D-069).
+
+**Scoring, rebuilt.** The old score was embeddings plus a flat tag Jaccard. It
+now combines SIX independent opinions, each standardised across the candidates
+before being weighted:
+
+| signal | what it compares | weight |
+|---|---|---|
+| audio | 3 embedding models — how it sounds | 1.00 |
+| tags | weighted overlap; genre/style count more than a loudness band | 0.60 |
+| rhythm | 12 drum numbers: four-on-floor, syncopation, tempo stability, kick placement | 0.50 |
+| features | energy, danceability, valence, acousticness, instrumentalness, speechiness, liveness | 0.40 |
+| key | Camelot compatibility — same key 1.0, neighbour or relative major/minor 0.6 | 0.30 |
+| bpm | tempo distance | 0.30 |
+
+**Why standardise each first:** the six live on different scales — a cosine sits
+near 0.9, a tag overlap near 0.05, a bpm penalty is negative. Added raw,
+whichever happened to have the widest spread would decide the ranking and the
+weights would be decoration.
+
+**Missing data never punishes.** A track with no rhythm analysis scores exactly
+average on that component instead of sinking, so it still competes on the
+signals it does have. That matters while 31,000 tracks are still unanalysed.
+
+**Faster, not slower**, despite doing far more: the tag comparison became an
+INVERTED index (look up only the reference's ~65 tags, rather than intersecting
+sets against 42,900 tracks) and every component is a numpy operation over one
+master row order. A 100-track query went 0.69 s -> **0.36 s**.
+
+**Verified in the browser, not by assertion:** played, paused (button flipped to
+▶), seeked to 0:90 and watched the slider land at 423/1000 of a 212 s track,
+resumed at 91.1 s, pressed next and saw the row highlight and now-playing move
+to track 2. The result set also tightened visibly — the top ten are now nearly
+all E-minor within 0-4% BPM of the reference.
+
+Loading grew from 63 s to ~72 s for the extra signals, still once per launch and
+in the background.
