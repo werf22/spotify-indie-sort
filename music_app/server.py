@@ -28,6 +28,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import db
+import similar_api
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -93,6 +94,24 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(db.stats())
             if url.path == "/api/pick":
                 return self._send({"paths": pick_paths(query.get("folders") == "1")})
+            if url.path in ("/similar", "/similar.html"):
+                return self._send((HERE / "similar.html").read_bytes(),
+                                  content_type="text/html")
+            if url.path == "/api/similar/status":
+                return self._send(similar_api.engine.status())
+            if url.path == "/api/similar/search":
+                return self._send({"results": similar_api.engine.search(
+                    query.get("q", ""), limit=int(query.get("limit", 25)))})
+            if url.path == "/api/similar":
+                return self._send({"results": similar_api.engine.similar(
+                    query["id"], limit=int(query.get("limit", 100)),
+                    spotify_only=query.get("spotify_only", "1") == "1",
+                    bpm_window=float(query.get("bpm_window", 0) or 0),
+                    same_key=query.get("same_key") == "1")})
+            if url.path == "/api/audio":
+                # Streams the file itself; must not go through _send(), which
+                # buffers a whole body and cannot answer a Range request.
+                return similar_api.audio_response(self, query["id"])
             self._send({"error": "not found"}, 404)
         except Exception as exc:                       # never let the UI see a blank failure
             self._send({"error": f"{type(exc).__name__}: {exc}"}, 500)
@@ -121,6 +140,10 @@ class Handler(BaseHTTPRequestHandler):
                     run_detached([str(ROOT / ".venv/bin/python"), "index_audio_files.py",
                                   "--roots", ":".join(paths)])
                 return self._send({"ok": True, "queued": len(paths)})
+            if url.path == "/api/playlist":
+                return self._send(similar_api.create_playlist(
+                    body.get("name") or "Similar tracks",
+                    body.get("description") or "", body.get("ids") or []))
             if url.path == "/api/resume":
                 run_detached([str(ROOT / ".venv/bin/python"), "index_audio_files.py"])
                 run_detached([str(ROOT / ".venv/bin/python"), "promote_unmatched_local_tracks.py"])
@@ -131,6 +154,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    # Load the embeddings in the BACKGROUND. It takes about a minute, and doing
+    # it lazily on the first click would look like the app had frozen.
+    threading.Thread(target=similar_api.engine.warm, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     url = f"http://127.0.0.1:{PORT}/"
     print(f"Music database browser running at {url}")

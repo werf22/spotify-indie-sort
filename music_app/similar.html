@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<title>Similar Tracks</title>
+<style>
+  :root { --bg:#12131a; --panel:#1b1d27; --line:#2a2d3a; --ink:#e6e7ee; --dim:#8f93a8;
+          --accent:#6d8cff; --green:#1db954; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+         background:var(--bg); color:var(--ink); }
+  header { padding:14px 18px; background:var(--panel); border-bottom:1px solid var(--line);
+           position:sticky; top:0; z-index:10; }
+  h1 { margin:0 0 10px; font-size:17px; font-weight:650; letter-spacing:.2px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  input, select, button { background:#232636; color:var(--ink); border:1px solid var(--line);
+           border-radius:8px; padding:8px 12px; font-size:14px; font-family:inherit; }
+  input:focus { outline:2px solid var(--accent); }
+  button { cursor:pointer; } button:hover:not(:disabled) { border-color:var(--accent); }
+  button:disabled { opacity:.45; cursor:default; }
+  button.primary { background:var(--accent); color:#0b0d14; border-color:var(--accent); font-weight:600; }
+  button.spotify { background:var(--green); color:#04150b; border-color:var(--green); font-weight:600; }
+  #hits { margin-top:8px; display:none; background:#232636; border:1px solid var(--line);
+          border-radius:8px; max-height:260px; overflow:auto; }
+  #hits div { padding:8px 12px; cursor:pointer; border-bottom:1px solid var(--line); }
+  #hits div:hover { background:#2b2f42; }
+  #hits .no { color:var(--dim); }
+  #ref { margin-top:10px; color:var(--dim); }
+  #ref b { color:var(--ink); }
+  table { border-collapse:collapse; width:100%; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line);
+           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  th { color:var(--dim); font-weight:600; font-size:12px; text-transform:uppercase;
+       letter-spacing:.5px; position:sticky; top:0; background:var(--bg); }
+  tr:hover td { background:#191c28; }
+  tr.playing td { background:#1e2438; }
+  td.num { color:var(--dim); width:38px; }
+  .play { padding:3px 10px; border-radius:6px; font-size:13px; }
+  .bar { height:5px; background:#2a2d3a; border-radius:3px; overflow:hidden; width:70px; display:inline-block; }
+  .bar i { display:block; height:100%; background:var(--accent); }
+  footer { position:sticky; bottom:0; background:var(--panel); border-top:1px solid var(--line);
+           padding:10px 18px; display:flex; gap:12px; align-items:center; }
+  #toast { position:fixed; bottom:70px; left:50%; transform:translateX(-50%); background:#232636;
+           border:1px solid var(--accent); padding:10px 18px; border-radius:8px; display:none; z-index:60; }
+  #toast a { color:var(--accent); }
+  .muted { color:var(--dim); }
+  #embed { margin-left:auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Nájdi podobné tracky</h1>
+  <div class="row">
+    <input id="q" placeholder="Napíš interpreta alebo názov…" style="width:340px" autofocus>
+    <select id="limit">
+      <option value="100" selected>100 trackov</option>
+      <option value="50">50</option>
+      <option value="200">200</option>
+    </select>
+    <label class="muted"><input type="checkbox" id="spotifyOnly" checked> len zo Spotify</label>
+    <label class="muted"><input type="checkbox" id="sameKey"> rovnaká tónina</label>
+    <label class="muted">BPM ±<input id="bpm" type="number" value="0" min="0" max="20" style="width:62px"> %</label>
+  </div>
+  <div id="hits"></div>
+  <div id="ref"></div>
+</header>
+
+<table><thead><tr>
+  <th class="num">#</th><th>Interpret</th><th>Track</th><th>Zhoda</th>
+  <th>BPM</th><th>Tónina</th><th></th>
+</tr></thead><tbody id="body"></tbody></table>
+
+<footer>
+  <button id="make" class="spotify" disabled>Vytvor Spotify playlist</button>
+  <input id="plname" placeholder="Názov playlistu" style="width:280px">
+  <span id="status" class="muted"></span>
+  <span id="embed"></span>
+</footer>
+
+<audio id="player" style="display:none"></audio>
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const state = { ref:null, rows:[], playing:null };
+const toast = (html, ms=6000) => { const t=$("toast"); t.innerHTML=html; t.style.display="block";
+  clearTimeout(t._t); t._t=setTimeout(()=>t.style.display="none", ms); };
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const j = await r.json().catch(() => ({error:"server returned no JSON"}));
+  if (j.error) throw new Error(j.error);
+  return j;
+}
+
+// The embeddings take about a minute to load. Say so, instead of looking frozen.
+async function pollReady() {
+  try {
+    const s = await api("/api/similar/status");
+    if (s.error) { $("status").textContent = "Chyba: " + s.error; return; }
+    if (s.ready) { $("status").textContent = `pripravené — ${s.tracks.toLocaleString()} zanalyzovaných trackov`; return; }
+    $("status").textContent = "načítavam audio odtlačky… (raz za spustenie, ~1 min)";
+  } catch (e) { $("status").textContent = "server nedostupný"; }
+  setTimeout(pollReady, 2000);
+}
+
+let searchTimer;
+$("q").oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(doSearch, 250); };
+
+async function doSearch() {
+  const q = $("q").value.trim();
+  if (q.length < 2) { $("hits").style.display = "none"; return; }
+  const { results } = await api("/api/similar/search?q=" + encodeURIComponent(q));
+  $("hits").innerHTML = results.length ? results.map(r =>
+    `<div data-id="${r.spotify_id}" class="${r.analysed===false?'no':''}">
+       ${esc(r.artist)} — ${esc(r.title)} ${r.analysed===false?' · zatiaľ bez analýzy':''}</div>`
+  ).join("") : '<div class="no">nič sa nenašlo</div>';
+  $("hits").style.display = "block";
+  $("hits").querySelectorAll("div[data-id]").forEach(el =>
+    el.onclick = () => pick(el.dataset.id, el.textContent.trim()));
+}
+
+const esc = s => (s||"").replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
+
+async function pick(id, label) {
+  state.ref = id;
+  $("hits").style.display = "none";
+  $("q").value = label.replace(/ · zatiaľ bez analýzy$/, "");
+  $("ref").innerHTML = "hľadám podobné k <b>" + esc($("q").value) + "</b> …";
+  $("body").innerHTML = "";
+  $("make").disabled = true;
+  const params = new URLSearchParams({ id, limit:$("limit").value,
+    spotify_only: $("spotifyOnly").checked ? "1":"0",
+    same_key: $("sameKey").checked ? "1":"0", bpm_window: $("bpm").value || "0" });
+  try {
+    const { results } = await api("/api/similar?" + params);
+    state.rows = results;
+    render();
+    $("ref").innerHTML = `<b>${esc($("q").value)}</b> — ${results.length} najpodobnejších`;
+    $("plname").value = "Podobné na " + $("q").value;
+    $("make").disabled = results.length === 0;
+  } catch (e) {
+    $("ref").innerHTML = '<span style="color:#ff8080">' + esc(e.message) + "</span>";
+  }
+}
+
+function render() {
+  const max = state.rows.length ? state.rows[0].score : 1;
+  $("body").innerHTML = state.rows.map((r, i) => `
+    <tr data-id="${r.spotify_id}">
+      <td class="num">${i+1}</td>
+      <td>${esc(r.artist)}</td>
+      <td>${esc(r.title)}</td>
+      <td><span class="bar"><i style="width:${Math.max(4, Math.round(r.score/max*100))}%"></i></span></td>
+      <td class="muted">${r.bpm ?? ""}</td>
+      <td class="muted">${esc(r.key || "")}</td>
+      <td><button class="play">${r.has_file ? "▶ Prehraj" : "▶ Spotify"}</button></td>
+    </tr>`).join("");
+  $("body").querySelectorAll("tr").forEach(tr =>
+    tr.querySelector(".play").onclick = () => play(tr.dataset.id, tr));
+}
+
+function play(id, tr) {
+  const row = state.rows.find(r => r.spotify_id === id);
+  document.querySelectorAll("tr.playing").forEach(e => e.classList.remove("playing"));
+  tr.classList.add("playing");
+  if (row && row.has_file) {
+    // Local file = the WHOLE track, not a 30-second preview.
+    $("embed").innerHTML = "";
+    const p = $("player");
+    p.src = "/api/audio?id=" + encodeURIComponent(id);
+    p.play().catch(() => showEmbed(id));
+  } else {
+    showEmbed(id);
+  }
+}
+
+function showEmbed(id) {
+  $("player").pause();
+  $("embed").innerHTML = `<iframe src="https://open.spotify.com/embed/track/${id}"
+     width="320" height="80" frameborder="0" allow="autoplay; encrypted-media"></iframe>`;
+}
+
+$("make").onclick = async () => {
+  const ids = state.rows.map(r => r.spotify_id);
+  $("make").disabled = true;
+  $("status").textContent = "vytváram playlist…";
+  try {
+    const res = await api("/api/playlist", { method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ name: $("plname").value || "Similar tracks",
+        description: "Vytvorené z lokálnej hudobnej databázy podľa audio podobnosti.",
+        ids }) });
+    $("status").textContent = `hotovo — ${res.added} trackov`;
+    toast(`Playlist vytvorený (${res.added} trackov)` +
+          (res.skipped ? `, ${res.skipped} preskočených` : "") +
+          ` — <a href="${res.url}" target="_blank">otvoriť na Spotify</a>`, 15000);
+  } catch (e) {
+    $("status").textContent = "";
+    toast("Nepodarilo sa: " + esc(e.message), 10000);
+  }
+  $("make").disabled = false;
+};
+
+$("player").onended = () => document.querySelectorAll("tr.playing").forEach(e => e.classList.remove("playing"));
+pollReady();
+</script>
+</body>
+</html>

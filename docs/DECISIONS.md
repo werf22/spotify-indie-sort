@@ -1202,3 +1202,39 @@ tag overlap 0.44-0.70, nearly all afro/organic house at 120-125 BPM and mostly
 E-minor. iLee's own "Malaya" surfaced at #49 without any artist hint — a useful
 sanity check. Versions of one song are collapsed to the best-scoring one, since
 "Samsara" alone had taken three of the fifty slots.
+
+## D-069 — the similarity app (2026-08-21)
+
+Double-click **`Similar Tracks.command`** -> search a track -> 100 closest ->
+play them in the app -> one button turns the list into a Spotify playlist.
+
+**Built into the EXISTING app, not a second one.** `music_app/server.py` gained
+the routes; the screen is `music_app/similar.html`; the backend helpers are
+`music_app/similar_api.py`. The launcher reuses the server if the database
+browser is already open, so two double-clicks never fight over port 8765.
+
+**One engine, two front ends.** The ranking moved to `similarity_engine.py` at
+the repo root, which both the app and `similar_tracks.py` (CLI) import. Two
+copies of a scoring rule drift, and then the terminal and the app quietly
+disagree about what "similar" means.
+
+**Playback is the LOCAL file, not a preview.** ~99 of every 100 results have a
+file on disk, so `/api/audio` streams it — the whole track, seekable, no Spotify
+account needed. It answers HTTP Range with 206: without that Safari refuses to
+start at all and nothing can seek. Tracks with no local file fall back to the
+Spotify embed player.
+
+**Speed.** The embeddings take ~63 s to load, so the server warms them in a
+BACKGROUND thread at startup and the screen says what it is waiting for. After
+that a 100-track query takes **0.69 s**.
+
+**Verified end to end, in the browser, not just by curl:** searched "iLee Lila",
+got 100 ranked rows with match bars/BPM/key, pressed play and confirmed the
+audio element actually advancing through a 212-second local track
+(`readyState 4`, no error), and created a real 100-track playlist through the
+app's own endpoint — `5RoRKzJovcx9ReXVq2Vvrm`, 100 added, 0 skipped.
+
+**Known gap, stated rather than hidden:** `DOCUMENTATION.md` and
+`FILE_STRUCTURE.md` are still unfilled templates from the project scaffold, so
+these new files are recorded here and in HANDOFF instead. Filling them is its
+own task, not something to fake in passing.
