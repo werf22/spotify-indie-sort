@@ -1463,3 +1463,42 @@ distinctly: "Do mixu" returned five E-minor tracks in a row (the filter working)
 "Žáner a scéna" put three of iLee's own releases on top — which is precisely what
 a label signal does, and the clearest possible demonstration of why it is fenced
 off from the sound-only presets.
+
+## D-075 — the guard was killing pods minutes before they delivered (2026-08-22)
+
+Credit kept draining while `completed` sat at 43,668 for over an hour. The
+reaper log said it plainly, six times in a row:
+
+    KILL music-db-shard-0363: no results in 47 min (age 47 min, 0.0 MB pulled)
+    KILL music-db-shard-0350: no results in 46 min (age 46 min, 0.0 MB pulled)
+    KILL music-db-shard-0366: no results in 46 min (age 46 min, 0.0 MB pulled)
+
+Every one of them was minutes from finishing its upload.
+
+**My own fault, from D-067.** That change taught the reaper to accept a fresh
+`runpod_state.json` as proof of work — but `push_bundle` never WRITES the state
+while uploading. It reports `ssh_ready`, then goes silent for the whole
+transfer. With `UPLOAD_SLOTS=2` sharing one uplink a 1.5 GB bundle now takes
+~45 minutes, which is exactly when `SETUP_GRACE_MIN=45` expired. The guard then
+looked for a results file that cannot exist until the upload finishes, found
+0.0 MB, and killed a perfectly healthy pod. It had been doing this for hours
+while every status line said `running_shards`.
+
+**Fix, in two parts.** `push_bundle` now writes a heartbeat after every 64 MB
+chunk (`status="uploading"` plus megabytes done), which is the signal D-067
+already knows how to read — `WORKING_STATUSES` contains `uploading`. And the
+grace went 45 -> 60 min, because the measured upload time under contention is
+~45 and a fallback must sit above the thing it is a fallback for.
+
+**Also removed:** `upload()` retried a shard three times after `push_bundle`
+reported "pod disappeared" — a vanished pod cannot be retried into existence,
+and the log showed three identical failures per dead pod.
+
+**Proven end to end:** shard-0359 reached `analysis_started` at age 60 minutes —
+under the old rule it was already dead — then wrote a 243 MB results file and
+**200 tracks landed** (43,668 -> 43,868), the first movement in over an hour.
+
+**The lesson, again:** a guard tuned to yesterday's timings becomes an attacker
+when the timings change. Upload time doubled when the second upload slot started
+competing for the same uplink, and nothing re-checked the threshold that assumed
+the old duration.
