@@ -1,0 +1,59 @@
+name: RunPod guard
+
+# WHY: pod_reaper.py is the better guard — it can see the results files and tell
+# a working pod from a stuck one — but it runs on the owner's Mac. With the
+# laptop shut, nothing watches the account. This runs on GitHub's machines, so
+# it keeps watching while the Mac is off, and terminates any pod that outlives
+# its time box.
+#
+# TRIGGERS ARE DELIBERATELY LIMITED to schedule + manual. This repository is
+# PUBLIC: a pull_request trigger would run workflow code from a fork's branch,
+# which is how repository secrets get exfiltrated. Neither trigger here can be
+# fired by an outsider.
+#
+# NOTE: GitHub disables scheduled workflows in a repository with no commits for
+# 60 days, and busy periods can delay a run. It is a safety net, not a metronome
+# — the pod's own --terminate-after deadline and pod_reaper.py are the other two
+# layers.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"     # every 15 minutes
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only report verdicts, terminate nothing"
+        type: boolean
+        default: false
+      max_minutes:
+        description: "Time box in minutes for music-db-* pods"
+        default: "120"
+
+permissions:
+  contents: read               # the job needs nothing else
+
+concurrency:
+  group: runpod-guard          # never let two sweeps race each other
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Sweep RunPod
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          if [ -z "$RUNPOD_API_KEY" ]; then
+            echo "RUNPOD_API_KEY secret is not set — the guard cannot run."
+            echo "Set it with: gh secret set RUNPOD_API_KEY --repo werf22/spotify-indie-sort"
+            exit 1
+          fi
+          python cloud_pod_guard.py \
+            --max-minutes "${{ github.event.inputs.max_minutes || '120' }}" \
+            ${{ github.event.inputs.dry_run == 'true' && '--dry-run' || '' }}

@@ -13,6 +13,7 @@
 # a wedged pass costs minutes, not hours.
 cd "/Users/jakub/Appky Claude/spotify-indie-sort"
 BATCH=300
+MAX_BACKLOG=6000   # clips waiting for a GPU before the factory pauses (~30 shards)
 HARD_TIMEOUT=600
 while true; do
   # Report the external disk's state each cycle so a stall is never a mystery.
@@ -24,7 +25,17 @@ while true; do
   else
     echo "$(date -u +%FT%TZ) T7 ABSENT — working local tracks only, will resume T7 on reconnect" >> data/prep_loop.log
   fi
-  before=$(ls data/cloud_full/clips/*.opus 2>/dev/null | wc -l | tr -d ' ')
+  # BACKLOG CAP. Disk space alone is the wrong throttle: the factory banked
+  # 20,835 clips (140 GB, ~70 shards) and starved the shard builder of the room
+  # it needs, so paid credit sat unused. Stop making clips once there are
+  # plenty waiting — the GPU side is the slow one, not this.
+  pending=$(ls data/cloud_full/clips | wc -l | tr -d ' ')
+  if [ "$pending" -gt "$MAX_BACKLOG" ]; then
+    echo "$(date -u +%FT%TZ) backlog $pending > $MAX_BACKLOG — pausing the clip factory" >> data/prep_loop.log
+    sleep 300
+    continue
+  fi
+  before=$(ls data/cloud_full/clips | wc -l | tr -d ' ')
   ./.audio-venv/bin/python prepare_cloud_audio_pilot.py --limit $BATCH --codec opus \
       --workers 6 --full-track --output data/cloud_full >> data/prep_loop.log 2>&1 &
   pid=$!
@@ -34,7 +45,7 @@ while true; do
     kill -9 $pid 2>/dev/null
     echo "$(date -u +%FT%TZ) batch wedged after ${HARD_TIMEOUT}s; killed and retrying" >> data/prep_loop.log
   fi
-  after=$(ls data/cloud_full/clips/*.opus 2>/dev/null | wc -l | tr -d ' ')
+  after=$(ls data/cloud_full/clips | wc -l | tr -d ' ')
   echo "$(date -u +%FT%TZ) batch done: clips $before -> $after" >> data/prep_loop.log
   sleep 5
 done

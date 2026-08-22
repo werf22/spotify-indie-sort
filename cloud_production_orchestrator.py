@@ -62,13 +62,18 @@ CYCLE_SECONDS = 45
 # quietly ate the free space down to 29 GiB while eight shards were staged, so
 # stop staging new ones when headroom gets thin. Running shards are never
 # interrupted — they finish and their bundles are pruned on import.
-MIN_FREE_GIB_TO_BUILD = 25.0
+MIN_FREE_GIB_TO_BUILD = 12.0
 # 45 GiB reserved thirty times the ~3 GB a shard actually stages, and with the
 # clip factory filling the same disk it deadlocked: prep ran the free space down
 # to 40 GiB, the builder refused to start below 45, and nothing could ever
 # consume the clips to free space again. 25 GiB still leaves ~8x headroom for a
 # bundle plus its build-ahead spare. The clip factory is the greedy one and must
 # yield first (its own floor is 70 GiB, well above this).
+# Lowered again 22 Aug: the factory had banked 20,835 clips (140 GB) — about 70
+# shards, far more than the uplink can carry — and left 22 GiB, which parked the
+# builder at the old 25 GiB floor with credit sitting unused. 12 GiB is still 4x
+# what one shard stages. The real fix is the BACKLOG CAP in prep_loop.sh: disk
+# alone was never the right thing to throttle the factory on.
 
 
 def utcnow() -> str:
