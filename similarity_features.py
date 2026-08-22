@@ -1,33 +1,36 @@
 #!/usr/bin/env python3
-"""Loads every signal the similarity ranking compares, once, into memory.
+"""Loads EVERY comparable signal in the library into memory, once.
 
-WHAT IS LOADED (all aligned to one master row order, so every comparison is a
-numpy operation instead of a Python loop):
+The point of this file is that nothing is hardcoded to three tag types or six
+numbers. It discovers what the database actually holds — all 40 tag types, every
+musical number — and hands the engine a registry it can switch on and off.
 
-  embeddings   3 models, how the track actually SOUNDS          float16
-  rhythm       12 numbers describing the drums: four-on-floor,  standardised
-               broken-beat, syncopation, tempo stability, kick
-               placement, beat confidence …
-  features     energy, danceability, valence, acousticness,     standardised
-               instrumentalness, speechiness, liveness
-  tags         4.2M rows as an INVERTED index (tag -> tracks)   weighted
-  musical      bpm and key, kept raw for exact DJ arithmetic
+WHAT IT BUILDS (all aligned to one master row order, so comparisons are numpy
+operations rather than Python loops):
 
-WHY AN INVERTED TAG INDEX: comparing the reference's ~65 tags against 42,900
-tracks one by one is 2.8M set operations per query. Inverted, we look up only
-the tags the reference actually has and add their weights straight into a
-result array — the same answer, a fraction of the work.
+  embeddings  3 models, how the track actually SOUNDS
+  tags        an inverted index PER TAG TYPE, weighted by confidence, so genre
+              can be compared independently of mood, label, instrument …
+  numbers     every musical number (energy, valence, syncopation, loudness …)
+              standardised, so "closest value" means the same thing in each
 
-WHY STANDARDISE rhythm and features: raw columns have wildly different ranges
-(bpm ~120, scores 0-1). Without it, one column with a big range silently becomes
-the whole distance.
+WHY AN INVERTED INDEX: comparing the reference's tags against 42,900 tracks one
+by one is millions of set operations per query. Inverted, we touch only the tags
+the reference actually has.
 
-HOW TO TWEAK: TAG_WEIGHTS decides which KIND of tag counts most; RHYTHM_KEYS and
-FEATURE_KEYS decide which numbers are compared at all.
+WHY SOME NUMBERS ARE EXCLUDED: the attribute table also holds identifiers and
+catalogue trivia — album.id, track.rank, how many fans a label has. Two tracks
+having a close `album.id` means they were uploaded near each other, not that
+they sound alike. EXCLUDE_NUMBERS keeps that noise out of the score.
+
+HOW TO TWEAK: MIN_COVERAGE decides how rare a signal may be and still be
+offered; EXCLUDE_NUMBERS is the junk list; TAG_TYPE_HINTS only sets which
+checkboxes start ticked.
 """
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import zlib
 from pathlib import Path
@@ -38,30 +41,37 @@ ROOT = Path(__file__).resolve().parent
 DB = ROOT / "data" / "music.db"
 
 MODELS = {
-    "laion/larger_clap_music@clap-taxonomy-v1.1.0/full-aggregate": 512,
-    "mtg-upf/discogs-maest-10s-dw-75e@d298f3a38365aa566b6a4417560423061ed82380/aggregate-probabilities": 400,
-    "essentia/discogs-effnet-bs64-1+19-supervised-heads/aggregate-embedding": 1280,
+    "laion/larger_clap_music@clap-taxonomy-v1.1.0/full-aggregate":
+        (512, "CLAP", "nálada a textúra zvuku"),
+    "mtg-upf/discogs-maest-10s-dw-75e@d298f3a38365aa566b6a4417560423061ed82380/aggregate-probabilities":
+        (400, "MAEST", "žáner a štýl"),
+    "essentia/discogs-effnet-bs64-1+19-supervised-heads/aggregate-embedding":
+        (1280, "Essentia", "celková hudobná podoba"),
 }
-RHYTHM_KEYS = ["four_on_floor_score", "broken_beat_score", "syncopation_score",
-               "tempo_stability", "rhythm_regularity", "kick_on_quarter_ratio",
-               "offbeat_kick_ratio", "beat_confidence", "beat_presence_score",
-               "beat_section_coverage", "rhythm_pattern_confidence",
-               "rhythm_pattern_coverage"]
-FEATURE_KEYS = ["energy", "danceability", "valence", "acousticness",
-                "instrumentalness", "speechiness", "liveness"]
-# How much a KIND of tag says about "same track". Genre and style are the
-# strongest statement; a loudness band is nearly free of information.
-TAG_WEIGHTS = {
-    "genre": 1.0, "subgenre": 1.0, "style": 0.9, "genre_audio_candidate": 0.8,
-    "audio_style_candidate": 0.8, "mood": 0.8, "mood_candidate": 0.5,
-    "instrument": 0.7, "instrument_candidate": 0.45, "voice": 0.6,
-    "voice_candidate": 0.4, "vocal_character": 0.5, "rhythm": 0.9,
-    "production_style": 0.6, "harmonic_mode": 0.5, "tempo_band": 0.5,
-    "acoustic_character": 0.4, "energy_level": 0.4, "energy_band": 0.3,
-    "danceability_level": 0.4, "danceability_band": 0.3, "valence_level": 0.4,
-    "label": 0.3, "version": 0.2, "onetagger": 0.1,
-}
-DEFAULT_TAG_WEIGHT = 0.3
+
+MIN_COVERAGE = 400          # a signal fewer tracks than this have is not useful
+
+# Identifiers, catalogue trivia and pure duplicates. A close `album.id` means two
+# records were uploaded near each other — nothing about how they sound.
+EXCLUDE_NUMBERS = re.compile(
+    r"(^|\.)(id|rank|fans|available|readable|explicit.*|genre_id|nb_tracks|"
+    r"disk_number|track_position|gain|tuning_frequency|.*_confidence|"
+    r"representative_segment.*|bpm_snapped|bpm_alt|isrc|album\.duration)$")
+
+# Which checkboxes start ticked. Everything else is offered but off, so the
+# default search stays about the music instead of the paperwork.
+TAG_DEFAULT_ON = {"genre", "subgenre", "style", "mood", "instrument", "voice",
+                  "rhythm", "audio_style_candidate", "genre_audio_candidate",
+                  "mood_candidate", "production_style", "harmonic_mode",
+                  "tempo_band", "energy_level", "danceability_level",
+                  "valence_level", "acoustic_character", "vocal_character",
+                  "timbre", "tonality", "theme"}
+NUMBER_DEFAULT_ON = {"energy", "danceability", "valence", "acousticness",
+                     "instrumentalness", "speechiness", "liveness", "loudness",
+                     "loudness_db", "four_on_floor_score", "broken_beat_score",
+                     "syncopation_score", "tempo_stability", "rhythm_regularity",
+                     "beat_presence_score", "mode", "time_signature",
+                     "dynamic_complexity", "onset_rate"}
 
 
 def connect() -> sqlite3.Connection:
@@ -78,41 +88,24 @@ def _decode(blob: bytes, dim: int):
     return vec if vec.size == dim else None
 
 
-def _standardise(matrix: np.ndarray, present: np.ndarray) -> np.ndarray:
-    """Zero-mean/unit-variance per column, using only the rows that HAVE data.
-    Missing rows end up at 0, i.e. exactly average — they neither gain nor lose."""
-    out = np.zeros_like(matrix, dtype=np.float32)
-    if present.sum() == 0:
-        return out
-    block = matrix[present]
-    mean = np.nanmean(block, axis=0)
-    std = np.nanstd(block, axis=0)
-    std[std == 0] = 1.0
-    filled = np.where(np.isnan(matrix), mean, matrix)
-    out = ((filled - mean) / std).astype(np.float32)
-    out[~present] = 0.0
-    return out
-
-
 class Library:
-    """Everything needed to rank the library, held in memory."""
-
     def __init__(self) -> None:
         self.ids: list[str] = []
         self.pos: dict[str, int] = {}
         self.models: dict[str, dict] = {}
-        self.rhythm = self.features = None
-        self.has_rhythm = self.has_features = None
-        self.bpm = self.key = None
-        self.tag_index: dict[str, tuple] = {}
-        self.tag_sum: np.ndarray | None = None
-        self.tag_types: dict[str, set] = {}
+        self.tag_index: dict[str, dict] = {}     # tag_type -> {tag: (rows, weights)}
+        self.tag_sum: dict[str, np.ndarray] = {} # tag_type -> per-track weight total
+        self.tag_of: dict[str, dict] = {}        # tag_type -> {track: set(tags)}
+        self.numbers: dict[str, np.ndarray] = {} # attribute -> standardised values
+        self.number_present: dict[str, np.ndarray] = {}
+        self.bpm = None
+        self.key = None
 
     # ---------------------------------------------------------------- load
     def load(self) -> None:
         db = connect()
         raw = {}
-        for model, dim in MODELS.items():
+        for model, (dim, _, _) in MODELS.items():
             rows = {}
             for sid, blob in db.execute(
                     """SELECT spotify_id, vector FROM audio_embeddings
@@ -124,7 +117,7 @@ class Library:
             if rows:
                 raw[model] = rows
 
-        every = set()
+        every: set[str] = set()
         for rows in raw.values():
             every |= rows.keys()
         self.ids = sorted(every)
@@ -136,20 +129,79 @@ class Library:
             matrix = np.vstack([rows[sid] for sid in order]).astype(np.float32)
             norms = np.linalg.norm(matrix, axis=1, keepdims=True)
             norms[norms == 0] = 1.0
-            self.models[model] = {
-                "matrix": (matrix / norms).astype(np.float16),
-                "rows": np.array([self.pos[sid] for sid in order], dtype=np.int32),
-                "index": {sid: i for i, sid in enumerate(order)},
-            }
-
-        self._load_rhythm(db, n)
-        self._load_features(db, n)
+            self.models[model] = {"matrix": (matrix / norms).astype(np.float16),
+                                  "rows": np.array([self.pos[s] for s in order], dtype=np.int32),
+                                  "index": {s: i for i, s in enumerate(order)}}
         self._load_tags(db, n)
+        self._load_numbers(db, n)
         db.close()
 
-    def _load_rhythm(self, db, n: int) -> None:
-        matrix = np.full((n, len(RHYTHM_KEYS)), np.nan, dtype=np.float32)
-        present = np.zeros(n, dtype=bool)
+    def _load_tags(self, db, n: int) -> None:
+        buckets: dict[str, dict] = {}
+        sums: dict[str, np.ndarray] = {}
+        of: dict[str, dict] = {}
+        for sid, ttype, tag, conf in db.execute(
+                "SELECT spotify_id, tag_type, tag, confidence FROM tags WHERE tag IS NOT NULL"):
+            i = self.pos.get(sid)
+            if i is None or not ttype:
+                continue
+            weight = float(conf) if isinstance(conf, (int, float)) and conf else 0.6
+            key = str(tag).strip().lower()
+            buckets.setdefault(ttype, {}).setdefault(key, []).append((i, weight))
+            arr = sums.setdefault(ttype, np.zeros(n, dtype=np.float32))
+            arr[i] += weight
+            of.setdefault(ttype, {}).setdefault(sid, set()).add(key)
+        for ttype, tags in buckets.items():
+            self.tag_index[ttype] = {
+                tag: (np.array([r for r, _ in v], dtype=np.int32),
+                      np.array([w for _, w in v], dtype=np.float32))
+                for tag, v in tags.items()}
+            self.tag_sum[ttype] = sums[ttype]
+            self.tag_of[ttype] = of[ttype]
+
+    def _add_number(self, name: str, values: np.ndarray, present: np.ndarray) -> None:
+        if present.sum() < MIN_COVERAGE or EXCLUDE_NUMBERS.search(name):
+            return
+        block = values[present]
+        mean, std = float(block.mean()), float(block.std()) or 1.0
+        out = np.zeros_like(values, dtype=np.float32)
+        out[present] = (block - mean) / std
+        self.numbers[name] = out
+        self.number_present[name] = present
+
+    def _load_numbers(self, db, n: int) -> None:
+        pools: dict[str, np.ndarray] = {}
+        seen: dict[str, np.ndarray] = {}
+
+        def put(name: str, i: int, value) -> None:
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                return
+            if name not in pools:
+                pools[name] = np.zeros(n, dtype=np.float32)
+                seen[name] = np.zeros(n, dtype=bool)
+            if not seen[name][i]:                # first source to supply it wins
+                pools[name][i] = float(value)
+                seen[name][i] = True
+
+        for sid, attr, value in db.execute(
+                "SELECT spotify_id, attribute, value_num FROM track_attributes WHERE value_num IS NOT NULL"):
+            i = self.pos.get(sid)
+            if i is not None:
+                put(str(attr), i, value)
+        cols = ["energy", "danceability", "valence", "acousticness", "instrumentalness",
+                "speechiness", "liveness", "loudness", "time_signature", "mode"]
+        for source in ("reccobeats", "freqblog"):
+            for row in db.execute(
+                    f"SELECT spotify_id,{','.join(cols)} FROM audio_features WHERE source=?", (source,)):
+                i = self.pos.get(row[0])
+                if i is None:
+                    continue
+                for name, value in zip(cols, row[1:]):
+                    put(name, i, value)
+
+        for name in list(pools):
+            self._add_number(name, pools[name], seen[name])
+
         bpm = np.full(n, np.nan, dtype=np.float32)
         for sid, blob in db.execute(
                 "SELECT spotify_id, payload_blob FROM audio_analysis_artifacts WHERE stage='rhythm_full'"):
@@ -157,59 +209,23 @@ class Library:
             if i is None:
                 continue
             try:
-                p = json.loads(zlib.decompress(blob))
+                value = json.loads(zlib.decompress(blob)).get("bpm")
             except Exception:
                 continue
-            matrix[i] = [float(p.get(k)) if isinstance(p.get(k), (int, float)) else np.nan
-                         for k in RHYTHM_KEYS]
-            present[i] = True
-            if isinstance(p.get("bpm"), (int, float)):
-                bpm[i] = float(p["bpm"])
+            if isinstance(value, (int, float)):
+                bpm[i] = float(value)
         for sid, value in db.execute(
                 "SELECT spotify_id, bpm FROM audio_features WHERE bpm IS NOT NULL AND source='freqblog'"):
             i = self.pos.get(sid)
             if i is not None and np.isnan(bpm[i]):
                 bpm[i] = float(value)
-        self.rhythm, self.has_rhythm, self.bpm = _standardise(matrix, present), present, bpm
+        self.bpm = bpm
 
-    def _load_features(self, db, n: int) -> None:
-        matrix = np.full((n, len(FEATURE_KEYS)), np.nan, dtype=np.float32)
-        present = np.zeros(n, dtype=bool)
         key = np.array([None] * n, dtype=object)
-        cols = ",".join(FEATURE_KEYS)
-        # freqblog covers the most tracks; reccobeats only fills gaps.
         for source in ("reccobeats", "freqblog"):
-            for row in db.execute(
-                    f"SELECT spotify_id,{cols},key FROM audio_features WHERE source=?", (source,)):
-                i = self.pos.get(row[0])
-                if i is None:
-                    continue
-                values = [float(v) if isinstance(v, (int, float)) else np.nan
-                          for v in row[1:1 + len(FEATURE_KEYS)]]
-                if any(not np.isnan(v) for v in values):
-                    matrix[i] = values
-                    present[i] = True
-                if row[-1]:
-                    key[i] = str(row[-1])
-        self.features, self.has_features, self.key = _standardise(matrix, present), present, key
-
-    def _load_tags(self, db, n: int) -> None:
-        buckets: dict[str, list] = {}
-        total = np.zeros(n, dtype=np.float32)
-        types: dict[str, set] = {}
-        for sid, ttype, tag, conf in db.execute(
-                "SELECT spotify_id, tag_type, tag, confidence FROM tags WHERE tag IS NOT NULL"):
-            i = self.pos.get(sid)
-            if i is None:
-                continue
-            weight = TAG_WEIGHTS.get(ttype, DEFAULT_TAG_WEIGHT) * (
-                float(conf) if isinstance(conf, (int, float)) else 0.6)
-            if weight <= 0:
-                continue
-            buckets.setdefault(f"{ttype}:{str(tag).lower()}", []).append((i, weight))
-            total[i] += weight
-            types.setdefault(sid, set()).add(f"{ttype}:{str(tag).lower()}")
-        self.tag_index = {tag: (np.array([r for r, _ in v], dtype=np.int32),
-                                np.array([w for _, w in v], dtype=np.float32))
-                          for tag, v in buckets.items()}
-        self.tag_sum, self.tag_types = total, types
+            for sid, value in db.execute(
+                    "SELECT spotify_id, key FROM audio_features WHERE source=? AND key IS NOT NULL", (source,)):
+                i = self.pos.get(sid)
+                if i is not None and key[i] is None:
+                    key[i] = str(value)
+        self.key = key

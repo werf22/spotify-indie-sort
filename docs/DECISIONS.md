@@ -1286,3 +1286,48 @@ all E-minor within 0-4% BPM of the reference.
 
 Loading grew from 63 s to ~72 s for the extra signals, still once per launch and
 in the background.
+
+## D-071 — every signal is a checkbox (2026-08-21)
+
+The owner's point: similarity should use EVERYTHING the database knows, and he
+should be able to tick what counts for a given search — sometimes key matters,
+sometimes it must be ignored; sometimes the embeddings, sometimes only tags.
+
+**77 signals, discovered rather than hardcoded.** 3 embedding models, **all 40
+tag types** (each compared on its own, so genre is independent of mood, label,
+country, remixer …), **32 musical numbers** scored by how CLOSE the value is
+(energy, valence, syncopation, tempo stability, loudness …), plus BPM distance
+and Camelot key compatibility. Nothing is a fixed list: a new tag type or
+attribute appears as a new checkbox by itself.
+
+**What is deliberately EXCLUDED.** The attribute table also holds identifiers and
+catalogue trivia — `album.id`, `track.rank`, `album.fans`, `*_confidence`. Two
+tracks having a close `album.id` means they were uploaded near each other, not
+that they sound alike, so `EXCLUDE_NUMBERS` keeps that noise out. Without it,
+"use everything" would mean "use every accident in the data too".
+
+**The rule that makes ticking everything safe:** a GROUP's weight is shared among
+the signals ticked inside it. Ticking all 40 tag types therefore does not drown
+the audio — it makes the tag opinion better informed. Each signal is still
+standardised before weighting, so the group sliders are the only thing deciding
+importance.
+
+**Proven by switching them, not by assertion** — same reference track, four
+selections, four genuinely different rankings:
+
+| ticked | #1 result |
+|---|---|
+| everything (default) | ALRIUS, Arak — Flame of East |
+| only the 3 embeddings | Funkerman — Speed Up (Remix) |
+| only tags | iLee — Pachanga (the artist's own track) |
+| only numbers | Pablo Fierro — Como El Agua |
+| only key | Kora (CA) — Kanjira |
+
+**Two bugs found and fixed while verifying:** the results table still read `why`
+as the old fixed object, so the "Prečo" column silently rendered empty; and the
+signal ids reached the UI raw, printing a 90-character model path as the reason.
+Both were only visible by looking at the rendered table — the API responses were
+correct throughout.
+
+The query stayed at ~0.4 s. Loading grew to ~115 s (40 tag indexes plus every
+number), still once per launch and in the background.

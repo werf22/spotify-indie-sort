@@ -55,6 +55,19 @@
            border:1px solid var(--accent); padding:10px 18px; border-radius:8px; display:none; z-index:60; }
   #toast a { color:var(--accent); }
   .muted { color:var(--dim); }
+  #panel { display:none; margin-top:10px; background:#161824; border:1px solid var(--line);
+           border-radius:8px; padding:10px 14px; max-height:330px; overflow:auto; }
+  .grp { margin-bottom:12px; }
+  .grp h3 { margin:0 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.5px;
+            color:var(--accent); display:flex; gap:10px; align-items:center; }
+  .grp h3 .mini { font-weight:400; text-transform:none; letter-spacing:0; color:var(--dim); }
+  .grp h3 button { padding:2px 8px; font-size:11px; border-radius:5px; }
+  .sig { display:inline-flex; align-items:center; gap:5px; width:243px; padding:2px 0;
+         color:var(--dim); font-size:13px; }
+  .sig input { margin:0; }
+  .sig b { color:var(--ink); font-weight:500; }
+  .sig i { font-style:normal; opacity:.65; font-size:11px; }
+  .wslider { width:90px; vertical-align:middle; }
 </style>
 </head>
 <body>
@@ -69,7 +82,9 @@
     <label class="muted">BPM ±<input id="bpm" type="number" value="0" min="0" max="20" style="width:60px"> %</label>
     <button id="make" class="spotify" disabled>Vytvor Spotify playlist</button>
     <input id="plname" placeholder="Názov playlistu" style="width:220px">
+    <button id="tune">Čo porovnávať…</button>
   </div>
+  <div id="panel"></div>
   <div id="hits"></div>
   <div id="ref"></div>
 </header>
@@ -102,7 +117,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const P = $("player");
-const state = { rows: [], index: -1 };
+const state = { rows: [], index: -1, refId: null, signals: [] };
 const esc = s => (s||"").replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
 const mmss = s => (!isFinite(s) || s < 0) ? "0:00"
   : Math.floor(s/60) + ":" + String(Math.floor(s%60)).padStart(2,"0");
@@ -143,28 +158,88 @@ async function doSearch() {
 async function pick(id, label) {
   $("hits").style.display = "none";
   $("q").value = label.replace(/ · zatiaľ bez analýzy$/, "");
+  state.refId = id;
   $("ref").innerHTML = "hľadám podobné k <b>" + esc($("q").value) + "</b> …";
   $("body").innerHTML = ""; $("make").disabled = true;
-  const params = new URLSearchParams({ id, limit:$("limit").value,
-    spotify_only: $("spotifyOnly").checked?"1":"0", same_key: $("sameKey").checked?"1":"0",
-    bpm_window: $("bpm").value || "0" });
   try {
-    const { results } = await api("/api/similar?" + params);
-    state.rows = results; render();
-    $("ref").innerHTML = `<b>${esc($("q").value)}</b> — ${results.length} najpodobnejších`;
+    const res = await api("/api/similar", { method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ id, limit:+$("limit").value,
+        spotify_only: $("spotifyOnly").checked, same_key: $("sameKey").checked,
+        bpm_window: +$("bpm").value || 0,
+        enabled: enabledSignals(), group_weights: groupWeights() }) });
+    state.rows = res.results; render();
+    const u = res.signals_used || {};
+    $("ref").innerHTML = `<b>${esc($("q").value)}</b> — ${res.results.length} najpodobnejších `
+      + `<span class="muted">(porovnané: ${Object.entries(u).map(([g,n])=>n+" "+g).join(", ")})</span>`;
     $("plname").value = "Podobné na " + $("q").value;
-    $("make").disabled = !results.length;
+    $("make").disabled = !res.results.length;
   } catch (e) { $("ref").innerHTML = '<span style="color:#ff8080">'+esc(e.message)+'</span>'; }
 }
+
+// ---- which signals to compare -------------------------------------------
+const GROUP_LABEL = { audio:"Zvuk (embeddingy)", tags:"Tagy", numbers:"Čísla", musical:"Hudobné" };
+const GROUP_NOTE = {
+  audio:"ako to naozaj znie", tags:"každý typ tagu zvlášť",
+  numbers:"hľadá najbližšiu hodnotu", musical:"tempo a tónina" };
+
+async function loadSignals() {
+  const { signals } = await api("/api/similar/signals");
+  state.signals = signals;
+  const groups = {};
+  signals.forEach(s => (groups[s.group] = groups[s.group] || []).push(s));
+  $("panel").innerHTML = Object.entries(groups).map(([g, list]) => `
+    <div class="grp" data-g="${g}">
+      <h3>${GROUP_LABEL[g]||g}
+        <span class="mini">${GROUP_NOTE[g]||""}</span>
+        <button data-all="${g}">všetko</button><button data-none="${g}">nič</button>
+        <span class="mini">váha</span>
+        <input class="wslider" type="range" min="0" max="2" step="0.1"
+               value="${g==='audio'?1:(g==='tags'?0.8:0.6)}" data-w="${g}">
+        <span class="mini" data-wv="${g}">${g==='audio'?'1.0':(g==='tags'?'0.8':'0.6')}</span>
+      </h3>
+      ${list.map(s => `<label class="sig" title="${esc(s.note||"")} · ${s.coverage.toLocaleString()} trackov">
+          <input type="checkbox" data-sig="${esc(s.id)}" ${s.default?"checked":""}>
+          <b>${esc(s.label)}</b> <i>${(s.coverage/1000).toFixed(0)}k</i></label>`).join("")}
+    </div>`).join("");
+  $("panel").querySelectorAll("[data-all]").forEach(b => b.onclick = () =>
+    setGroup(b.dataset.all, true));
+  $("panel").querySelectorAll("[data-none]").forEach(b => b.onclick = () =>
+    setGroup(b.dataset.none, false));
+  $("panel").querySelectorAll("[data-w]").forEach(sl => sl.oninput = () =>
+    $("panel").querySelector(`[data-wv="${sl.dataset.w}"]`).textContent = (+sl.value).toFixed(1));
+}
+function setGroup(g, on) {
+  $("panel").querySelectorAll(`.grp[data-g="${g}"] input[data-sig]`)
+    .forEach(cb => cb.checked = on);
+}
+const enabledSignals = () =>
+  [...$("panel").querySelectorAll("input[data-sig]:checked")].map(cb => cb.dataset.sig);
+const groupWeights = () => Object.fromEntries(
+  [...$("panel").querySelectorAll("[data-w]")].map(sl => [sl.dataset.w, +sl.value]));
+
+$("tune").onclick = () => {
+  const p = $("panel");
+  p.style.display = p.style.display === "block" ? "none" : "block";
+};
+// Re-run the search when the selection changes, so ticking a box shows its effect.
+$("panel").addEventListener("change", e => {
+  if (e.target.dataset.sig && state.refId) pick(state.refId, $("q").value);
+});
 
 function render() {
   const max = state.rows.length ? state.rows[0].score : 1;
   $("body").innerHTML = state.rows.map((r,i) => {
-    const w = r.why || {};
-    const why = [ w.key===1 ? "tónina" : (w.key>=0.6 ? "mixovateľná" : null),
-                  w.bpm_diff!=null && w.bpm_diff<=2 ? "BPM" : null,
-                  w.tags>=0.4 ? "tagy" : null,
-                  w.rhythm>-1 ? "rytmus" : null ].filter(Boolean).join(" · ");
+    // `why` is the list of signals that scored this track highest — the engine
+    // returns names now, not a fixed object, so any newly added signal shows up
+    // here on its own.
+    // Drop the raw "key"/"bpm" signal names: the two lines below already say
+    // the same thing in words, and printing both reads as a duplicate.
+    const bits = (r.why || []).filter(x => x !== "key" && x !== "bpm").slice(0, 3);
+    if (r.key_match === 1) bits.unshift("tónina");
+    else if (r.key_match >= 0.6) bits.unshift("mixovateľná");
+    if (r.bpm_diff != null && r.bpm_diff <= 2) bits.unshift("BPM");
+    const why = [...new Set(bits)].slice(0, 4).join(" · ");
     return `<tr data-i="${i}">
       <td class="num">${i+1}</td><td>${esc(r.artist)}</td><td>${esc(r.title)}</td>
       <td><span class="bar"><i style="width:${Math.max(4,Math.round(r.score/max*100))}%"></i></span></td>
@@ -245,6 +320,7 @@ $("make").onclick = async () => {
   $("make").disabled = false;
 };
 pollReady();
+loadSignals();
 </script>
 </body>
 </html>

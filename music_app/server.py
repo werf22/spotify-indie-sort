@@ -102,12 +102,10 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/similar/search":
                 return self._send({"results": similar_api.engine.search(
                     query.get("q", ""), limit=int(query.get("limit", 25)))})
-            if url.path == "/api/similar":
-                return self._send({"results": similar_api.engine.similar(
-                    query["id"], limit=int(query.get("limit", 100)),
-                    spotify_only=query.get("spotify_only", "1") == "1",
-                    bpm_window=float(query.get("bpm_window", 0) or 0),
-                    same_key=query.get("same_key") == "1")})
+            if url.path == "/api/similar/signals":
+                # Everything that CAN be compared, so the UI can draw a checkbox
+                # per signal instead of hardcoding a list that goes stale.
+                return self._send({"signals": similar_api.engine.signals()})
             if url.path == "/api/audio":
                 # Streams the file itself; must not go through _send(), which
                 # buffers a whole body and cannot answer a Range request.
@@ -140,6 +138,16 @@ class Handler(BaseHTTPRequestHandler):
                     run_detached([str(ROOT / ".venv/bin/python"), "index_audio_files.py",
                                   "--roots", ":".join(paths)])
                 return self._send({"ok": True, "queued": len(paths)})
+            if url.path == "/api/similar":
+                # POST, not GET: the enabled-signal list runs to 77 entries and
+                # does not belong in a query string.
+                return self._send(similar_api.engine.similar(
+                    body["id"], limit=int(body.get("limit", 100)),
+                    spotify_only=bool(body.get("spotify_only", True)),
+                    bpm_window=float(body.get("bpm_window") or 0),
+                    same_key=bool(body.get("same_key")),
+                    enabled=body.get("enabled"),
+                    group_weights=body.get("group_weights")))
             if url.path == "/api/playlist":
                 return self._send(similar_api.create_playlist(
                     body.get("name") or "Similar tracks",
