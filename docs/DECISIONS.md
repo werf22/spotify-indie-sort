@@ -1377,3 +1377,35 @@ credit unused. Disk was always the wrong thing to throttle it on, so
 `prep_loop.sh` now stops at a BACKLOG CAP of 6,000 waiting clips. With the
 factory paused nothing adds clips any more and every finished shard returns
 ~1.3 GB through the GC, so free space can only rise from here.
+
+## D-073 — eight runners, zero pods, and a pipeline that reported itself healthy (2026-08-22)
+
+Found while checking progress: **8 runner processes alive, 0 pods on the
+account.** Every runner was retrying a bundle upload into a pod that no longer
+existed, and because each held an upload slot and a shard slot, the orchestrator
+counted them as busy and started nothing new. Its own status file gave the game
+away — `expected_hourly_usd: 1.54` against an actual `hourly_usd: 0.226`, seven
+shards believed active against one real pod. The pipeline was stopped for over
+half an hour while every dashboard said `running_shards`.
+
+**Why the runners could not tell.** A terminated pod refuses connections in
+exactly the same way as one whose sshd is still booting. `push_bundle` treats a
+refused connection as transient and retries up to twelve times with growing
+sleeps — correct for a slow pod, useless against a dead one. It now asks
+`rp.pod_alive()` on each failure and abandons the shard immediately when the pod
+is gone. A failed API call answers "alive", because assuming a pod is gone when
+we merely could not ask would throw away healthy paid work.
+
+**A second, measured fix.** `wait_for_ssh` waited 600 s for a new pod. Across 33
+healthy shards the real time from creation to SSH was 0-1 minutes (median 0,
+max 1), so the wait only ever billed DUD pods for a full ten minutes — and duds
+are common on community cloud: 152 such timeouts sit in the log. Now 180 s,
+three times the worst healthy case.
+
+**Recovery was done with a guard, not a blunt kill.** Clearing stuck runners
+risks orphaning pods, so the sweep matched each runner's shard state against the
+live pod list and terminated only those whose pod was already gone — 7 cleared,
+1 kept. An earlier attempt aborted itself on exactly that check when a new pod
+appeared mid-command, which is the check doing its job.
+
+Verified after: uploads climbing again (280/1572 MB), 2 pods, spend explained.
