@@ -430,6 +430,15 @@ def push_bundle(ssh: list[str], target: str, bundle: Path, remote: str) -> None:
             continue
         stalls = 0
         sent = _remote_bytes(ssh, target, remote)
+        # HEARTBEAT. pod_reaper judges a pod by the freshness of this state file
+        # (D-067) and, failing that, by results.jsonl — which does not exist yet
+        # during an upload. With two upload slots sharing the uplink a bundle
+        # takes ~45 min, so a silent runner looked dead exactly as the 45 min
+        # setup grace expired: six pods in a row were killed at 45-47 min with
+        # "0.0 MB pulled", minutes from finishing. Writing progress here is what
+        # keeps them alive.
+        rp.save_state(status="uploading", uploaded_mb=round(sent / 1e6),
+                      upload_total_mb=round(size / 1e6))
         print(f"  uploaded {sent/1e6:.0f}/{size/1e6:.0f} MB", flush=True)
 
     # Prove the bytes arrived intact before a pod spends GPU time on them.
@@ -450,7 +459,10 @@ def upload(command: str, bundle: Path, results: Path) -> None:
             push_bundle(ssh, target, bundle, "/workspace/full-shard.tar")
             break
         except Exception as exc:
-            if attempt == UPLOAD_ATTEMPTS:
+            # A vanished pod cannot be retried into existence — push_bundle has
+            # already checked. Retrying it just burned the attempt budget and
+            # logged three identical failures.
+            if "pod disappeared" in str(exc) or attempt == UPLOAD_ATTEMPTS:
                 raise
             print(f"upload attempt {attempt} failed ({str(exc)[:90]}); retrying", flush=True)
             time.sleep(20 * attempt)

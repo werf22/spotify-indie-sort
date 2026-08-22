@@ -60,9 +60,15 @@ MAX_POD_MINUTES = 100   # HARD time box. Measured reality after D-065: the
                         # min. At the old 75 a slow night killed pods minutes
                         # before they delivered. Worst case a wedged pod now
                         # bills 100 min (~$0.37) before the box ends it.
-SETUP_GRACE_MIN = 45    # no results expected before this. Must exceed the real
+SETUP_GRACE_MIN = 60    # no results expected before this. Must exceed the real
                         # upload time or the reaper kills pods mid-transfer: at
                         # the measured 685 KB/s a 1.3 GB bundle needs ~32 min,
+                        # and with UPLOAD_SLOTS=2 sharing the line it is ~45.
+                        # Raised 45 -> 60 on 22 Aug after six pods in a row were
+                        # killed at 45-47 min with "0.0 MB pulled" — minutes from
+                        # finishing. The runner now also heartbeats during the
+                        # upload, so this grace is only the fallback for a runner
+                        # too old or too broken to report.
                         # and killing then throws away everything already sent.
 NO_PROGRESS_MIN = 12    # after grace, results must grow within this or the pod dies
 # Statuses that mean the runner is actively doing paid work.
