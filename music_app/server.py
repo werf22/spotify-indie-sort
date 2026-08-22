@@ -102,6 +102,8 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/similar/search":
                 return self._send({"results": similar_api.engine.search(
                     query.get("q", ""), limit=int(query.get("limit", 25)))})
+            if url.path == "/api/similar/presets":
+                return self._send({"presets": similar_api.engine.presets()})
             if url.path == "/api/similar/signals":
                 # Everything that CAN be compared, so the UI can draw a checkbox
                 # per signal instead of hardcoding a list that goes stale.

@@ -1409,3 +1409,57 @@ live pod list and terminated only those whose pod was already gone — 7 cleared
 appeared mid-command, which is the check doing its job.
 
 Verified after: uploads climbing again (280/1572 MB), 2 pods, spend explained.
+
+## D-074 — five presets, chosen by measurement rather than taste (2026-08-22)
+
+The owner asked for five switchable selections that give the best similarity,
+and for the reasoning behind each. Guessing would have been easy; instead the
+library was asked.
+
+**The ground truth was already here, for free.** 2,876 songs exist in the
+library as MORE THAN ONE mix — radio edit, extended, remix. Those pairs ARE the
+same music, which is exactly the target. So for each of the 77 signals, on its
+own: where does it rank the sibling version? The signals never see a title,
+artist or song id, so the test is not circular. 120 songs sampled;
+`eval_similarity.py`, results in `docs/similarity-signal-evaluation.txt`.
+
+| signal | recall@100 | MRR |
+|---|---|---|
+| Essentia embedding | 68% | **0.560** |
+| CLAP embedding | 49% | 0.430 |
+| MAEST embedding | 53% | 0.391 |
+| onset_rate | 42% | 0.344 |
+| average_loudness | 33% | 0.334 |
+| dynamic_complexity | 33% | 0.292 |
+| genre | 61% | 0.271 |
+| label | **81%** | 0.232 |
+| subgenre | 56% | 0.175 |
+| **BPM** | 2% | **0.001** |
+| **key** | 3% | **0.002** |
+
+**The finding that shaped everything: BPM and key are near-useless for RANKING.**
+Thousands of tracks share a tempo and a key, so neither can single out the right
+one — they scored at the very bottom of 77 signals. They are therefore FILTERS in
+these presets, narrowing what may appear, and never part of the score. That is
+the opposite of how a DJ tool is usually built.
+
+**`label` is the trap.** Highest recall of any tag (81%) — but it identifies the
+RELEASE, not the sound. It is used only in "Žáner a scéna", where "more from this
+catalogue" is the actual goal, and the preset says so in the UI.
+
+**The five, and why each should work:**
+`Ten istý track` — all three embeddings plus the tags and numbers that measured
+above zero; the balanced maximum. `Čistý zvuk` — embeddings only, the three
+strongest signals, blind to every label. `Do mixu` — sound and rhythm decide the
+order while tempo (±3%) and key act as hard filters, exactly because they rank
+badly and filter well. `Nálada a energia` — CLAP (the audio-text model, 0.43)
+with mood tags and energy/valence, genre deliberately excluded so it returns the
+same FEELING rather than the same genre. `Žáner a scéna` — MAEST with the genre
+family and label.
+
+**Verified by switching them on one reference track**, and they behave
+distinctly: "Do mixu" returned five E-minor tracks in a row (the filter working),
+"Čistý zvuk" returned C#-major, A-major and D-major (key ignored entirely), and
+"Žáner a scéna" put three of iLee's own releases on top — which is precisely what
+a label signal does, and the clearest possible demonstration of why it is fenced
+off from the sound-only presets.

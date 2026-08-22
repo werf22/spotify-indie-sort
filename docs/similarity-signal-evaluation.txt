@@ -1,0 +1,75 @@
+loading …
+2,876 songs have more than one version; testing 120 of them
+
+signal                             group     recall@100     MRR   note
+Essentia                           audio            68%   0.560
+CLAP                               audio            49%   0.430
+MAEST                              audio            53%   0.391
+onset_rate                         numbers          42%   0.344
+average_loudness                   numbers          33%   0.334
+dynamic_complexity                 numbers          33%   0.292
+genre                              tags             61%   0.271
+duration_ms                        numbers          37%   0.270
+label                              tags             81%   0.232  <- identifies the RELEASE, not the sound
+remixer                            tags             36%   0.218  <- identifies the RELEASE, not the sound
+subgenre                           tags             56%   0.175
+version                            tags             22%   0.167  <- identifies the RELEASE, not the sound
+style                              tags             60%   0.137
+audio_style_candidate              tags             43%   0.133
+mood_candidate                     tags             34%   0.114
+energy                             numbers          11%   0.097
+speechiness                        numbers          15%   0.082
+instrumentalness                   numbers          13%   0.080
+bpm                                numbers          37%   0.076
+danceability                       numbers          16%   0.060
+liveness                           numbers           9%   0.058
+loudness                           numbers          15%   0.057
+valence                            numbers          15%   0.055
+loudness_db                        numbers          32%   0.054
+onetagger                          tags              7%   0.049  <- identifies the RELEASE, not the sound
+acousticness                       numbers          11%   0.037
+rhythm_regularity                  numbers           9%   0.036
+syncopation_score                  numbers           6%   0.034
+four_on_floor_score                numbers           7%   0.034
+broken_beat_score                  numbers           5%   0.034
+beat_presence_score                numbers           4%   0.034
+tempo_stability                    numbers           8%   0.022
+genre_audio_candidate              tags             14%   0.021
+format                             tags              7%   0.020  <- identifies the RELEASE, not the sound
+tempo                              numbers          13%   0.019
+mood                               tags              8%   0.019
+track.duration                     numbers          24%   0.018
+track.bpm                          numbers           6%   0.009
+country                            tags             14%   0.007  <- identifies the RELEASE, not the sound
+key                                numbers           2%   0.006
+instrument                         tags              4%   0.004
+instrument_candidate               tags              2%   0.003
+Tónina                             musical           3%   0.002
+tonality                           tags              8%   0.001
+key_int                            numbers           2%   0.001
+acoustic_character                 tags              1%   0.001
+BPM                                musical           2%   0.001
+voice                              tags              3%   0.001
+rhythm_pattern_coverage            numbers           2%   0.001
+voice_candidate                    tags              1%   0.001
+production_style                   tags              1%   0.001
+rhythm                             tags              2%   0.001
+tempo_band                         tags              1%   0.000
+valence_level                      tags              1%   0.000
+danceability_level                 tags              1%   0.000
+valence_band                       tags              0%   0.000
+timbre                             tags              0%   0.000
+mode                               numbers           1%   0.000
+harmonic_mode                      tags              0%   0.000
+danceability_band                  tags              0%   0.000
+beat_section_coverage              numbers           0%   0.000
+is_remix                           numbers           0%   0.000
+energy_level                       tags              0%   0.000
+energy_band                        tags              0%   0.000
+vocal_character                    tags              0%   0.000
+time_signature                     numbers           0%   0.000
+kick_on_quarter_ratio              numbers           0%   0.000
+offbeat_kick_ratio                 numbers           0%   0.000
+production                         tags              0%   0.000
+theme                              tags              0%   0.000
+recording_type                     tags              0%   0.000

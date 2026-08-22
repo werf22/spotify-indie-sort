@@ -299,3 +299,130 @@ def search(query: str, limit: int = 25) -> list[dict]:
             "analysed": (r["spotify_id"] in lib.pos) if lib else None} for r in rows]
     out.sort(key=lambda r: (not r["analysed"], len(r["title"] or "")))
     return out[:limit]
+
+
+# ---------------------------------------------------------------- presets
+# Five ready-made selections. Every one of them is justified by
+# docs/similarity-signal-evaluation.txt, which measured each signal against a
+# ground truth the library provides for free: songs that exist here as more than
+# one mix (radio edit / extended / remix). Those pairs ARE the same music, so
+# "where does this signal rank the other version?" is a fair test of how much
+# same-track information it carries. 2,876 such songs; 120 sampled.
+#
+# WHAT THE MEASUREMENT SAID (MRR = how often it puts the sibling FIRST):
+#   Essentia 0.56 · CLAP 0.43 · MAEST 0.39   the embeddings win outright
+#   onset_rate 0.34 · average_loudness 0.33 · dynamic_complexity 0.29
+#   genre 0.27 · subgenre 0.18 · style 0.14
+#   BPM 0.001 · key 0.002                    near USELESS for ranking
+#
+# The last line is the surprise and it shapes these presets: thousands of tracks
+# share a key and a tempo, so neither can single out the right one. They belong
+# in the FILTERS, narrowing what may appear — never in the score.
+#
+# `label` reached the highest recall of any tag (81%) but it identifies the
+# RELEASE, not the sound; it is used only where "more from this scene" is the
+# actual goal, and never in the sound-only presets.
+PRESETS = [
+    {
+        "id": "same_track",
+        "label": "Ten istý track",
+        "note": "Najvyššia celková podobnosť — všetko, čo v meraní obstálo.",
+        "why": "Spája tri embeddingy (MRR 0.56/0.43/0.39) so žánrovými tagmi "
+               "(genre 0.27, subgenre 0.18, style 0.14) a s číslami, ktoré "
+               "merateľne nesú informáciu (onset_rate 0.34, average_loudness "
+               "0.33, dynamic_complexity 0.29). Vynecháva pásmové tagy typu "
+               "energy_band, ktoré majú 2-3 hodnoty a v meraní vyšli na nulu.",
+        "groups": {"audio": 1.0, "tags": 0.7, "numbers": 0.6, "musical": 0.2},
+        "tags": ["genre", "subgenre", "style", "audio_style_candidate",
+                 "genre_audio_candidate", "mood", "mood_candidate", "instrument"],
+        "numbers": ["onset_rate", "average_loudness", "dynamic_complexity",
+                    "energy", "danceability", "valence", "speechiness",
+                    "instrumentalness", "acousticness", "loudness", "duration_ms"],
+        "embeddings": "all", "musical": ["bpm", "key"],
+    },
+    {
+        "id": "pure_sound",
+        "label": "Čistý zvuk",
+        "note": "Len to, ako to znie. Ignoruje každý štítok.",
+        "why": "Tri embeddingy samé sú najsilnejší signál v celom meraní. "
+               "Keďže nevidia žáner ani label, nájdu track, ktorý znie rovnako, "
+               "aj keď ho niekto zaradil inam — na objavovanie naprieč scénami.",
+        "groups": {"audio": 1.0, "tags": 0.0, "numbers": 0.0, "musical": 0.0},
+        "tags": [], "numbers": [], "embeddings": "all", "musical": [],
+    },
+    {
+        "id": "dj_mix",
+        "label": "Do mixu",
+        "note": "Podobné A ZÁROVEŇ mixovateľné — tónina a tempo ako tvrdý filter.",
+        "why": "Práve preto, že tónina (MRR 0.002) a BPM (0.001) sú na "
+               "zoradenie takmer bezcenné — zdieľajú ich tisíce trackov — sa tu "
+               "používajú ako SITO, nie ako skóre. Poradie určí zvuk a rytmus, "
+               "ale prejdú len tracky do 3 % tempa a v mixovateľnej tónine.",
+        "groups": {"audio": 1.0, "tags": 0.4, "numbers": 0.5, "musical": 0.0},
+        "tags": ["genre", "subgenre", "style"],
+        "numbers": ["onset_rate", "average_loudness", "dynamic_complexity",
+                    "four_on_floor_score", "broken_beat_score",
+                    "syncopation_score", "tempo_stability", "rhythm_regularity"],
+        "embeddings": "all", "musical": [],
+        "filters": {"bpm_window": 3.0, "same_key": True},
+    },
+    {
+        "id": "mood",
+        "label": "Nálada a energia",
+        "note": "Rovnaký pocit, aj keď je to iný žáner.",
+        "why": "CLAP je model natrénovaný na dvojice zvuk-text, čiže na náladu a "
+               "textúru, a v meraní skončil druhý (0.43). Dopĺňajú ho mood tagy "
+               "(mood_candidate 0.114, nad väčšinou tagov) a čísla o energii a "
+               "valencii. Žánrové tagy sú zámerne von — inak by ti to vracalo "
+               "ten istý žáner namiesto tej istej nálady.",
+        "groups": {"audio": 0.8, "tags": 0.8, "numbers": 0.7, "musical": 0.0},
+        "tags": ["mood", "mood_candidate", "theme", "vocal_character", "voice"],
+        "numbers": ["energy", "valence", "danceability", "average_loudness",
+                    "dynamic_complexity", "acousticness"],
+        "embeddings": ["CLAP"], "musical": [],
+    },
+    {
+        "id": "scene",
+        "label": "Žáner a scéna",
+        "note": "Viac z tej istej scény — vrátane vydavateľstva.",
+        "why": "MAEST je žánrový model (0.39) a žánrové tagy tu majú najvyššie "
+               "pokrytie (genre 61 %, style 60 %, subgenre 56 % v top 100). "
+               "Pridáva aj label, ktorý mal vôbec najvyšší recall zo všetkých "
+               "tagov (81 %) — ale POZOR, ten neidentifikuje zvuk, len to, že "
+               "vyšli u toho istého vydavateľa. Preto je len tu.",
+        "groups": {"audio": 0.7, "tags": 1.0, "numbers": 0.3, "musical": 0.0},
+        "tags": ["genre", "subgenre", "style", "audio_style_candidate",
+                 "genre_audio_candidate", "label", "country", "production_style"],
+        "numbers": ["onset_rate", "dynamic_complexity"],
+        "embeddings": ["MAEST"], "musical": [],
+    },
+]
+
+
+def presets() -> list[dict]:
+    """The five selections, resolved against the signals this library actually
+    has — so a preset never asks for a tag type or number that is missing."""
+    catalogue = signals()
+    by_group: dict[str, list[dict]] = {}
+    for item in catalogue:
+        by_group.setdefault(item["group"], []).append(item)
+    out = []
+    for preset in PRESETS:
+        enabled: list[str] = []
+        want_emb = preset["embeddings"]
+        for item in by_group.get("audio", []):
+            if want_emb == "all" or item["label"] in want_emb:
+                enabled.append(item["id"])
+        for item in by_group.get("tags", []):
+            if item["label"] in preset["tags"]:
+                enabled.append(item["id"])
+        for item in by_group.get("numbers", []):
+            if item["label"] in preset["numbers"]:
+                enabled.append(item["id"])
+        for item in by_group.get("musical", []):
+            if item["id"] in preset.get("musical", []):
+                enabled.append(item["id"])
+        out.append({**{k: v for k, v in preset.items()
+                       if k not in ("tags", "numbers", "embeddings", "musical")},
+                    "enabled": enabled, "group_weights": preset["groups"]})
+    return out

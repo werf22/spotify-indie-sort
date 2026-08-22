@@ -55,6 +55,9 @@
            border:1px solid var(--accent); padding:10px 18px; border-radius:8px; display:none; z-index:60; }
   #toast a { color:var(--accent); }
   .muted { color:var(--dim); }
+  #presets button { border-radius:20px; padding:6px 14px; font-size:13px; }
+  #presets button.on { background:var(--accent); color:#0b0d14; border-color:var(--accent); font-weight:600; }
+  #why-preset { color:var(--dim); font-size:12.5px; margin-top:6px; max-width:960px; line-height:1.45; }
   #panel { display:none; margin-top:10px; background:#161824; border:1px solid var(--line);
            border-radius:8px; padding:10px 14px; max-height:330px; overflow:auto; }
   .grp { margin-bottom:12px; }
@@ -84,6 +87,10 @@
     <input id="plname" placeholder="Názov playlistu" style="width:220px">
     <button id="tune">Čo porovnávať…</button>
   </div>
+  <div class="row" id="presets" style="margin-top:8px"></div>
+  <div class="row" style="display:none">
+  </div>
+  <div id="why-preset"></div>
   <div id="panel"></div>
   <div id="hits"></div>
   <div id="ref"></div>
@@ -117,7 +124,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const P = $("player");
-const state = { rows: [], index: -1, refId: null, signals: [] };
+const state = { rows: [], index: -1, refId: null, signals: [], presets: [], preset: 0 };
 const esc = s => (s||"").replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
 const mmss = s => (!isFinite(s) || s < 0) ? "0:00"
   : Math.floor(s/60) + ":" + String(Math.floor(s%60)).padStart(2,"0");
@@ -182,6 +189,36 @@ const GROUP_LABEL = { audio:"Zvuk (embeddingy)", tags:"Tagy", numbers:"Čísla",
 const GROUP_NOTE = {
   audio:"ako to naozaj znie", tags:"každý typ tagu zvlášť",
   numbers:"hľadá najbližšiu hodnotu", musical:"tempo a tónina" };
+
+// ---- presets: five measured selections ----------------------------------
+async function loadPresets() {
+  const { presets } = await api("/api/similar/presets");
+  state.presets = presets;
+  $("presets").innerHTML = '<span class="muted" style="margin-right:4px">Režim:</span>' +
+    presets.map((p, i) => `<button data-p="${i}" title="${esc(p.note)}">${esc(p.label)}</button>`).join("");
+  $("presets").querySelectorAll("button").forEach(b =>
+    b.onclick = () => applyPreset(+b.dataset.p));
+  applyPreset(0);
+}
+
+function applyPreset(i) {
+  const p = state.presets[i];
+  state.preset = i;
+  $("presets").querySelectorAll("button").forEach(b =>
+    b.classList.toggle("on", +b.dataset.p === i));
+  const want = new Set(p.enabled);
+  $("panel").querySelectorAll("input[data-sig]").forEach(cb =>
+    cb.checked = want.has(cb.dataset.sig));
+  Object.entries(p.group_weights || {}).forEach(([g, w]) => {
+    const sl = $("panel").querySelector(`[data-w="${g}"]`);
+    if (sl) { sl.value = w; $("panel").querySelector(`[data-wv="${g}"]`).textContent = (+w).toFixed(1); }
+  });
+  const f = p.filters || {};
+  $("bpm").value = f.bpm_window || 0;
+  $("sameKey").checked = !!f.same_key;
+  $("why-preset").innerHTML = `<b>${esc(p.label)}</b> — ${esc(p.note)}<br>${esc(p.why)}`;
+  if (state.refId) pick(state.refId, $("q").value);
+}
 
 async function loadSignals() {
   const { signals } = await api("/api/similar/signals");
@@ -320,7 +357,7 @@ $("make").onclick = async () => {
   $("make").disabled = false;
 };
 pollReady();
-loadSignals();
+loadSignals().then(loadPresets);
 </script>
 </body>
 </html>
