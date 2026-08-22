@@ -42,7 +42,12 @@ def finished_ids() -> set[str]:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--trim-backlog", type=int, default=0,
+                    help="shrink the waiting clip pile to N tracks (manifest included)")
     args = ap.parse_args()
+    if args.trim_backlog:
+        trim_backlog(args.trim_backlog, args.apply)
+        return
     done = finished_ids()
     print(f"tracks with all four stages: {len(done):,}")
 
@@ -111,6 +116,82 @@ def main() -> None:
         shutil.rmtree(d, ignore_errors=True)
     print(f"deleted {clip_n:,} clips, {len(dup_victims)} duplicate clip dirs "
           f"and {len(shard_dirs)} shard dirs; "
+          f"free now {shutil.disk_usage(ROOT).free/1024**3:.1f} GiB")
+
+
+
+
+def trim_backlog(keep: int, apply: bool) -> None:
+    """Shrink the waiting clip pile to `keep` tracks, manifest included.
+
+    WHY THIS IS SAFE: a clip is a transcode of a file we still own — prep can
+    remake any of them. What must NOT happen is deleting a clip while leaving
+    its manifest row behind, because the shard builder would then point at a
+    missing file. So the row goes with the clip, and the manifest is backed up
+    first.
+
+    WHY IT IS NEEDED: the factory banked 20,900 clips — 135 GB, about 70 shards
+    — against a disk with 5 GiB free, while each of 8 runners also stages a
+    ~1.5 GB bundle. The pile can only drain 200 tracks per finished shard, so it
+    would have squeezed the machine for days. prep_loop.sh now caps the backlog
+    at 6,000; this brings the existing pile down to the same figure.
+
+    PROTECTED: any track referenced by a shard that already has a bundle — that
+    work is in flight and its clip must survive.
+    """
+    import csv
+    manifest = ROOT / "data" / "cloud_full" / "manifest.csv"
+    if not manifest.is_file():
+        print("no manifest — nothing to trim")
+        return
+    done = finished_ids()
+    protected: set[str] = set()
+    for path in glob.glob(str(SHARDS / "*" / "bundle.tar")):
+        shard_manifest = Path(path).parent / "manifest.csv"
+        if shard_manifest.is_file():
+            with open(shard_manifest, encoding="utf-8", newline="") as fh:
+                protected |= {r.get("spotify_id") for r in csv.DictReader(fh)}
+    with open(manifest, encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        fields, rows = reader.fieldnames, list(reader)
+
+    pending = [r for r in rows if r.get("spotify_id") not in done]
+    keepers = {r["spotify_id"] for r in pending[:keep]} | protected
+    drop = [r for r in pending if r["spotify_id"] not in keepers]
+    freed = 0
+    for row in drop:
+        clip = CLIPS / f"{row['spotify_id']}.opus"
+        if clip.is_file():
+            freed += clip.stat().st_size
+    print(f"manifest rows          : {len(rows):,} ({len(pending):,} still pending)")
+    print(f"protected (in flight)  : {len(protected):,}")
+    print(f"would drop             : {len(drop):,} tracks, {freed/1e9:.1f} GB of clips")
+    print(f"would keep waiting     : {min(keep, len(pending)):,}")
+    if not apply:
+        print("\nDRY RUN — nothing deleted.")
+        return
+    stamp = __import__("time").strftime("%Y%m%dT%H%M%SZ", __import__("time").gmtime())
+    backup = manifest.with_name(f"manifest.before-trim.{stamp}.csv")
+    shutil.copy2(manifest, backup)
+    print(f"manifest backed up to {backup.name}")
+    dropped = {r["spotify_id"] for r in drop}
+    tmp = manifest.with_suffix(".trimmed.csv")
+    with open(tmp, "w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=fields)
+        writer.writeheader()
+        for row in rows:
+            if row.get("spotify_id") not in dropped:
+                writer.writerow(row)
+    tmp.replace(manifest)
+    removed = 0
+    for sid in dropped:
+        clip = CLIPS / f"{sid}.opus"
+        try:
+            clip.unlink()
+            removed += 1
+        except OSError:
+            pass
+    print(f"dropped {len(dropped):,} rows, deleted {removed:,} clips; "
           f"free now {shutil.disk_usage(ROOT).free/1024**3:.1f} GiB")
 
 
