@@ -56,7 +56,28 @@ def main() -> None:
             clip_n += 1
     print(f"finished clips        : {clip_n:,}  ({clip_bytes/1e9:.1f} GB)")
 
-    # 2) shard directories whose EVERY manifest track is finished
+    # 2) a built shard's clips/ copy, once its tar exists.
+    # Building a shard COPIES clips out of data/cloud_full/clips and then tars
+    # them, so a finished bundle means the same audio is on disk three times:
+    # source, shard copy, and tar. Verified before deleting — 560 of 560 sampled
+    # shard clips were still present in the source directory. This alone was
+    # 20.6 GB while free space was down to 5.3 GiB.
+    dup_bytes = dup_dirs = 0
+    dup_victims = []
+    for bundle in glob.glob(str(SHARDS / "*" / "bundle.tar")):
+        clips = Path(bundle).parent / "clips"
+        if not clips.is_dir():
+            continue
+        missing = [f for f in clips.glob("*.opus") if not (CLIPS / f.name).is_file()]
+        if missing:
+            continue                      # some audio lives ONLY here — keep it
+        size = sum(f.stat().st_size for f in clips.rglob("*") if f.is_file())
+        dup_victims.append(clips)
+        dup_bytes += size
+        dup_dirs += 1
+    print(f"duplicated shard clips : {dup_dirs:,} dirs ({dup_bytes/1e9:.1f} GB)")
+
+    # 3) shard directories whose EVERY manifest track is finished
     shard_dirs, shard_bytes = [], 0
     for manifest in glob.glob(str(SHARDS / "*" / "manifest.csv")):
         d = Path(manifest).parent
@@ -74,9 +95,9 @@ def main() -> None:
         shard_dirs.append(d)
         shard_bytes += size
     print(f"fully-analysed shards : {len(shard_dirs):,}  ({shard_bytes/1e9:.1f} GB)")
-    print(f"TOTAL RECLAIMABLE     : {(clip_bytes+shard_bytes)/1e9:.1f} GB")
+    print(f"TOTAL RECLAIMABLE     : {(clip_bytes+shard_bytes+dup_bytes)/1e9:.1f} GB")
     free = shutil.disk_usage(ROOT).free / 1024**3
-    print(f"free now {free:.1f} GiB -> after {(free + (clip_bytes+shard_bytes)/1024**3):.1f} GiB")
+    print(f"free now {free:.1f} GiB -> after {(free + (clip_bytes+shard_bytes+dup_bytes)/1024**3):.1f} GiB")
 
     if not args.apply:
         print("\nDRY RUN — nothing deleted. Re-run with --apply.")
@@ -84,9 +105,12 @@ def main() -> None:
     for path in victims:
         try: os.remove(path)
         except OSError: pass
+    for d in dup_victims:
+        shutil.rmtree(d, ignore_errors=True)
     for d in shard_dirs:
         shutil.rmtree(d, ignore_errors=True)
-    print(f"deleted {clip_n:,} clips and {len(shard_dirs)} shard dirs; "
+    print(f"deleted {clip_n:,} clips, {len(dup_victims)} duplicate clip dirs "
+          f"and {len(shard_dirs)} shard dirs; "
           f"free now {shutil.disk_usage(ROOT).free/1024**3:.1f} GiB")
 
 
