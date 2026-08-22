@@ -1331,3 +1331,49 @@ correct throughout.
 
 The query stayed at ~0.4 s. Loading grew to ~115 s (40 tag indexes plus every
 number), still once per launch and in the background.
+
+## D-072 — a guard that keeps watching with the Mac switched off (2026-08-22)
+
+`pod_reaper.py` is the better guard — it sees the results files and can tell a
+working pod from a stuck one — but it runs on the owner's Mac. Shut the laptop
+and nothing watches the account. `cloud_pod_guard.py` now runs on GitHub Actions
+every 15 minutes and terminates any pod past its time box, independent of any
+machine at home.
+
+**What it can and cannot judge, stated rather than implied:** with no access to
+the results files it CANNOT distinguish working from stuck, so it enforces the
+hard box only — 120 minutes for `music-db-*` (a healthy shard finishes in ~60),
+180 for anything else, which is always logged because a differently-named pod
+once billed ~2.5 h simply because nothing looked at it.
+
+**Three bugs, each of which would have produced a guard that protects nothing:**
+
+1. `datetime.fromisoformat` could not read RunPod's Go-style timestamps
+   (`2026-08-22 13:39:29.676 +0000 UTC`), so every pod reported "age unknown"
+   and the guard kept them all. It looked healthy in the logs and would never
+   have fired.
+2. The API key in `~/.runpod/config.toml` is wrapped in SINGLE quotes; the first
+   parser stripped only double quotes and returned a 52-character key instead of
+   50. Every call came back a bare `401`, which reads like a permissions problem
+   and sent me looking at the wrong thing entirely.
+3. The REST endpoint had to be verified against the live docs rather than
+   assumed — `GET/DELETE https://rest.runpod.io/v1/pods`, Bearer auth.
+
+**Proven, not assumed:** run with `--max-minutes 1` the guard correctly issued
+KILL for both live pods; at the real box it reports them OK with their true ages
+(1 and 11 minutes).
+
+**Public-repo safety:** the workflow triggers on `schedule` and
+`workflow_dispatch` ONLY. A `pull_request` trigger on a public repository runs
+fork-supplied code and is the standard route for leaking repository secrets.
+
+**The remaining manual step is deliberate.** Setting the secret means handling
+the API key, which is the owner's to do:
+`gh secret set RUNPOD_API_KEY --repo werf22/spotify-indie-sort`.
+
+**Also this session:** the clip factory had banked 20,913 clips (140 GB, ~70
+shards) and squeezed the disk to 11 GiB, parking the shard builder with paid
+credit unused. Disk was always the wrong thing to throttle it on, so
+`prep_loop.sh` now stops at a BACKLOG CAP of 6,000 waiting clips. With the
+factory paused nothing adds clips any more and every finished shard returns
+~1.3 GB through the GC, so free space can only rise from here.
