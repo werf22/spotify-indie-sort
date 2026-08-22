@@ -413,6 +413,15 @@ def push_bundle(ssh: list[str], target: str, bundle: Path, remote: str) -> None:
                 raise RuntimeError((proc.stderr or b"")[-300:].decode("utf-8", "replace"))
         except Exception as exc:
             stalls += 1
+            # STOP retrying a pod that no longer exists. A terminated pod refuses
+            # connections exactly like one whose sshd is still booting, so the
+            # runner used to spend its whole retry budget talking to nothing —
+            # and while it did, it held an upload slot and a shard slot that the
+            # orchestrator counted as busy. Eight runners once sat like this with
+            # ZERO pods alive: the pipeline was stopped while reporting itself
+            # healthy.
+            if not rp.pod_alive(rp.read_state().get("pod_id", "")):
+                raise RuntimeError("pod disappeared mid-upload; abandoning this shard")
             if stalls > CHUNK_RETRIES:
                 raise RuntimeError(f"upload stuck at {sent/1e6:.0f}/{size/1e6:.0f} MB: {exc}")
             print(f"chunk at {sent/1e6:.0f} MB failed ({str(exc)[:70]}); retrying", flush=True)

@@ -191,6 +191,25 @@ def find_ssh_command(value) -> str | None:
     return next((item.strip() for item in strings if item.strip().startswith("ssh ")), None)
 
 
+def pod_alive(pod_id: str) -> bool:
+    """Does this pod still exist on the account?
+
+    A runner that cannot reach its pod must know WHY. "Connection refused" looks
+    identical whether sshd is still booting or the pod was terminated ten
+    minutes ago, and retrying a dead pod burns the whole retry budget while
+    holding an upload slot the orchestrator counts as busy. One cheap list call
+    settles it. On an API error we answer True: assuming a pod is gone when we
+    simply could not ask would abandon healthy paid work.
+    """
+    try:
+        pods = ctl("pod", "list", check=False)
+    except Exception:
+        return True
+    if not isinstance(pods, list):
+        return True
+    return any(str(p.get("id")) == str(pod_id) for p in pods if isinstance(p, dict))
+
+
 def wait_for_ssh(pod_id: str, timeout_seconds: int = 180) -> str:
     """Wait for a new pod's SSH, then give up fast.
 
