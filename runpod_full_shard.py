@@ -250,8 +250,15 @@ UPLOAD_SLOTS = 2  # concurrent 1.5 GB bundle uploads; more saturates the home
 
 
 UPLOAD_ATTEMPTS = 3  # whole-transfer retries; each one RESUMES (see push_bundle)
-CHUNK_BYTES = 64 * 1024 * 1024   # resume granularity: ~90 s per chunk on this line
-CHUNK_TIMEOUT = 900              # a single chunk must never hang a pod
+CHUNK_BYTES = 32 * 1024 * 1024   # resume granularity: ~60 s per chunk on this line
+CHUNK_TIMEOUT = 240              # a stalled chunk must die FAST.
+# Measured 23 Aug: 210 TimeoutExpired in the log. A chunk would move 10-25 MB,
+# the connection would freeze, and the old 900 s limit then held a BILLING pod
+# and one of only two upload slots for a further quarter of an hour before
+# giving up. At even 0.5 MB/s a 32 MB chunk needs ~65 s, so 240 s is nearly
+# four times the worst honest case — and a freeze now costs 4 minutes, not 15.
+# Nothing is lost by failing early: the next attempt asks the pod how many
+# bytes it already holds and resumes from exactly there.
 CHUNK_RETRIES = 12               # consecutive chunk failures before giving up  # a stalled consumer link should not scrap a paid pod
 
 
