@@ -65,6 +65,7 @@ MAX_PARALLEL = 3       # Bounded by the UPLINK, not by funds or by GPU supply.
                        # matches the peak: a 1.5 GB bundle at the measured
                        # 3-5 MB/s is ~8 min of upload, analysis is ~25 min, so
                        # three pods keep the line saturated and the GPUs busy.
+DEAD_RUNNER_QUIET_MIN = 4  # a runner whose pod vanished is ended after this
 SPEND_TOLERANCE = 0.10 # allowed gap between actual and explained spend/hr
 CYCLE_SECONDS = 45
 # Each shard writes a ~1.3 GB bundle before its pod starts, and build-ahead
@@ -286,6 +287,48 @@ def sweep_orphans(active: dict | None = None) -> list[str]:
     return deleted
 
 
+
+def sweep_dead_runners(active: dict) -> list[str]:
+    """Kill a runner whose pod no longer exists.
+
+    THE MIRROR OF sweep_orphans. That one deletes a pod no runner owns; this one
+    ends a runner whose pod is already gone. Without it the runner keeps polling
+    a host that will never answer while HOLDING one of only two upload slots and
+    one of three shard slots, so the orchestrator counts it as busy and starts
+    nothing. Seen repeatedly: eight runners alive against a single live pod,
+    expected spend $1.61 against a real $0.23, and the pipeline stopped for
+    hours while every status line said `running_shards`.
+
+    A pod is only judged missing when the pod LIST was actually readable and the
+    shard's state has been quiet for a while — a runner that has just created a
+    pod, or an unreadable API, must never be mistaken for a dead one.
+    """
+    pods = rp.ctl("pod", "list", check=False)
+    if not isinstance(pods, list):
+        return []                       # could not ask; assume everything is fine
+    live = {str(p.get("id")) for p in pods if isinstance(p, dict)}
+    killed = []
+    for shard, proc in list(active.items()):
+        state = shard_state(shard)
+        pod_id = str(state.get("pod_id") or "")
+        if not pod_id or pod_id in live:
+            continue
+        try:
+            quiet = (time.time() - (shard / "runpod_state.json").stat().st_mtime) / 60
+        except OSError:
+            continue
+        if quiet < DEAD_RUNNER_QUIET_MIN:
+            continue
+        print(f"DEAD RUNNER: {shard.name} pod {pod_id} is gone; ending it", flush=True)
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+        active.pop(shard, None)
+        killed.append(shard.name)
+    return killed
+
+
 def ledger_append(shard: Path) -> None:
     data = shard_state(shard)
     try:
@@ -363,6 +406,7 @@ def main() -> None:
                 done, ready, target_n = completed_count(), ready_count(), target_count()
                 funds, hourly = balance()
                 swept = sweep_orphans(active)
+                sweep_dead_runners(active)
                 # Compare POD COUNT, not recorded prices: a runner that has just
                 # spawned has no hourly_cost_usd yet, so summing prices made
                 # expected spend look like $0.22 against a real $0.90 and
