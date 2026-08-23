@@ -265,7 +265,15 @@ CHUNK_TIMEOUT = 90               # a stalled chunk must die FAST.
 # four times the worst honest case — and a freeze now costs 4 minutes, not 15.
 # Nothing is lost by failing early: the next attempt asks the pod how many
 # bytes it already holds and resumes from exactly there.
-CHUNK_RETRIES = 12               # consecutive chunk failures before giving up  # a stalled consumer link should not scrap a paid pod
+CHUNK_RETRIES = 12               # consecutive chunk failures before giving up
+# ABANDON A SLOW POD instead of nursing it. Community-cloud hosts are strangers'
+# machines and their upstream varies wildly: one gave a measured 5 MB/s, another
+# stalled every transfer after 4-7 MB and moved a bundle at ~0.05 MB/s. The line
+# at this end was proven healthy at the same moment (0% packet loss, 35 ms, both
+# APIs answering in under 0.5 s), so a crawl is the POD's fault. A replacement
+# costs ~2 minutes and pods are plentiful; an hour spent crawling is not.
+MIN_UPLOAD_MBPS = 0.40           # below this, the pod is not worth the wait
+SPEED_CHECK_AFTER_MB = 24        # judge only once there is enough to judge on  # a stalled consumer link should not scrap a paid pod
 
 
 def gpu_healthy(command: str) -> tuple[bool, str]:
@@ -412,6 +420,7 @@ def push_bundle(ssh: list[str], target: str, bundle: Path, remote: str) -> None:
         print(f"resuming upload at {sent/1e6:.0f} MB of {size/1e6:.0f} MB", flush=True)
 
     stalls = 0
+    started_at, started_bytes = time.monotonic(), sent
     while sent < size:
         count = min(CHUNK_BYTES, size - sent)
         command = (f"dd of={remote} bs=1M seek={sent // (1 << 20)} "
@@ -443,6 +452,14 @@ def push_bundle(ssh: list[str], target: str, bundle: Path, remote: str) -> None:
             continue
         stalls = 0
         sent = _remote_bytes(ssh, target, remote)
+        moved = (sent - started_bytes) / 1e6
+        elapsed = time.monotonic() - started_at
+        if moved >= SPEED_CHECK_AFTER_MB and elapsed > 0:
+            rate = moved / elapsed
+            if rate < MIN_UPLOAD_MBPS:
+                raise RuntimeError(
+                    f"pod uploads at {rate:.2f} MB/s (floor {MIN_UPLOAD_MBPS}); "
+                    "abandoning it for a faster one")
         # HEARTBEAT. pod_reaper judges a pod by the freshness of this state file
         # (D-067) and, failing that, by results.jsonl — which does not exist yet
         # during an upload. With two upload slots sharing the uplink a bundle
