@@ -303,9 +303,12 @@ def sweep_dead_runners(active: dict) -> list[str]:
     shard's state has been quiet for a while — a runner that has just created a
     pod, or an unreadable API, must never be mistaken for a dead one.
     """
-    pods = rp.ctl("pod", "list", check=False)
-    if not isinstance(pods, list):
+    try:
+        pods = ctl_json("pod", "list")
+    except Exception:
         return []                       # could not ask; assume everything is fine
+    if not isinstance(pods, list):
+        return []
     live = {str(p.get("id")) for p in pods if isinstance(p, dict)}
     killed = []
     for shard, proc in list(active.items()):
