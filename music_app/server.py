@@ -29,6 +29,7 @@ from urllib.parse import parse_qs, urlparse
 
 import db
 import similar_api
+import profiles
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -102,6 +103,8 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/similar/search":
                 return self._send({"results": similar_api.engine.search(
                     query.get("q", ""), limit=int(query.get("limit", 25)))})
+            if url.path == "/api/profiles":
+                return self._send({"profiles": profiles.list_profiles()})
             if url.path == "/api/similar/presets":
                 return self._send({"presets": similar_api.engine.presets()})
             if url.path == "/api/similar/signals":
@@ -140,6 +143,15 @@ class Handler(BaseHTTPRequestHandler):
                     run_detached([str(ROOT / ".venv/bin/python"), "index_audio_files.py",
                                   "--roots", ":".join(paths)])
                 return self._send({"ok": True, "queued": len(paths)})
+            if url.path == "/api/profiles/save":
+                return self._send(profiles.save(body))
+            if url.path == "/api/profiles/delete":
+                return self._send({"deleted": profiles.delete(body.get("id", ""))})
+            if url.path == "/api/profiles/reorder":
+                return self._send({"profiles": profiles.reorder(body.get("order") or [])})
+            if url.path == "/api/profiles/rename-folder":
+                return self._send({"changed": profiles.rename_folder(
+                    body.get("old", ""), body.get("new", ""))})
             if url.path == "/api/similar":
                 # POST, not GET: the enabled-signal list runs to 77 entries and
                 # does not belong in a query string.

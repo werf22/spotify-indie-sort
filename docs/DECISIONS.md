@@ -1502,3 +1502,33 @@ under the old rule it was already dead — then wrote a 243 MB results file and
 when the timings change. Upload time doubled when the second upload slot started
 competing for the same uplink, and nothing re-checked the threshold that assumed
 the old duration.
+
+## D-076 — saved profiles, in folders (2026-08-23)
+
+The five measured presets (D-074) are the starting points; the owner wanted his
+OWN sets — reachable in one click, organised in folders, pinnable, editable,
+deletable and orderable.
+
+**A profile is a snapshot of the whole screen:** which of the 77 signals are
+ticked, the four group weights, and the filters (BPM window, same-key, result
+count, Spotify-only). Loading one is a single click, and a pinned profile sits
+in an always-visible strip so it is one click from anywhere.
+
+**Stored on disk, not in the browser.** `data/similarity_profiles.json`, written
+atomically through a temp file and a rename. localStorage would have been less
+code but dies with a cleared cache, a different browser or a second window —
+and these are settings tuned over weeks. Being a plain file, it is also easy to
+back up and read by hand.
+
+**Folders are a path string, not a nested structure.** "Techno/Peak/Vocal" is one
+field on a flat list, rendered as a tree by grouping. True nesting would need
+recursive moves, orphan handling and re-parenting for no benefit at this size —
+and renaming a folder stays a one-line prefix rewrite that correctly carries its
+subfolders with it.
+
+**Verified through the real API and then in the browser:** created three
+profiles across nested folders, pinned one, reordered, renamed `Techno/Klub` to
+`Techno/Peak` (the subfolder followed), deleted one. In the UI, clicking the
+pinned profile switched the selection from 24 signals to exactly the two it had
+saved, and "Ulož ako profil" captured all 24 signals plus the filters into a
+three-level folder. Test profiles were removed afterwards.
