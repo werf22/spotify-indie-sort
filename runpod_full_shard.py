@@ -250,9 +250,15 @@ UPLOAD_SLOTS = 2  # concurrent 1.5 GB bundle uploads; more saturates the home
 
 
 UPLOAD_ATTEMPTS = 3  # whole-transfer retries; each one RESUMES (see push_bundle)
-CHUNK_BYTES = 32 * 1024 * 1024   # resume granularity: ~60 s per chunk on this line
-CHUNK_TIMEOUT = 240              # a stalled chunk must die FAST.
-# Measured 23 Aug: 210 TimeoutExpired in the log. A chunk would move 10-25 MB,
+CHUNK_BYTES = 4 * 1024 * 1024    # SMALLER THAN THE OBSERVED STALL POINT.
+CHUNK_TIMEOUT = 90               # a stalled chunk must die FAST.
+# Measured 23 Aug, second pass: 212 TimeoutExpired and every attempt moved only
+# 4-7 MB before the transfer froze — so a 32 MB chunk could never finish and
+# each one burned the full timeout for a few megabytes. The chunk is now smaller
+# than the distance the link reliably carries, which turns a guaranteed failure
+# into a series of small successes. It costs ~380 ssh handshakes per bundle
+# (~12 min); the alternative was no progress at all.
+# Earlier note, kept because the reasoning still holds: A chunk would move 10-25 MB,
 # the connection would freeze, and the old 900 s limit then held a BILLING pod
 # and one of only two upload slots for a further quarter of an hour before
 # giving up. At even 0.5 MB/s a 32 MB chunk needs ~65 s, so 240 s is nearly
