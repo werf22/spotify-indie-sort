@@ -36,13 +36,41 @@ import numpy as np
 
 import similarity_features as feat
 
-GROUP_WEIGHTS = {"audio": 1.0, "tags": 0.8, "numbers": 0.6, "musical": 0.6}
+# The group weight multiplies the SUM of its signals, so it must account for how
+# many there usually are. A default selection ticks 3 audio, ~16 tags, ~17
+# numbers and 2 musical, so equal-looking numbers here would let tags outweigh
+# audio five to one. These keep the measured balance (audio decides, tags and
+# numbers inform) while leaving both dials in the owner's hands.
+#   audio    3 x 1.0  x 1.00  = 3.0
+#   tags    16 x ~0.9 x 0.15  = 2.2
+#   numbers 17 x ~0.8 x 0.12  = 1.6
+#   musical  2 x 1.0  x 0.30  = 0.6
+GROUP_WEIGHTS = {"audio": 1.0, "tags": 0.15, "numbers": 0.12, "musical": 0.3}
 CHUNK = 8192
 
 _NOTE = {"c": 0, "c#": 1, "db": 1, "d": 2, "d#": 3, "eb": 3, "e": 4, "f": 5,
          "f#": 6, "gb": 6, "g": 7, "g#": 8, "ab": 8, "a": 9, "a#": 10, "bb": 10, "b": 11}
 _MIN = {9: 1, 4: 2, 11: 3, 6: 4, 1: 5, 8: 6, 3: 7, 10: 8, 5: 9, 0: 10, 7: 11, 2: 12}
 _MAJ = {0: 1, 7: 2, 2: 3, 9: 4, 4: 5, 11: 6, 6: 7, 1: 8, 8: 9, 3: 10, 10: 11, 5: 12}
+
+
+# Default weight per signal, taken from the measurement in
+# docs/similarity-signal-evaluation.txt rather than from taste. These are only
+# STARTING values — every one is editable per signal in the app, and a saved
+# profile keeps whatever the owner set.
+#   MRR measured against songs that exist as more than one mix:
+#   Essentia 0.56 · CLAP 0.43 · MAEST 0.39 · onset_rate 0.34 ·
+#   average_loudness 0.33 · dynamic_complexity 0.29 · genre 0.27 ·
+#   subgenre 0.18 · style 0.14 · BPM 0.001 · key 0.002
+SIGNAL_WEIGHT_HINTS = {
+    "genre": 1.5, "subgenre": 1.2, "style": 1.0, "audio_style_candidate": 0.9,
+    "genre_audio_candidate": 0.7, "mood": 0.7, "mood_candidate": 0.8,
+    "instrument": 0.5, "voice": 0.4, "label": 0.6,
+    "onset_rate": 1.5, "average_loudness": 1.4, "dynamic_complexity": 1.3,
+    "duration_ms": 1.0, "energy": 0.8, "speechiness": 0.7,
+    "instrumentalness": 0.7, "danceability": 0.6, "valence": 0.6,
+    "acousticness": 0.5, "liveness": 0.5, "loudness": 0.5,
+}
 
 _lock = threading.Lock()
 _state: dict = {"lib": None, "ready": False, "loading": False, "error": None}
@@ -102,22 +130,24 @@ def signals() -> list[dict]:
         if model in lib.models:
             out.append({"id": f"emb:{model}", "group": "audio", "label": label,
                         "note": note, "coverage": len(lib.models[model]["index"]),
-                        "default": True})
+                        "default": True, "weight": 1.0})
     for ttype, index in sorted(lib.tag_index.items()):
         out.append({"id": f"tag:{ttype}", "group": "tags", "label": ttype,
                     "note": f"{len(index):,} rôznych hodnôt",
                     "coverage": int((lib.tag_sum[ttype] > 0).sum()),
-                    "default": ttype in feat.TAG_DEFAULT_ON})
+                    "default": ttype in feat.TAG_DEFAULT_ON,
+                    "weight": SIGNAL_WEIGHT_HINTS.get(ttype, 1.0)})
     for name in sorted(lib.numbers):
         out.append({"id": f"num:{name}", "group": "numbers", "label": name,
                     "note": "najbližšia hodnota",
                     "coverage": int(lib.number_present[name].sum()),
-                    "default": name in feat.NUMBER_DEFAULT_ON})
+                    "default": name in feat.NUMBER_DEFAULT_ON,
+                    "weight": SIGNAL_WEIGHT_HINTS.get(name, 1.0)})
     out.append({"id": "bpm", "group": "musical", "label": "BPM",
-                "note": "vzdialenosť tempa",
+                "note": "vzdialenosť tempa", "weight": 1.0,
                 "coverage": int(np.isfinite(lib.bpm).sum()), "default": True})
     out.append({"id": "key", "group": "musical", "label": "Tónina",
-                "note": "Camelot — rovnaká 1.0, mixovateľná 0.6",
+                "note": "Camelot — rovnaká 1.0, mixovateľná 0.6", "weight": 1.0,
                 "coverage": int(sum(1 for k in lib.key if k)), "default": True})
     return out
 
@@ -190,7 +220,8 @@ def _signal_vector(lib, sid: str, ref: str, row: int, n: int):
 def similar(ref: str, limit: int = 100, spotify_only: bool = True,
             bpm_window: float = 0.0, same_key: bool = False, dedupe: bool = True,
             enabled: list[str] | None = None,
-            group_weights: dict | None = None) -> dict:
+            group_weights: dict | None = None,
+            signal_weights: dict | None = None) -> dict:
     if not _state["ready"]:
         warm()
     if _state["error"]:
@@ -202,12 +233,26 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
     if enabled is None:
         enabled = [s["id"] for s in signals() if s["default"]]
     weights = {**GROUP_WEIGHTS, **(group_weights or {})}
+    per_signal = signal_weights or {}
     catalogue = signals()
     group_of = {s["id"]: s["group"] for s in catalogue}
     labels = {s["id"]: s["label"] for s in catalogue}
 
-    # Collect each signal, then split its GROUP's weight between the ones that
-    # actually produced an opinion — so ticking 40 tag types cannot drown audio.
+    # TWO LEVELS OF WEIGHT, exactly as the owner asked for:
+    #
+    #     score = SUM over groups of  group_weight * SUM( signal_weight * z )
+    #
+    # Each signal carries its own weight, those are ADDED inside the group, and
+    # the group weight multiplies that sum. The earlier version divided the
+    # group weight by the number of ticked signals, i.e. it weighted the MEAN —
+    # which quietly meant that adding a 40th tag made each of the other 39 count
+    # less. This does not: ticking more signals in a group genuinely gives that
+    # group more say, which is the point of choosing them.
+    #
+    # The trade-off is now the owner's to make, and it is a real one: with 40
+    # tags ticked at weight 1.0 the tag group contributes roughly forty times
+    # one signal, so it will dominate audio unless its group weight is lowered.
+    # That is why the panel shows both numbers.
     collected: dict[str, list] = {}
     for sid in enabled:
         result = _signal_vector(lib, sid, ref, row, n)
@@ -218,12 +263,13 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
     used: dict[str, int] = {}
     contributions: dict[str, np.ndarray] = {}
     for group, items in collected.items():
-        share = weights.get(group, 0.5) / len(items)
+        gw = weights.get(group, 0.5)
         used[group] = len(items)
         for sid, (values, mask) in items:
             z = _z(values, mask)
-            score += share * z
-            contributions[sid] = z
+            sw = float(per_signal.get(sid, 1.0))
+            score += gw * sw * z
+            contributions[sid] = sw * z
 
     keys = np.array([key_score(lib.key[row], k) for k in lib.key], dtype=np.float32)
     ref_bpm = lib.bpm[row]
@@ -332,7 +378,7 @@ PRESETS = [
                "merateľne nesú informáciu (onset_rate 0.34, average_loudness "
                "0.33, dynamic_complexity 0.29). Vynecháva pásmové tagy typu "
                "energy_band, ktoré majú 2-3 hodnoty a v meraní vyšli na nulu.",
-        "groups": {"audio": 1.0, "tags": 0.7, "numbers": 0.6, "musical": 0.2},
+        "groups": {"audio": 1.0, "tags": 0.15, "numbers": 0.12, "musical": 0.2},
         "tags": ["genre", "subgenre", "style", "audio_style_candidate",
                  "genre_audio_candidate", "mood", "mood_candidate", "instrument"],
         "numbers": ["onset_rate", "average_loudness", "dynamic_complexity",
@@ -358,7 +404,7 @@ PRESETS = [
                "zoradenie takmer bezcenné — zdieľajú ich tisíce trackov — sa tu "
                "používajú ako SITO, nie ako skóre. Poradie určí zvuk a rytmus, "
                "ale prejdú len tracky do 3 % tempa a v mixovateľnej tónine.",
-        "groups": {"audio": 1.0, "tags": 0.4, "numbers": 0.5, "musical": 0.0},
+        "groups": {"audio": 1.0, "tags": 0.25, "numbers": 0.15, "musical": 0.0},
         "tags": ["genre", "subgenre", "style"],
         "numbers": ["onset_rate", "average_loudness", "dynamic_complexity",
                     "four_on_floor_score", "broken_beat_score",
@@ -375,7 +421,7 @@ PRESETS = [
                "(mood_candidate 0.114, nad väčšinou tagov) a čísla o energii a "
                "valencii. Žánrové tagy sú zámerne von — inak by ti to vracalo "
                "ten istý žáner namiesto tej istej nálady.",
-        "groups": {"audio": 0.8, "tags": 0.8, "numbers": 0.7, "musical": 0.0},
+        "groups": {"audio": 1.2, "tags": 0.3, "numbers": 0.2, "musical": 0.0},
         "tags": ["mood", "mood_candidate", "theme", "vocal_character", "voice"],
         "numbers": ["energy", "valence", "danceability", "average_loudness",
                     "dynamic_complexity", "acousticness"],
@@ -390,7 +436,7 @@ PRESETS = [
                "Pridáva aj label, ktorý mal vôbec najvyšší recall zo všetkých "
                "tagov (81 %) — ale POZOR, ten neidentifikuje zvuk, len to, že "
                "vyšli u toho istého vydavateľa. Preto je len tu.",
-        "groups": {"audio": 0.7, "tags": 1.0, "numbers": 0.3, "musical": 0.0},
+        "groups": {"audio": 1.2, "tags": 0.25, "numbers": 0.3, "musical": 0.0},
         "tags": ["genre", "subgenre", "style", "audio_style_candidate",
                  "genre_audio_candidate", "label", "country", "production_style"],
         "numbers": ["onset_rate", "dynamic_complexity"],

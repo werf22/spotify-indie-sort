@@ -34,8 +34,8 @@ STORE = ROOT / "data" / "similarity_profiles.json"
 
 # Only these keys are stored, whatever the caller sends: a profile must not
 # become a dumping ground for whatever the UI happens to have in scope.
-FIELDS = ("name", "folder", "enabled", "group_weights", "filters",
-          "pinned", "order", "note")
+FIELDS = ("name", "folder", "enabled", "group_weights", "signal_weights",
+          "filters", "pinned", "order", "note")
 
 
 def _read() -> list[dict]:

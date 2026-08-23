@@ -161,7 +161,8 @@ class Handler(BaseHTTPRequestHandler):
                     bpm_window=float(body.get("bpm_window") or 0),
                     same_key=bool(body.get("same_key")),
                     enabled=body.get("enabled"),
-                    group_weights=body.get("group_weights")))
+                    group_weights=body.get("group_weights"),
+                    signal_weights=body.get("signal_weights")))
             if url.path == "/api/playlist":
                 return self._send(similar_api.create_playlist(
                     body.get("name") or "Similar tracks",

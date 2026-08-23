@@ -1532,3 +1532,40 @@ profiles across nested folders, pinned one, reordered, renamed `Techno/Klub` to
 pinned profile switched the selection from 24 signals to exactly the two it had
 saved, and "Ulož ako profil" captured all 24 signals plus the filters into a
 three-level folder. Test profiles were removed afterwards.
+
+## D-077 — two levels of weight, per signal and per category (2026-08-23)
+
+The owner was right that the maths did not do what he wanted, though not quite
+in the way he described. The old code was:
+
+    score += (group_weight / N) * z        for each of the N ticked signals
+
+so the group weight multiplied the MEAN of its signals. The practical effect is
+the part worth noticing: ticking a 40th tag made each of the other 39 count
+less, and a group could never gain influence by having more evidence in it.
+
+**Now, exactly as asked:**
+
+    score = SUM over groups of  group_weight * SUM( signal_weight * z )
+
+Every signal has its own editable weight, those are added inside the group, and
+the group weight multiplies that sum. Both dials appear in the panel, with the
+formula written above them.
+
+**The consequence is real and is now the owner's to steer:** ticking more
+signals genuinely gives that group more say. Sixteen tags at weight 1.0 sum to
+sixteen while three embeddings sum to three, so the DEFAULT group weights were
+rebalanced to keep the measured ordering intact — audio 1.0, tags 0.15, numbers
+0.12, musical 0.3, which works out to roughly 3.0 / 2.2 / 1.6 / 0.6 for a
+default selection.
+
+**Per-signal defaults come from the measurement, not from taste** — the MRR
+table in D-074: genre 1.5, subgenre 1.2, onset_rate 1.5, average_loudness 1.4,
+dynamic_complexity 1.3, down to 0.4-0.5 for the weaker tags. Every one is
+editable, and a saved profile stores whatever the owner set.
+
+**Verified through the API and then in the browser:** with default weights the
+top three scored 8.39 / 8.29 / 8.09; raising `genre` alone to 10x moved the
+scores to 15.11 / 15.00 / 14.01 AND changed the order, promoting a track by the
+reference's own artist. In the UI all 77 weight boxes render and editing one
+re-runs the search immediately (9.878 -> 16.255 after setting genre to 8).

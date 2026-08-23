@@ -85,8 +85,13 @@
             color:var(--accent); display:flex; gap:10px; align-items:center; }
   .grp h3 .mini { font-weight:400; text-transform:none; letter-spacing:0; color:var(--dim); }
   .grp h3 button { padding:2px 8px; font-size:11px; border-radius:5px; }
-  .sig { display:inline-flex; align-items:center; gap:5px; width:243px; padding:2px 0;
+  .sig { display:inline-flex; align-items:center; gap:5px; width:262px; padding:2px 0;
          color:var(--dim); font-size:13px; }
+  .sig .sw { width:46px; padding:1px 4px; font-size:11.5px; text-align:right;
+             background:#1b1e2c; border:1px solid var(--line); border-radius:4px; color:var(--ink); }
+  .sig .sw:focus { outline:1px solid var(--accent); }
+  .formula { color:var(--dim); font-size:11.5px; margin:2px 0 10px; }
+  .formula code { color:var(--accent); }
   .sig input { margin:0; }
   .sig b { color:var(--ink); font-weight:500; }
   .sig i { font-style:normal; opacity:.65; font-size:11px; }
@@ -198,7 +203,8 @@ async function pick(id, label) {
       body: JSON.stringify({ id, limit:+$("limit").value,
         spotify_only: $("spotifyOnly").checked, same_key: $("sameKey").checked,
         bpm_window: +$("bpm").value || 0,
-        enabled: enabledSignals(), group_weights: groupWeights() }) });
+        enabled: enabledSignals(), group_weights: groupWeights(),
+        signal_weights: signalWeights() }) });
     state.rows = res.results; render();
     const u = res.signals_used || {};
     $("ref").innerHTML = `<b>${esc($("q").value)}</b> — ${res.results.length} najpodobnejších `
@@ -220,6 +226,7 @@ function currentSettings() {
   return {
     enabled: enabledSignals(),
     group_weights: groupWeights(),
+    signal_weights: signalWeights(),
     filters: { bpm_window: +$("bpm").value || 0, same_key: $("sameKey").checked,
                limit: +$("limit").value, spotify_only: $("spotifyOnly").checked },
   };
@@ -231,6 +238,10 @@ function applySettings(s) {
   Object.entries(s.group_weights || {}).forEach(([g, w]) => {
     const sl = $("panel").querySelector(`[data-w="${g}"]`);
     if (sl) { sl.value = w; $("panel").querySelector(`[data-wv="${g}"]`).textContent = (+w).toFixed(1); }
+  });
+  Object.entries(s.signal_weights || {}).forEach(([id, w]) => {
+    const el = $("panel").querySelector(`[data-sw="${CSS.escape(id)}"]`);
+    if (el) el.value = w;
   });
   const f = s.filters || {};
   if (f.bpm_window != null) $("bpm").value = f.bpm_window;
@@ -385,7 +396,11 @@ async function loadSignals() {
   state.signals = signals;
   const groups = {};
   signals.forEach(s => (groups[s.group] = groups[s.group] || []).push(s));
-  $("panel").innerHTML = Object.entries(groups).map(([g, list]) => `
+  $("panel").innerHTML = '<div class="formula">Skóre = pre každú kategóriu: '
+    + '<code>váha kategórie × (signál×váha + signál×váha + …)</code>. '
+    + 'Váhy signálov sa teda najprv sčítajú a až ten súčet sa násobí váhou kategórie — '
+    + 'čím viac signálov zapneš, tým väčšie slovo tá kategória má.</div>'
+    + Object.entries(groups).map(([g, list]) => `
     <div class="grp" data-g="${g}">
       <h3>${GROUP_LABEL[g]||g}
         <span class="mini">${GROUP_NOTE[g]||""}</span>
@@ -397,7 +412,10 @@ async function loadSignals() {
       </h3>
       ${list.map(s => `<label class="sig" title="${esc(s.note||"")} · ${s.coverage.toLocaleString()} trackov">
           <input type="checkbox" data-sig="${esc(s.id)}" ${s.default?"checked":""}>
-          <b>${esc(s.label)}</b> <i>${(s.coverage/1000).toFixed(0)}k</i></label>`).join("")}
+          <b>${esc(s.label)}</b> <i>${(s.coverage/1000).toFixed(0)}k</i>
+          <input class="sw" type="number" step="0.1" min="0" max="9"
+                 data-sw="${esc(s.id)}" value="${(s.weight ?? 1).toFixed(1)}"
+                 title="Váha tohto signálu"></label>`).join("")}
     </div>`).join("");
   $("panel").querySelectorAll("[data-all]").forEach(b => b.onclick = () =>
     setGroup(b.dataset.all, true));
@@ -414,6 +432,8 @@ const enabledSignals = () =>
   [...$("panel").querySelectorAll("input[data-sig]:checked")].map(cb => cb.dataset.sig);
 const groupWeights = () => Object.fromEntries(
   [...$("panel").querySelectorAll("[data-w]")].map(sl => [sl.dataset.w, +sl.value]));
+const signalWeights = () => Object.fromEntries(
+  [...$("panel").querySelectorAll("[data-sw]")].map(el => [el.dataset.sw, +el.value || 0]));
 
 $("tune").onclick = () => {
   const p = $("panel");
@@ -421,7 +441,8 @@ $("tune").onclick = () => {
 };
 // Re-run the search when the selection changes, so ticking a box shows its effect.
 $("panel").addEventListener("change", e => {
-  if (e.target.dataset.sig && state.refId) pick(state.refId, $("q").value);
+  if ((e.target.dataset.sig || e.target.dataset.sw || e.target.dataset.w)
+      && state.refId) pick(state.refId, $("q").value);
 });
 
 function render() {
