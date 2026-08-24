@@ -674,7 +674,8 @@ function render() {
       <td class="muted">${esc(r.key||"")}${r.key_rel && r.key_rel !== "rovnaká"
           ? ` <i style="opacity:.55">${esc(r.key_rel)}</i>` : ""}</td>
       <td><span class="act2">
-        <button class="play" title="Prehrať (ide do vybraného výstupu)">${r.has_file ? "▶" : "▶ Spotify"}</button>
+        <button class="play" title="Prehrať (ide do vybraného výstupu)">${
+          r.has_file ? "▶" : (r.preview ? "▶ 30s" : "▶ Spotify")}</button>
         <button class="pivot" title="Nájdi podobné na TENTO track">⇄</button>
         <button class="rev" title="Ukáž v Finderi — odtiaľ ťahaj do decku">⇱</button>
       </span></td></tr>`;
@@ -700,10 +701,17 @@ function playIndex(i) {
   const tr = $("body").querySelector(`tr[data-i="${i}"]`);
   if (tr) { tr.classList.add("playing"); tr.scrollIntoView({block:"nearest"}); }
   $("now").innerHTML = `${esc(r.artist)} — ${esc(r.title)}<br><small>${r.bpm??"?"} BPM · ${esc(r.key||"?")}</small>`;
-  if (r.has_file) {
+  // ONE CLICK, always. A local file is the whole track; failing that a 30-second
+  // preview still plays in OUR element, so it starts immediately and follows the
+  // CUE output device. The Spotify iframe is the last resort only: it needs a
+  // second click inside itself and ignores the chosen output entirely.
+  const src = r.has_file ? "/api/audio?id=" + encodeURIComponent(r.spotify_id)
+            : (r.preview ? "/api/preview?id=" + encodeURIComponent(r.spotify_id) : null);
+  if (src) {
     $("embed").innerHTML = "";
-    P.src = "/api/audio?id=" + encodeURIComponent(r.spotify_id);
-    P.play().then(()=> $("big").textContent = "❚❚").catch(()=> showEmbed(r.spotify_id));
+    P.src = src;
+    if ($("sink").value && P.setSinkId) P.setSinkId($("sink").value).catch(() => {});
+    P.play().then(() => $("big").textContent = "❚❚").catch(() => showEmbed(r.spotify_id));
   } else showEmbed(r.spotify_id);
 }
 

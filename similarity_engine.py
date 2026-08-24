@@ -355,7 +355,10 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
             continue
         info = db.execute("""SELECT t.title, t.artist_names,
                                 (SELECT path FROM audio_files f WHERE f.spotify_id=t.spotify_id
-                                 AND f.path IS NOT NULL LIMIT 1) path
+                                 AND f.path IS NOT NULL LIMIT 1) path,
+                                (SELECT value_text FROM track_attributes a
+                                 WHERE a.spotify_id=t.spotify_id AND a.attribute='track.preview'
+                                 AND a.value_text LIKE 'http%' LIMIT 1) preview
                              FROM tracks t WHERE t.spotify_id=?""", (sid,)).fetchone()
         title, artist = (info["title"] if info else ""), (info["artist_names"] if info else "")
         if dedupe:
@@ -370,6 +373,11 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
                      key=lambda kv: -kv[1])[:4]
         out.append({"spotify_id": sid, "title": title, "artist": artist,
                     "has_file": bool(info and info["path"]),
+                    # A 30-second preview plays in OUR audio element, which means
+                    # one click and — the part that matters live — it goes to the
+                    # headphones like everything else. The Spotify iframe needed a
+                    # second click inside it and ignored the output device.
+                    "preview": (info["preview"] if info else None),
                     "score": round(float(score[idx]), 3),
                     "bpm": round(float(lib.bpm[idx]), 1) if np.isfinite(lib.bpm[idx]) else None,
                     "key": lib.key[idx],

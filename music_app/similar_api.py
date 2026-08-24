@@ -122,3 +122,47 @@ def create_playlist(name: str, description: str, track_ids: list[str]) -> dict:
         client.add_tracks(playlist["id"], [f"spotify:track:{t}" for t in ids[i:i + 100]])
     return {"id": playlist["id"], "url": f"https://open.spotify.com/playlist/{playlist['id']}",
             "added": len(ids), "skipped": len(track_ids) - len(ids)}
+
+def preview_response(handler, track_id: str) -> None:
+    """Stream a 30-second preview for a track we do NOT have on disk.
+
+    WHY IT IS FETCHED FRESH: the preview URLs captured during enrichment are
+    signed and time-limited — every stored one now answers 403. The track's
+    Deezer id does not expire, so the URL is requested at click time.
+
+    WHY IT IS PROXIED rather than handed to the browser: the CDN does not send
+    CORS headers, and going through this server also means the audio arrives in
+    our own <audio> element — which is what makes it obey the chosen CUE output
+    device. An iframe would ignore it and need a second click.
+    """
+    import json as _json
+    import urllib.request as _req
+    db = sqlite3.connect(ROOT / "data" / "music.db", timeout=60)
+    try:
+        row = db.execute("""SELECT value_num FROM track_attributes
+                            WHERE spotify_id=? AND attribute='track.id'
+                              AND value_num IS NOT NULL LIMIT 1""", (track_id,)).fetchone()
+    finally:
+        db.close()
+    if not row:
+        handler.send_error(404, "no preview for this track")
+        return
+    try:
+        with _req.urlopen(f"https://api.deezer.com/track/{int(row[0])}", timeout=20) as api:
+            url = (_json.loads(api.read()) or {}).get("preview")
+        if not url:
+            handler.send_error(404, "no preview offered")
+            return
+        with _req.urlopen(url, timeout=25) as audio:
+            body = audio.read()
+    except Exception as exc:
+        handler.send_error(502, f"preview unavailable: {type(exc).__name__}")
+        return
+    handler.send_response(200)
+    handler.send_header("Content-Type", "audio/mpeg")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    try:
+        handler.wfile.write(body)
+    except (BrokenPipeError, ConnectionResetError):
+        pass

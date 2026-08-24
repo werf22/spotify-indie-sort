@@ -117,6 +117,8 @@ class Handler(BaseHTTPRequestHandler):
                 # Everything that CAN be compared, so the UI can draw a checkbox
                 # per signal instead of hardcoding a list that goes stale.
                 return self._send({"signals": similar_api.engine.signals()})
+            if url.path == "/api/preview":
+                return similar_api.preview_response(self, query["id"])
             if url.path == "/api/audio":
                 # Streams the file itself; must not go through _send(), which
                 # buffers a whole body and cannot answer a Range request.
