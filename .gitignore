@@ -17,3 +17,8 @@ vendor/onetagger/.git/
 
 # Spotlight exclusion marker for the 59 GB data tree (local only)
 data/.metadata_never_index
+
+# Built native app (rebuild with native/build.sh)
+Similar Tracks.app/
+native/engine.log
+traktor_drag/Traktor Drag.app/

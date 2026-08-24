@@ -262,22 +262,85 @@ def _signal_vector(lib, sid: str, ref: str, row: int, n: int, target=None):
     return None
 
 
-def similar(ref: str, limit: int = 100, spotify_only: bool = True,
+def _seed_list(ref, refs) -> list[str]:
+    """One reference or many — the rest of the engine does not care which."""
+    if refs:
+        return [str(r) for r in refs if r]
+    if isinstance(ref, (list, tuple)):
+        return [str(r) for r in ref if r]
+    return [str(ref)] if ref else []
+
+
+def common_ground(lib, seeds: list[str], min_share: float = 0.5) -> list[dict]:
+    """What the chosen tracks actually share — shown so the owner can see WHY.
+
+    A tag counts as common when at least `min_share` of the seeds carry it, so
+    with three seeds a tag on two of them still counts, but a tag on only one
+    does not. This is a REPORT, not part of the score: the score gets its
+    agreement for free (see `similar`).
+    """
+    if len(seeds) < 2:
+        return []
+    need = max(2, int(round(min_share * len(seeds))))
+    out = []
+    for ttype, per_track in lib.tag_of.items():
+        counts: dict[str, int] = {}
+        for s in seeds:
+            for tag in (per_track.get(s) or ()):
+                counts[tag] = counts.get(tag, 0) + 1
+        shared = sorted((t for t, c in counts.items() if c >= need),
+                        key=lambda t: -counts[t])[:6]
+        if shared:
+            out.append({"type": ttype, "tags": shared,
+                        "of": len(seeds), "hits": [counts[t] for t in shared]})
+    out.sort(key=lambda d: -max(d["hits"]))
+    return out[:8]
+
+
+def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
             bpm_window: float = 0.0, same_key: bool = False, dedupe: bool = True,
             key_rules: list[str] | None = None,
             enabled: list[str] | None = None,
             group_weights: dict | None = None,
             signal_weights: dict | None = None,
             signal_modes: dict | None = None,
-            tag_rules: list | None = None) -> dict:
+            tag_rules: list | None = None,
+            refs: list[str] | None = None) -> dict:
+    """Rank the library against ONE seed track or against SEVERAL at once.
+
+    MANY SEEDS, and why it works the way it does. Each seed gets its own opinion
+    per signal, that opinion is standardised (z-scored) so the signals are on a
+    common scale, and the seeds' z-scores are then AVERAGED — deliberately
+    without re-normalising afterwards. That single choice is the whole feature:
+
+      * where the seeds agree, their z-scores point the same way and the average
+        keeps its full size, so that signal stays strong;
+      * where they disagree, the z-scores point opposite ways and cancel toward
+        zero, so that signal quietly stops mattering.
+
+    So "what the tracks have most in common" drives the result automatically —
+    no hand-tuned consensus rule, and nothing to configure. Re-normalising the
+    average would undo exactly this, which is why it is not done.
+
+    HOW TO TWEAK: pass more seeds to be more specific. Two seeds that share a
+    groove but differ in key will rank groove highly and ignore key on their
+    own. If you want a signal to survive disagreement anyway, raise its weight
+    in the panel.
+    """
     if not _state["ready"]:
         warm()
     if _state["error"]:
         raise RuntimeError(_state["error"])
     lib = _state["lib"]
-    if ref not in lib.pos:
-        raise RuntimeError("tento track ešte nemá audio analýzu, nedá sa porovnať")
-    row, n = lib.pos[ref], len(lib.ids)
+
+    seeds = _seed_list(ref, refs)
+    missing = [s for s in seeds if s not in lib.pos]
+    seeds = [s for s in seeds if s in lib.pos]
+    if not seeds:
+        raise RuntimeError("tieto tracky ešte nemajú audio analýzu, nedá sa porovnať")
+    rows = [lib.pos[s] for s in seeds]
+    n = len(lib.ids)
+
     if enabled is None:
         enabled = [s["id"] for s in signals() if s["default"]]
     weights = {**GROUP_WEIGHTS, **(group_weights or {})}
@@ -291,16 +354,14 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
     #     score = SUM over groups of  group_weight * SUM( signal_weight * z )
     #
     # Each signal carries its own weight, those are ADDED inside the group, and
-    # the group weight multiplies that sum. The earlier version divided the
-    # group weight by the number of ticked signals, i.e. it weighted the MEAN —
-    # which quietly meant that adding a 40th tag made each of the other 39 count
-    # less. This does not: ticking more signals in a group genuinely gives that
-    # group more say, which is the point of choosing them.
+    # the group weight multiplies that sum. Weighting the MEAN instead would
+    # quietly mean that adding a 40th tag made each of the other 39 count less.
+    # This does not: ticking more signals in a group genuinely gives that group
+    # more say, which is the point of choosing them. The trade-off is real and
+    # it is the owner's — with 40 tags ticked at weight 1.0 the tag group
+    # contributes roughly forty times one signal, so it will dominate audio
+    # unless its group weight is lowered. That is why the panel shows both.
     #
-    # The trade-off is now the owner's to make, and it is a real one: with 40
-    # tags ticked at weight 1.0 the tag group contributes roughly forty times
-    # one signal, so it will dominate audio unless its group weight is lowered.
-    # That is why the panel shows both numbers.
     # PER-SIGNAL INTENT. "same" is the default; "diff" flips the sign so the
     # signal rewards CONTRAST instead of likeness, and "target" aims a number at
     # a value the owner names. This is what lets a set move: hold the groove and
@@ -308,17 +369,30 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
     # record belongs without repeating the last one.
     modes = signal_modes or {}
     collected: dict[str, list] = {}
+    agreement: dict[str, float] = {}
     for sid in enabled:
         spec = modes.get(sid) or {}
         mode = spec.get("mode", "same")
         target = spec.get("target") if mode == "target" else None
-        result = _signal_vector(lib, sid, ref, row, n, target=target)
-        if result is None:
-            continue
-        if mode == "diff":
+        per_seed = []
+        for seed, row in zip(seeds, rows):
+            result = _signal_vector(lib, sid, seed, row, n, target=target)
+            if result is None:
+                continue                       # this seed cannot speak here
             values, mask = result
-            result = (-values, mask)
-        collected.setdefault(group_of.get(sid, "other"), []).append((sid, result))
+            if mode == "diff":
+                values = -values
+            per_seed.append(_z(values, mask))
+        if not per_seed:
+            continue
+        z = per_seed[0] if len(per_seed) == 1 else np.mean(per_seed, axis=0)
+        # How much the seeds agreed, purely for display: the length of the
+        # average against the average length. 1.0 = they said the same thing,
+        # near 0 = they cancelled each other out.
+        if len(per_seed) > 1:
+            sizes = float(np.mean([float(np.linalg.norm(v)) for v in per_seed])) or 1.0
+            agreement[sid] = round(float(np.linalg.norm(z)) / sizes, 3)
+        collected.setdefault(group_of.get(sid, "other"), []).append((sid, z))
 
     score = np.zeros(n, dtype=np.float32)
     used: dict[str, int] = {}
@@ -326,23 +400,38 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
     for group, items in collected.items():
         gw = weights.get(group, 0.5)
         used[group] = len(items)
-        for sid, (values, mask) in items:
-            z = _z(values, mask)
+        for sid, z in items:
             sw = float(per_signal.get(sid, 1.0))
             score += gw * sw * z
             contributions[sid] = sw * z
 
-    keys = np.array([key_score(lib.key[row], k) for k in lib.key], dtype=np.float32)
-    ref_bpm = lib.bpm[row]
-    bpm_rel = (np.abs(lib.bpm - ref_bpm) / ref_bpm) if np.isfinite(ref_bpm) and ref_bpm > 0 \
-        else np.full(n, np.nan, dtype=np.float32)
+    # Against MANY seeds a candidate is judged by its BEST match among them:
+    # in a set it only has to sit next to one of the records, not all of them.
+    key_cols = [np.array([key_score(lib.key[r], k) for k in lib.key], dtype=np.float32)
+                for r in rows]
+    keys = key_cols[0] if len(key_cols) == 1 else np.max(np.stack(key_cols), axis=0)
+    bpm_cols = []
+    for r in rows:
+        rb = lib.bpm[r]
+        bpm_cols.append((np.abs(lib.bpm - rb) / rb) if np.isfinite(rb) and rb > 0
+                        else np.full(n, np.nan, dtype=np.float32))
+    if len(bpm_cols) == 1:
+        bpm_rel = bpm_cols[0]
+    else:
+        # nanmin warns (and is meaningless) on a row where NO seed has a BPM.
+        stack = np.stack(bpm_cols)
+        bpm_rel = np.full(n, np.nan, dtype=np.float32)
+        any_bpm = np.isfinite(stack).any(axis=0)
+        if any_bpm.any():
+            bpm_rel[any_bpm] = np.nanmin(stack[:, any_bpm], axis=0)
+    seed_set = set(seeds)
 
     db = sqlite3.connect(feat.DB, timeout=120)
     db.row_factory = sqlite3.Row
     out, seen = [], set()
     for idx in np.argsort(-score):
         sid = lib.ids[idx]
-        if sid == ref:
+        if sid in seed_set:
             continue
         # A length check is NOT enough: a local id looks like
         # "local_c1e89649e0ddf452" — exactly 22 characters, same as a real one.
@@ -352,7 +441,7 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
             continue
         if same_key and not keys[idx] >= 1.0:
             continue
-        if key_rules and not key_allowed(lib.key[row], lib.key[idx], key_rules):
+        if key_rules and not any(key_allowed(lib.key[r], lib.key[idx], key_rules) for r in rows):
             continue
         if tag_rules and not passes_tag_rules(lib, idx, tag_rules):
             continue
@@ -374,8 +463,13 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
         # is unreadable in a table, and splitting on ":" alone leaves the path.
         top = sorted(((labels.get(s, s), float(v[idx])) for s, v in contributions.items()),
                      key=lambda kv: -kv[1])[:4]
+        best_row = max(rows, key=lambda r: key_score(lib.key[r], lib.key[idx]))
         out.append({"spotify_id": sid, "title": title, "artist": artist,
                     "has_file": bool(info and info["path"]),
+                    # The real file path travels with the row so the native app
+                    # can arm a Finder-style drag the instant the mouse goes
+                    # down — fetching it on mousedown would be a race.
+                    "path": (info["path"] if info else None),
                     # A 30-second preview plays in OUR audio element, which means
                     # one click and — the part that matters live — it goes to the
                     # headphones like everything else. The Spotify iframe needed a
@@ -386,13 +480,14 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
                     "key": lib.key[idx],
                     "bpm_diff": None if not np.isfinite(bpm_rel[idx]) else round(float(bpm_rel[idx] * 100), 1),
                     "key_match": None if not np.isfinite(keys[idx]) else float(keys[idx]),
-                    "key_rel": key_relation(lib.key[row], lib.key[idx]),
+                    "key_rel": key_relation(lib.key[best_row], lib.key[idx]),
                     "why": [name for name, v in top if v > 0.5]})
         if len(out) >= limit:
             break
     db.close()
-    return {"results": out, "signals_used": used}
-
+    return {"results": out, "signals_used": used, "seeds": seeds,
+            "seeds_missing": missing, "agreement": agreement,
+            "common": common_ground(lib, seeds)}
 
 
 def key_relation(ref_key, cand_key) -> str | None:

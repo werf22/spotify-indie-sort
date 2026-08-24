@@ -183,7 +183,8 @@ class Handler(BaseHTTPRequestHandler):
                 # POST, not GET: the enabled-signal list runs to 77 entries and
                 # does not belong in a query string.
                 return self._send(similar_api.engine.similar(
-                    body["id"], limit=int(body.get("limit", 100)),
+                    body.get("id") or "", refs=body.get("ids"),
+                    limit=int(body.get("limit", 100)),
                     spotify_only=bool(body.get("spotify_only", True)),
                     bpm_window=float(body.get("bpm_window") or 0),
                     same_key=bool(body.get("same_key")),

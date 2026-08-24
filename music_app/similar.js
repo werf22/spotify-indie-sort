@@ -49,11 +49,16 @@ Object.entries(panels).forEach(([btn, id]) => $(btn).onclick = () => {
 paintPanels();
 
 /* ---------------- readiness ---------------- */
+let restored = false;
 async function pollReady() {
   try {
     const s = await api("/api/similar/status");
     if (s.error) return $("status").textContent = "Chyba: " + s.error;
-    if (s.ready) return $("status").textContent = `${s.tracks.toLocaleString()} zanalyzovaných`;
+    if (s.ready) {
+      $("status").textContent = `${s.tracks.toLocaleString()} zanalyzovaných`;
+      if (!restored) { restored = true; restoreSeeds(); }   // once the engine can answer
+      return;
+    }
     $("status").textContent = "načítavam odtlačky… (raz za spustenie)";
   } catch { $("status").textContent = "server nedostupný"; }
   setTimeout(pollReady, 2500);
@@ -77,7 +82,15 @@ async function doSearch() {
   $("hits").style.display = "block";
   $("hits").querySelectorAll("div[data-id]").forEach(el => el.onclick = ev => {
     if (ev.target.dataset.an) return;
-    pick(el.dataset.id, el.querySelector("span").textContent);
+    const label = el.querySelector("span").textContent;
+    // ⌘/Ctrl/Shift-click adds to the seed set instead of replacing it, and so
+    // does the "＋ pridať track" button while it is lit.
+    if (ev.metaKey || ev.ctrlKey || ev.shiftKey || $("btnAddSeed").classList.contains("on")) {
+      $("btnAddSeed").classList.remove("on");
+      $("search").value = "";
+      return addSeed(el.dataset.id, label);
+    }
+    pick(el.dataset.id, label);
   });
   $("hits").querySelectorAll("[data-an]").forEach(b => b.onclick = ev => {
     ev.stopPropagation(); analyzeNow([b.dataset.an]);
@@ -111,17 +124,70 @@ const tagRules = () => [...document.querySelectorAll("#rules .rule")].map(r => (
 
 const keyRules = () => [...document.querySelectorAll("#shiftBody .kr:checked")].map(c => c.value);
 
+/* ---------------- seeds ----------------
+ * The search can point at ONE track or at SEVERAL. More seeds is not "more
+ * results" — it is a more specific question: the engine averages each seed's
+ * opinion per signal, so whatever the seeds agree on drives the ranking and
+ * whatever they disagree on cancels itself out. Two records that share a groove
+ * but sit in different keys will therefore rank groove highly and ignore key.
+ * HOW TO TWEAK: add seeds with "＋ pridať track" (or ⌘/Shift-click a hit), or
+ * tick rows in the table and press "Použi vybrané ako seed". */
+state.seeds = [];
+
+function renderSeeds() {
+  const box = $("seeds");
+  box.innerHTML = state.seeds.length < 1 ? "" :
+    '<span class="muted">Hľadám podľa:</span>' + state.seeds.map((s, i) =>
+      `<span class="chipwrap"><button class="chip on" data-seed="${i}" title="${esc(s.label)}">${esc(s.label)}</button>`
+      + `<button class="ghost" data-unseed="${i}" title="Odobrať">✕</button></span>`).join("");
+  box.querySelectorAll("[data-unseed]").forEach(b => b.onclick = () => {
+    state.seeds.splice(+b.dataset.unseed, 1);
+    if (state.seeds.length) runSeeds(); else { state.rows = []; render(); renderSeeds(); $("ref").textContent = "Vyber track hore a nájdem najpodobnejšie."; }
+  });
+  box.querySelectorAll("[data-seed]").forEach(b => b.onclick = () => {
+    const s = state.seeds[+b.dataset.seed]; setSeeds([s]);
+  });
+}
+
+function setSeeds(list) {
+  state.seeds = list.slice(0, 12);
+  // Reopening the app lands back where the last set was left off, instead of
+  // on an empty screen. TWEAK: clear it by removing every seed chip.
+  try { localStorage.setItem("lastSeeds", JSON.stringify(state.seeds)); } catch {}
+  runSeeds();
+}
+
+function restoreSeeds() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("lastSeeds") || "[]");
+    if (saved.length) { state.seeds = saved; $("search").value = saved[0].label || ""; runSeeds(); }
+  } catch {}
+}
+function addSeed(id, label) {
+  if (state.seeds.some(s => s.id === id)) return runSeeds();
+  setSeeds([...state.seeds, { id, label }]);
+}
+
+/* Kept for every existing caller (search hit, pivot, rerun): one track. */
 async function pick(id, label) {
   $("hits").style.display = "none";
-  if (label) $("search").value = label;
-  state.refId = id;
+  setSeeds([{ id, label: label || $("search").value }]);
+}
+
+async function runSeeds() {
+  $("hits").style.display = "none";
+  const seeds = state.seeds;
+  if (!seeds.length) return;
+  state.refId = seeds[0].id;
   state.picked.clear(); state.lastClicked = -1;
-  $("ref").innerHTML = "hľadám podobné k <b>" + esc($("search").value) + "</b> …";
+  renderSeeds();
+  const names = seeds.map(s => s.label).join(" + ");
+  $("ref").innerHTML = "hľadám podobné k <b>" + esc(names) + "</b> …";
   $("body").innerHTML = "";
   try {
     const res = await api("/api/similar", { method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, limit: +$("limit").value,
+      body: JSON.stringify({ ids: seeds.map(s => s.id), limit: +$("limit").value,
         spotify_only: $("spotifyOnly").checked,
         enabled: enabledSignals(), group_weights: groupWeights(),
         signal_weights: signalWeights(), signal_modes: signalModes(),
@@ -129,11 +195,18 @@ async function pick(id, label) {
     state.rows = res.results;
     render();
     const used = Object.entries(res.signals_used || {}).map(([g, n]) => `${n} ${g}`).join(", ");
-    $("ref").innerHTML = `<b>${esc($("search").value)}</b> — ${res.results.length} najpodobnejších`
-      + `<span class="muted"> · porovnané: ${esc(used)}</span>`;
+    // With several seeds, say what they actually had in common — otherwise the
+    // owner has no way to tell whether the combination meant what he intended.
+    const common = (res.common || []).slice(0, 4)
+      .map(c => `${c.type}: ${c.tags.slice(0, 3).join(", ")}`).join(" · ");
+    $("ref").innerHTML = `<b>${esc(names)}</b> — ${res.results.length} najpodobnejších`
+      + `<span class="muted"> · porovnané: ${esc(used)}</span>`
+      + (common ? `<div class="muted" style="margin-top:3px">spoločné: ${esc(common)}</div>` : "");
+    if ((res.seeds_missing || []).length)
+      toast(`${res.seeds_missing.length} track(ov) nemá analýzu — vynechané`);
   } catch (e) { $("ref").innerHTML = `<span style="color:#ff8080">${esc(e.message)}</span>`; }
 }
-const rerun = () => { if (state.refId) pick(state.refId, null); };
+const rerun = () => { if (state.seeds.length) runSeeds(); };
 
 /* ---------------- results table ---------------- */
 function render() {
@@ -172,10 +245,14 @@ function wireRows() {
     box.checked = state.picked.has(row.spotify_id);
     box.onclick = e => e.stopPropagation();
     box.onchange = () => { setPicked(i, box.checked); state.lastClicked = i; };
-    tr.onmousedown = e => startDragSelect(e, i);
+    tr.onmousedown = e => { armNativeDrag(e, i); startDragSelect(e, i); };
     tr.onmouseenter = () => dragSelectOver(i);
     tr.onclick = e => rowClick(e, i);
-    tr.ondragstart = e => dragToTraktor(e, i);
+    if (NATIVE) {
+      tr.draggable = false;                  // the app owns the gesture, not WebKit
+    } else {
+      tr.ondragstart = e => dragToTraktor(e, i);
+    }
   });
 }
 
@@ -226,6 +303,18 @@ $("selAll").onchange = () => {
   state.rows.forEach((_, i) => setPicked(i, on));
   $("selAll").checked = on;
 };
+$("btnAddSeed").onclick = () => {
+  $("btnAddSeed").classList.toggle("on");
+  if ($("btnAddSeed").classList.contains("on")) { $("search").value = ""; $("search").focus(); }
+};
+$("btnSeedPicked").onclick = () => {
+  const ids = pickedIds();
+  if (!ids.length) return toast("Najprv zaškrtni tracky v tabuľke.");
+  setSeeds(ids.map(id => {
+    const r = state.rows.find(x => x.spotify_id === id);
+    return { id, label: `${r.artist} — ${r.title}` };
+  }));
+};
 $("btnClear").onclick = () => { state.rows.forEach((_, i) => setPicked(i, false)); };
 const pickedIds = () => state.rows.filter(r => state.picked.has(r.spotify_id)).map(r => r.spotify_id);
 
@@ -236,6 +325,46 @@ const pickedIds = () => state.rows.filter(r => state.picked.has(r.spotify_id)).m
  * wins. Dragging an unselected row drags that row, otherwise the whole
  * selection — the same rule Finder uses.
  */
+/* ---------------- native drag ----------------
+ * Inside the macOS app the drag is done by the app itself: a real
+ * NSDraggingSession carrying file URLs, which is what Finder puts on the
+ * pasteboard and what Traktor accepts. All the page does is say WHICH files are
+ * under the pointer the moment the mouse goes down; the app notices the
+ * movement and takes over from there.
+ *
+ * Finder's rule is kept: dragging a row that is part of the selection drags the
+ * whole selection, dragging an unselected row drags just that one.
+ *
+ * The checkbox column is deliberately excluded — dragging across it still ticks
+ * rows, which is how the owner selects a range with the mouse. */
+const NATIVE = typeof window.NATIVE_HOST !== "undefined" && window.NATIVE_HOST;
+const native = msg => { try { window.webkit.messageHandlers.native.postMessage(msg); } catch {} };
+
+function armNativeDrag(e, i) {
+  if (!NATIVE) return;
+  if (e.button !== 0) return;
+  if (e.target.closest(".c-pick, button, input, select, a")) return;   // selection & controls
+  const row = state.rows[i];
+  const ids = state.picked.has(row.spotify_id) ? pickedIds() : [row.spotify_id];
+  const paths = ids.map(id => (state.rows.find(r => r.spotify_id === id) || {}).path).filter(Boolean);
+  if (!paths.length) return;                     // Spotify-only track: nothing to drag
+  native({ cmd: "armDrag", paths });
+}
+const nlog = text => native({ cmd: "log", text: String(text) });
+if (NATIVE) {
+  // One line in native/app.log on every start, so what the UI can and cannot do
+  // inside the app is a fact on disk instead of a guess.
+  window.addEventListener("load", () => {
+    const a = document.createElement("audio");
+    nlog(`UI loaded · setSinkId=${typeof a.setSinkId === "function"} `
+       + `· enumerateDevices=${!!(navigator.mediaDevices && navigator.mediaDevices.enumerateDevices)} `
+       + `· ua=${navigator.userAgent.slice(0, 40)}`);
+  });
+  window.addEventListener("error", e => nlog("JS ERROR: " + e.message + " @" + e.filename + ":" + e.lineno));
+  window.addEventListener("mouseup", () => native({ cmd: "disarmDrag" }));
+  window.addEventListener("blur", () => native({ cmd: "disarmDrag" }));
+}
+
 async function dragToTraktor(e, i) {
   const row = state.rows[i];
   const ids = state.picked.has(row.spotify_id) ? pickedIds() : [row.spotify_id];
@@ -289,6 +418,7 @@ function playIndex(i) {
   document.querySelectorAll("tr.playing").forEach(e => e.classList.remove("playing"));
   const tr = $("body").querySelector(`tr[data-i="${i}"]`);
   if (tr) { tr.classList.add("playing"); tr.scrollIntoView({ block: "nearest" }); }
+  hideEmbed();                              // a previous Spotify frame must stop
   $("now").innerHTML = `${esc(r.artist)} — ${esc(r.title)}<br>`
     + `<small>${r.bpm ?? "?"} BPM · ${esc(r.key || "?")}${r.has_file ? "" : " · 30s ukážka"}</small>`;
   // Everything plays through OUR element, so one click starts it and the CUE
@@ -329,10 +459,27 @@ document.onkeydown = e => {
 /* Last resort for a track we have neither on disk nor as a preview. It cannot
  * follow the CUE device — that is a limit of Spotify's embedded player, not a
  * bug here — so it is only ever used when nothing else can sound. */
+/* Full-width Spotify player, used when a track exists neither on disk nor as a
+ * Deezer preview. Same footprint as our own player so it does not look like an
+ * afterthought — with one honest warning: an iframe cannot be routed to the CUE
+ * device, so this one comes out of the default output. */
 function showEmbed(r) {
-  $("embed").innerHTML = `<iframe src="https://open.spotify.com/embed/track/${encodeURIComponent(r.spotify_id)}?utm_source=app"
-      width="260" height="80" frameborder="0" allow="autoplay; encrypted-media" style="border:0"></iframe>`;
-  toast("Tento track nemáme na disku ani ako ukážku — hrá cez Spotify, mimo slúchadiel", 9000);
+  const box = $("embed");
+  box.innerHTML = `<div class="lbl">▶ hrá cez <b>SPOTIFY</b> — nemáme súbor ani 30s ukážku`
+    + `<span>· ide do predvoleného výstupu, nie do slúchadiel</span></div>`
+    + `<iframe src="https://open.spotify.com/embed/track/${encodeURIComponent(r.spotify_id)}?utm_source=app"
+        allow="autoplay; encrypted-media" loading="eager"></iframe>`;
+  box.classList.add("on");
+  document.querySelector("footer").classList.add("embed");
+  $("now").innerHTML = `${esc(r.artist)} — ${esc(r.title)}<br><small>Spotify</small>`;
+}
+
+function hideEmbed() {
+  const box = $("embed");
+  if (!box.classList.contains("on")) return;
+  box.classList.remove("on");
+  box.innerHTML = "";                       // stops the iframe's audio
+  document.querySelector("footer").classList.remove("embed");
 }
 
 /* ---------------- CUE output ---------------- */
