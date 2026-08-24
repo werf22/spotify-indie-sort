@@ -25,6 +25,7 @@ import csv
 import fcntl
 import json
 import shlex
+import os
 import subprocess
 import time
 from datetime import datetime, timedelta, timezone
@@ -374,8 +375,23 @@ def prewarm(command: str) -> bool:
         return False
 
 
-def _ssh_args(port, identity) -> list[str]:
+def _ssh_args(port, identity, share: str | None = None) -> list[str]:
+    """SSH arguments, optionally REUSING one connection for every chunk.
+
+    THE REASON THIS EXISTS: the bundle goes up in 4 MB pieces, each previously a
+    brand-new ssh session. A handshake to a community pod costs seconds, so at
+    ~380 pieces per bundle the connection setup, not the data, became the
+    transfer: pods measured 0.09-0.24 MB/s while the line itself was proven to
+    do 1.96 MB/s in an independent test. Multiplexing opens ONE connection and
+    every later chunk rides it, which removes that cost entirely.
+
+    ControlPersist keeps the master alive between chunks; the socket lives in a
+    per-shard path so two shards never share or clobber one another's channel.
+    """
     args = ["ssh", *rp.SSH_HARDENING]
+    if share:
+        args += ["-o", "ControlMaster=auto", "-o", f"ControlPath={share}",
+                 "-o", "ControlPersist=300"]
     if port:
         args += ["-p", port]
     if identity:
@@ -483,7 +499,9 @@ def push_bundle(ssh: list[str], target: str, bundle: Path, remote: str) -> None:
 
 def upload(command: str, bundle: Path, results: Path) -> None:
     target, port, identity = rp.connection_parts(command)
-    ssh = _ssh_args(port, identity)
+    # One multiplexed channel for this shard's whole upload.
+    share = f"/tmp/rp-mux-{os.getpid()}-%C"
+    ssh = _ssh_args(port, identity, share=share)
     for attempt in range(1, UPLOAD_ATTEMPTS + 1):
         try:
             push_bundle(ssh, target, bundle, "/workspace/full-shard.tar")
