@@ -4,242 +4,61 @@ This is the canonical cold-start document for the next AI agent. Read it before
 changing code, restarting services, creating cloud resources, calling a paid API,
 or modifying Spotify playlists.
 
-**STATUS 2026-08-20 — analysis RUNNING again after five dead days.**
+**STATUS 2026-08-24 — analysis running; the similarity app is the active work.**
 
-**DO THIS NOW:** watch that rows keep landing
-(`SELECT COUNT(*) FROM audio_analysis_artifacts WHERE stage LIKE '%_full'`) and
-that spend stays explained (`pipeline_status.py`). Nothing else is urgent.
+**DO THIS NOW — money is the binding constraint.** The RunPod balance is
+**$5.89** and the remaining 12,167 tracks cost about **$16.75** at the
+measured $0.00138/track. That buys roughly 4,276 of them — about
+35 % of what is left. The run parks itself cleanly below
+$1.00 (`MIN_BALANCE`, D-012), so nothing will be left billing; it will simply
+stop with ~7,891 tracks unanalysed until the owner tops up.
+Tell the owner the number — do not silently let it stall.
 
-**WHAT WAS BROKEN (D-065):** every pod from 14-19 Aug analysed NOTHING. `scp`
-of the 1.35 GB bundle died with "lost connection" 555 times in a row, zero
-successes: one 34-minute session on a 685 KB/s uplink that the upload itself
-saturates, and scp cannot resume, so each retry restarted at byte zero. Fixed
-with `push_bundle()` — 64 MB chunks written via `dd seek=`, resumed from the
-pod's own byte count, then sha256-verified on the pod. Proven: first bundle rose
-470 -> 1351 MB with no retry, logged `bundle verified on the pod`, and 800 rows
-(200 tracks x 4 stages) landed.
+**Analysis state:** 54,666 of 66,833 tracks complete (81.8 %).
+Ledger to date: $75.25 over 344 pod-hours, 1159 shards.
+Read progress with `cloud_production_orchestrator.completed_count()` — NOT by
+counting `audio_analysis_artifacts`, which is pruned once payloads are folded
+into features and therefore reads far too low (20.6k vs the real 54.7k).
 
-**DO NOT RESTART THE ORCHESTRATOR CASUALLY.** `launchctl kickstart -k` kills its
-child runners, which orphans every pod they were driving. The reaper then
-correctly terminates those pods — but a pod 26 minutes into analysis, whose
-1.4 GB upload already cost ~34 min of uplink, is thrown away. Four pods were
-lost that way on 20 Aug. Change code, then wait for the current shards to finish
-before restarting, unless the running code is actually broken.
+**Supervision:** launchd keeps `com.jakub.music-db-cloud-production` alive; the
+clip prep agent and the workspace GC run beside it. `cloud_pod_guard.py` is the
+separately-supervised sweeper — it terminates pods no runner is watching, which
+is why a shard whose state says `termination_unconfirmed` is usually already
+gone (verified again today: 4 live runners, exactly 1 real pod, $0.17/h).
 
-**PREP IS RUNNING AGAIN, and can no longer deadlock.** The clip factory
-(`com.jakub.music-db-prep`) yields at 70 GiB free while the shard builder needs
-only 25 GiB, so prep always leaves the builder room. It deadlocked on 20 Aug
-only because the builder floor was 45 GiB: prep ran free space to 40, the
-builder refused to start, and nothing could consume clips to free space again.
+---
 
-**MONEY, honestly:** 37,810 tracks still need analysis (35,283 on T7, 2,678 local
-on the Mac). At the measured $0.0014/track that is **~$53**. The balance after
-the owner's top-up is ~$10.6, i.e. roughly 7,000 tracks. The pipeline parks
-itself at the $1 floor (`MIN_BALANCE`) and waits — it never auto-funds.
+## The similarity app (music_app) — current shape
 
-**GUARDS (both supervised, neither depends on an AI session):**
-- `com.jakub.podreaper` (launchd, KeepAlive) runs `pod_reaper.py`. It had died
-  silently twice with the session that started it. Proven by killing pid 90375
-  and watching launchd start 90819 thirty seconds later (D-064).
-- `com.jakub.music-db-cloud-production` (launchd) runs the orchestrator. NOTE:
-  `pkill` does not stop it — launchd restarts it. Use `launchctl unload`.
+Open it by double-clicking `Similar Tracks.command`; it serves on
+http://127.0.0.1:8765/similar.
 
-**THE COMMENT COLUMN IS FIXED (D-063):** the owner's "06 Energy" labels were
-being replaced by musical keys ("Em") one track per play, because most files
-carried a key in their own comment tag and Traktor re-reads file tags on load.
-577 already-lost labels were recovered from Traktor's own backups; the collection
-value is now written INTO 30,471 files, so a re-import changes nothing. 99.7%+ of
-a 1,200-file sample agrees. Reversible via `traktor_comment_pin.py --restore`.
-603 entries flipped before the oldest surviving backup and are NOT recoverable.
+Scoring is `score = Σ_groups group_weight × Σ(signal_weight × z)` over 77
+signals: CLAP / MAEST / Essentia embeddings, 40 tag types, 32 numbers, and the
+musical fields. Presets, per-signal weights, contrast rules and the Camelot
+filter live in `similarity_engine.py`; the feature loader is
+`similarity_features.py`.
 
-**THE UPLINK IS FASTER THAN THE DOCS SAY.** The 685 KB/s figure quoted
-everywhere is stale. Measured 20 Aug from pod-creation to analysis-start across
-five shards: median 20 min for a ~1.35 GB bundle, i.e. ~1.15 MB/s. That median
-is also the honest overhead number — every pod bills for ~20 min before its GPU
-does anything, which is the single biggest cost lever left. 25,665 tracks remain, which is 136 GB and ~55 h of pure upload. GPU is
-NOT the constraint ($13 for the whole remainder) and neither is credit ($19.40,
-28 h of running). An overnight window carries ~25 GB, i.e. 4,000-5,000 tracks.
-Any plan that promises "all of it by morning" is wrong on arithmetic.
+Three panels are open on load and fold independently, remembering what was
+folded (`shutPanels` in `similar.js`): **Čo porovnávať** (what must match),
+**Čo posunúť** (what must differ, with must/must-not tag rules and its own
+weights), and **Profily**. The five system presets sit on the mode bar and can
+each be unpinned and restored; pinned user profiles render as chips on the same
+bar. Profiles live in folders split on `/` and render as a real treeview whose
+expand/collapse state persists.
 
-**THE EXTERNAL DISK IS PART OF THE SYSTEM.** 80,437 of the 116,939 known audio
-files live on the T7 drive; only 36,502 are on the MacBook. Reading from an
-unplugged volume does not fail, it BLOCKS — that is what made clip prep look
-deadlocked for a night (six worker threads idle, no ffmpeg, 12 s of CPU across 19
-minutes). Prep now drops candidates whose source is not present, so an absent T7
-slows the pipeline to local-only work instead of hanging it, and its tracks
-resume by themselves when the disk returns. `data/prep_loop.log` states the
-disk's presence every cycle — read that FIRST when throughput looks wrong.
+Playback: local file first, then a freshly fetched Deezer preview via
+`/api/preview` (stored preview URLs expire and 403 — always refetch), then a
+Spotify embed as the last resort. CUE output goes through `setSinkId()`.
+Traktor integration is `music_app/traktor_bridge.py` — reveal, .m3u playlist,
+and drag payloads.
 
-**DEFECT 2, fixed but worth knowing:** `pod_reaper.py` spent a night killing every
-RESUMED shard's pod within minutes — "no results in 2053 min (age 3 min)" —
-because it read the results FILE's mtime, which on a resume predates the pod, and
-its setup grace only applied to an EMPTY file. Idle is now clamped to the pod's
-own age and the grace applies on age alone (45 min, to cover a real 32-minute
-upload). The regression is locked in as `tests_pod_reaper.py`; run it after ANY
-change to that file — 11 branches, all must pass.
+On-demand analysis (`analyze_now.py`) starts an `express-` pod, which the
+orchestrator deliberately ignores as not its own. It waits up to 330 s for SSH
+and tries up to 3 pods, because community hosts often fail to boot. Verified
+end to end: 4/4 stages saved for a single track, and the pod terminated after.
 
-**What is running unattended right now:** the orchestrator (launchd, auto-restart)
-building shards and driving pods; `prep_loop.sh` making clips; `pod_reaper.py`
-every 2 min as a daemon job; `index_audio_files.py` walking all of T7 to fill in
-the 16,214 tracks that still have no path. Watch with `pipeline_status.py`.
-
-**Unfinished experiment:** the 96 kbps clip A/B (D-053) would halve the upload
-wall from 55 h to 27 h. Its first two runs died — one on a non-UTF-8 byte from
-the pod (fixed in `runpod_pilot.run`, which every runner shares), one incomplete.
-BPM decides it: a tempo that moves is a wrong number in a DJ library, not a
-tolerable quality trade. Build with `validate_bitrate.py --build`, run
-`probe_bitrate_run.py`, compare with `--compare`.
-
-**THE MONEY GUARD is `pod_reaper.py`** (D-050) — start here if a pod is ever
-suspected of billing for nothing. It runs every 2 min as a daemon job and kills
-any `music-db-*` pod that cannot prove it works: no runner owns it (3 min grace),
-older than 75 min, or no results in 12 min past the setup grace. It judges from
-the locally pulled `results.jsonl` files, never SSH, so it stays honest during
-the network failures that cause abandonment in the first place. Log:
-`data/pod_reaper.log`. Check it with:
-`./.venv/bin/python pod_reaper.py --once --dry-run` (reports verdicts, kills
-nothing).
-
-**What guarantees a pod never bills while idle** (audited 2026-08-11):
-a pod is not created until an upload slot is free (D-047, proven live: 9 runners,
-2 pods, 7 waiting without pods); the GPU must compute before the 1.3 GB upload
-(D-041); progress is counted in successes, not bytes (D-041); stalls abort after
-15 min; the runner terminates its pod on completion; the orphan sweep deletes any
-pod no live runner explains after a 10-min grace; and RunPod's own
---stop-after/--terminate-after, now 1.92 h instead of 5.1 h (D-048), is the only
-one that survives the local machine dying. The pod CANNOT stop itself — its
-injected API key is rejected by RunPod's own API, and the guard that pretended
-otherwise had never once fired.
-
-**READ THIS BEFORE OPTIMISING ANYTHING:** a shard's paid time is NOT mostly
-analysis. Measured across 11 shards: 20.2 min of overhead against 9.6 min of
-actual work — 68% of every paid shard. And that overhead is not fixed either;
-`venv` + `pip install` of torch/librosa/essentia are CPU-bound, so a 28-vCPU pod
-reached its first result in 11.4 min where the mixed-CPU fleet averaged 20.2.
-Two claims made earlier the same day were wrong and are corrected in DECISIONS:
-the vCPU floor is not "the biggest lever" (it moved end-to-end time 8%), and the
-overhead is not fixed. Measure the overhead split before tuning threads again.
-
-**What got cheaper today** (all measured on live pods, not estimated):
-- D-037 runs all four stages concurrently on one pod: 37 min/shard instead of
-  ~57, i.e. **$0.00066/track** against the $0.0017 lifetime ledger average.
-- D-044 is the big one still to prove itself: three pods, all RTX 3090, all
-  $0.22/h, had enforced CPU quotas of 6, 17.9 and 27.2. The same money buys a
-  4x spread in CPU, and since rhythm (HPSS) and essentia (TensorFlow) are
-  CPU-bound, wall clock — the thing actually billed — tracks CPU, not GPU. The
-  runner now rejects hosts under 16 vCPU for two attempts, then takes what is
-  free so a thin market cannot stall a shard.
-- D-039 derives every thread pool from the container's real cgroup quota, which
-  is what makes the above safe: no hardcoded CPU count is correct.
-- D-042 gives the rhythm tail 4x its previous threads; it is the only stage
-  still alive for roughly the last 46% of a shard.
-- D-040 quarantines a (track, stage) pair after 3 identical failures. One
-  unanalysable clip had been holding 199 finished tracks hostage and re-buying
-  a pod every orchestrator cycle — 21 paid launches for one dead track.
-- D-041 proves the GPU computes before uploading 1.3 GB, and counts progress in
-  successes rather than bytes. A pod with a wedged CUDA driver had billed a
-  full run while failing all 375 tracks, invisible to the byte-growth watchdog.
-- D-045 installs dependencies WHILE the bundle uploads, worth a MEASURED 4.8
-  min per shard (16-19% of wall clock, taking $0.00066/track to ~$0.00053).
-  The install used to run after the upload because it lived inside run.sh,
-  which cannot start until the 1.3 GB bundle lands. Measured on ONE pod
-  (install duration vs the same pod's upload) — comparing two shards gives
-  nonsense, because each uploads under different contention. Verified in production by
-  watching two pods side by side: shard-0165 had its venv built while its bundle
-  was 1% transferred; shard-0163, created minutes earlier without the change,
-  had almost its whole bundle and had installed nothing. Fail-safe: if the
-  prewarm never starts or dies, run.sh does the identical setup itself.
-- D-043 fixed the one enrichment lane that was quietly stuck: 603 bandcamp
-  tracks orphaned in `processing` since 2026-07-18, unreachable by a selector
-  that only looked at missing-or-failed rows. Orphans now self-heal hourly.
-
-**Enrichment backlogs closed 2026-08-11:**
-- Bandcamp: the 603 orphans reclaimed by D-043 have all resolved — 512 became
-  successes, 92 no-match. The lane now reports zeros because it is genuinely
-  exhausted; the last 55 failures have attempts=3 and a real cause (49 are
-  "Missing artist tag!", i.e. tracks with no artist metadata at all).
-- FreqBlog review: 210 rejected as unrelated, 3,478 kept, NOTHING accepted —
-  see D-046. Do not try to clear the rest with looser string matching: of the
-  1,084 that a parenthesis-stripping rule would match, 1,083 differ inside the
-  brackets, so it would put the original's BPM on "Truth Hurts (DaBaby Remix)"
-  and a slow-motion mix's on "Vivo". Resolving these needs ISRC/duration
-  cross-checks or listening.
-
-**Enrichment state — everything else is genuinely finished**, not idle: all
-71,306 tracks carry a terminal status for ReccoBeats, TheAudioDB, MusicBrainz,
-Last.fm and Deezer. The 6,207 tracks with no Deezer row simply have no ISRC,
-which is what Deezer matches on.
-
-**One decision waiting for the owner:** FreqBlog has 3,686 tracks in
-`needs_review`. Of those, 1,089 have an exactly-matching normalised title AND
-artist (almost certainly correct, just below the auto-accept threshold), 1,894
-match on one field only, and 703 match on neither. Only 20% are already covered
-by our own 4-stage analysis, so the rest would genuinely gain data. Auto-
-accepting changes the meaning of data in a DJ database — wrong BPM or key is
-worse than a missing value — so it was left for an explicit decision.
-
-**Disk:** 51 GiB free. Acquisition is paused by the disk guard (`paused=1` in
-sync_control) — that gates music DOWNLOADING only, not clip prep or analysis,
-and leaving it paused protects the headroom the shards need. Resume manually
-with `sync_control.py resume-all` when the collection work is done.
-
-**Note on results.jsonl:** imported shards get theirs deleted by
-prune_analyzed_clips.py. That is safe and intended — the per-window timelines
-live in `audio_analysis_artifacts.payload_blob` (json+zlib), and the runner now
-short-circuits on `imported.ok` so a stripped shard can never re-buy a pod.
-
-*The full loop is now automatic* (D-031/D-032): hourly index → duration
-re-verification of fuzzy matches → identity assignment → Opus prep →
-GPU analysis → clip/bundle pruning. New downloads enter it by themselves;
-this was the day's main structural fix.
-
-*Metadata enrichment is effectively COMPLETE.* Every free provider has
-attempted every eligible track and now returns zeros because its queue is
-drained, not because it is broken: Deezer 57,035 (the ~9k "remaining" have
-no ISRC, so they are unreachable by design), MusicBrainz 28,505, MB genres
-6,494 tagged of all known MBIDs, TheAudioDB 8,677, Last.fm tracks 2,271
-(67,251 genuinely have no tags upstream), Discogs 45,531 across sources.
-FreqBlog is at its 150,000/150,000 monthly cap and resumes automatically on
-the August reset — no action needed.
-
-*Opus prep* runs at 4 FFmpeg workers (raised from 1 on 2026-07-29 because
-it is the only work advanceable while pods are unfunded; revert to 1 in
-`com.jakub.music-db-cloud-full-prep.plist` if the laptop runs hot, D-020).
-~750 clips left. A prior pass recorded 320 prep failures whose causes land
-in `data/cloud_full/failures.json` only when the run ends — a sample of the
-not-yet-processed files transcodes fine, so the cause is still unknown and
-should be read from that file rather than assumed.
-
-**Earlier milestone 2026-07-21: the first full-track batch completed —
-5,393 of 5,393 preparable catalog tracks** have all four stages (rhythm,
-MAEST, Essentia, CLAP) analyzed and imported. (Track 5,394 of the original target has a
-permanently corrupt source file and never produced an Opus asset.) The whole
-scaled run: 19 shards, 25.9 GPU-hours, **$5.88 total (~$0.0016/track)**, no
-pods left running, spend $0.00/hr, balance $1.84. Next step per the approved
-roadmap: a measured 100-track pilot of the Deezer 30-s preview tier (D-007
-discipline) before the ~55k-track preview run is priced and funded.
-
-**2026-07-20 cost/speed overhaul (D-025, D-026):** pod analysis now runs
-detached (network drops no longer kill or bill-idle paid work), results
-stream back incrementally, pods self-stop if uncollected, stop/terminate
-caps are sized to the shard, the orchestrator sweeps unexplained pods every
-cycle, blocks on unexplained spend, keeps a cost ledger, and can run two
-balance-gated parallel pods. Shards grew to 200 tracks. A guaranteed-import
-path healed shard-0018 (+100 already-paid tracks). New canonical oversight
-command: `./.venv/bin/python pipeline_status.py`.
-
-**Resolved 2026-07-19:** a second, untracked RunPod pod (`6k2dt0i0n5hy73`) was
-found running alongside the real shard-0002 pod (`cp6v9hygqv0u60`), doubling
-the account's hourly burn to about USD 0.45/hour. Its useful partial results
-were recovered to
-`data/cloud_full_shards/shard-0002/recovered/orphan-pod-6k2dt0i0n5hy73-results.jsonl`
-(100/100 rhythm_full, 100/100 maest_full, 51/51 essentia_full), then the pod
-was deleted and deletion confirmed (`deleted: true`); `runpodctl pod list` now
-shows only `cp6v9hygqv0u60` and `currentSpendPerHr` is back to 0.226. Root
-cause fixed in code (D-023, `runpod_pilot.terminate()` now confirms deletion
-instead of assuming it); see `docs/DECISIONS.md` and `docs/OPERATIONS.md`
-"Duplicate/orphaned pod after a cleanup failure".
-
+---
 ## Mission
 
 Build a local, provenance-preserving intelligence database for the user's
