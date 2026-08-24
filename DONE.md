@@ -119,3 +119,45 @@ Spotify desktop client is running — Spotify holds that key globally and also
 steals next/previous once it grabs it. next/previous work when Spotify is not
 contending. Quitting Spotify's desktop app (or turning off its media-key
 setting) is the only fix; the spacebar always works inside the app.
+
+
+## 2026-08-24 — D-074 · Mixed in Key switch, sixth preset, full Spotify playback, the manual
+
+**Changed**
+- `music_app/similar.html` / `similar.js` — a "Mixed in Key" switch beside "len
+  zo Spotify". It sits ABOVE profiles: while on it forces the four mixable key
+  relationships (exact, ±1, ±2, ±7 semitone) whatever profile is loaded, greys
+  out the panel's own boxes, and gives the profile its rules back untouched
+  when switched off. Its state lives in the browser, never in a profile.
+  "relative" is deliberately excluded — it was not among the four asked for.
+- `similarity_engine.py` — sixth preset "Nálada v scéne": CLAP and MAEST
+  together, mood tags AND genre/subgenre/style, label deliberately left out.
+- `spotify_authorize.py` (new) — one-off re-authorisation adding the
+  `streaming` permission, which the stored token lacks. Backs up the old token,
+  prints nothing secret.
+- `music_app/similar_api.py` / `server.py` — `/api/spotify/token` (short-lived
+  access token for the page, refresh token never leaves the server) and
+  `/api/spotify/play` (start a track on the page's SDK device).
+- `music_app/similar.js` — Spotify now has TWO backends. The Web Playback SDK
+  plays the WHOLE track through an audio element in our own page, which is what
+  finally makes CUE routing possible for Spotify; the iFrame embed stays as the
+  fallback (30 s, no CUE) when `streaming` is not granted. `applySink()` routes
+  both.
+- `docs/prirucka.html` (new) — the manual: every signal, preset and switch,
+  what it measures and when to use it. Published as an artifact.
+
+**Verified**
+- Presets endpoint returns six, "Nálada v scéne" resolving to 20 signals.
+- Key filter: without it 6 of 40 results had no harmonic relation to the seed;
+  with the four rules, 0 violations in 40.
+- The switch: profile rule `relative` → switch on → the four forced rules →
+  switch off → `relative` back, boxes unlocked. (First attempt got this wrong
+  and left the forced set in place; fixed and re-tested.)
+- `/api/spotify/token` returns a token and correctly reports
+  `streaming: false`, so the app falls back to the embed and says why.
+
+**BLOCKED on one owner action:** full-track Spotify playback and its CUE
+routing need the `streaming` permission. Add `http://127.0.0.1:8899/callback`
+to the app's Redirect URIs at developer.spotify.com/dashboard, then run
+`python3 spotify_authorize.py` once. The account is Premium, which the SDK
+requires, and every other permission is already granted.

@@ -166,3 +166,62 @@ def preview_response(handler, track_id: str) -> None:
         handler.wfile.write(body)
     except (BrokenPipeError, ConnectionResetError):
         pass
+
+
+# ---------------------------------------------------------------------------
+# SPOTIFY PLAYBACK
+#
+# Playing a WHOLE track inside the app uses Spotify's Web Playback SDK, which
+# needs a short-lived access token in the page. The REFRESH token never leaves
+# the server — only the one-hour access token is handed over, and only to the
+# app's own page on localhost.
+#
+# The SDK also needs the `streaming` permission. If the stored token does not
+# have it, `spotify_token()` says so plainly and the page falls back to the
+# 30-second embed rather than failing silently.
+_spotify_cache: dict = {"token": None, "until": 0.0, "streaming": None}
+
+
+def spotify_token() -> dict:
+    import time
+    if _spotify_cache["token"] and time.time() < _spotify_cache["until"] - 60:
+        return {"token": _spotify_cache["token"], "streaming": _spotify_cache["streaming"]}
+    try:
+        import requests
+        import spotify_client as sc
+        client = sc.SpotifyClient()
+        resp = requests.post(sc.TOKEN_URL, data={
+            "grant_type": "refresh_token",
+            "refresh_token": client._token["refresh_token"],
+            "client_id": sc.CLIENT_ID, "client_secret": sc.CLIENT_SECRET,
+        }, timeout=20)
+        if resp.status_code != 200:
+            return {"error": f"Spotify odmietol prihlásenie ({resp.status_code})"}
+        data = resp.json()
+        scopes = (data.get("scope") or "").split()
+        _spotify_cache.update({
+            "token": data["access_token"],
+            "until": time.time() + int(data.get("expires_in", 3600)),
+            "streaming": "streaming" in scopes,
+        })
+        return {"token": _spotify_cache["token"], "streaming": _spotify_cache["streaming"]}
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
+def spotify_play(track_id: str, device_id: str, position_ms: int = 0) -> dict:
+    """Start a track on the device the page's SDK player registered."""
+    auth = spotify_token()
+    if "error" in auth:
+        return auth
+    import requests
+    resp = requests.put(
+        "https://api.spotify.com/v1/me/player/play",
+        params={"device_id": device_id},
+        headers={"Authorization": f"Bearer {auth['token']}"},
+        json={"uris": [f"spotify:track:{track_id}"], "position_ms": int(position_ms)},
+        timeout=20)
+    if resp.status_code in (200, 202, 204):
+        return {"ok": True}
+    # 404 here means the device vanished; 403 usually means not Premium.
+    return {"error": f"Spotify: {resp.status_code} {resp.text[:120]}"}

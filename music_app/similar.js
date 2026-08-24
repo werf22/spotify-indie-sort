@@ -125,7 +125,53 @@ const tagRules = () => [...document.querySelectorAll("#rules .rule")].map(r => (
   value: r.querySelector("[data-rv]").value.trim(),
 })).filter(r => r.value);
 
-const keyRules = () => [...document.querySelectorAll("#shiftBody .kr:checked")].map(c => c.value);
+/* MIXED IN KEY — a switch that sits ABOVE the profiles.
+ *
+ * A profile carries its own harmonic rules, and switching profile replaces
+ * them. This does not: while it is on, the four mixable relationships are
+ * forced no matter which profile is loaded, and turning it off gives the
+ * profile its own rules back untouched. That is why its state lives in the
+ * browser and never in a profile.
+ *
+ * TWEAK: MIK_RULES is the set it forces. "relatívna" (relative major/minor) is
+ * deliberately NOT in it — it was not among the four asked for. Add "relative"
+ * to the list to include it. */
+const MIK_RULES = ["exact", "step1", "step2", "semitone"];
+const mikOn = () => $("mikOn").checked;
+
+const keyRules = () => mikOn() ? MIK_RULES.slice()
+  : [...document.querySelectorAll("#shiftBody .kr:checked")].map(c => c.value);
+
+/* Show the override in the panel too, so it is never a mystery why a profile's
+ * own boxes are being ignored — and, just as important, give the profile its
+ * own rules BACK when the switch goes off. The panel's checkboxes cannot be
+ * that memory, because while the switch is on they are showing the forced set,
+ * so the profile's own choice is kept here instead.
+ *
+ * `adopt` means "the boxes currently hold a profile's own rules, remember
+ * them" — passed by whatever just loaded a profile or preset. */
+let ownKeyRules = [];
+function paintMik(opts = {}) {
+  const on = mikOn();
+  const boxes = [...document.querySelectorAll("#shiftBody .kr")];
+  if (opts.adopt || (!on && !opts.keep)) ownKeyRules = boxes.filter(c => c.checked).map(c => c.value);
+  $("mikOn").closest("label").classList.toggle("on", on);
+  localStorage.setItem("mikOn", on ? "1" : "0");
+  boxes.forEach(c => {
+    c.disabled = on;
+    c.title = on ? "Prepísané prepínačom „Mixed in Key“ hore" : "";
+    c.checked = on ? MIK_RULES.includes(c.value) : ownKeyRules.includes(c.value);
+  });
+}
+$("mikOn").checked = localStorage.getItem("mikOn") === "1";
+$("mikOn").onchange = () => {
+  // Going ON must not adopt the forced set as "the profile's own"; going OFF
+  // repaints the remembered ones. Both are just paintMik() without adopt.
+  const boxes = [...document.querySelectorAll("#shiftBody .kr")];
+  if (mikOn()) ownKeyRules = boxes.filter(c => c.checked).map(c => c.value);
+  paintMik({ keep: true });
+  rerun();
+};
 
 /* ---------------- seeds ----------------
  * The search can point at ONE track or at SEVERAL. More seeds is not "more
@@ -506,10 +552,18 @@ const T = {
   get duration() { return backend === "spotify" ? sp.duration : (isFinite(P.duration) ? P.duration : 0); },
   get position() { return backend === "spotify" ? sp.position : P.currentTime; },
   get paused()   { return backend === "spotify" ? sp.paused : P.paused; },
-  toggle() { backend === "spotify" ? sp.controller && sp.controller.togglePlay() : (P.paused ? P.play() : P.pause()); },
+  toggle() {
+    if (backend !== "spotify") return P.paused ? P.play() : P.pause();
+    if (sp.mode === "sdk" && sp.player) return sp.player.togglePlay();
+    if (sp.controller) sp.controller.togglePlay();
+  },
   seekTo(sec) {
-    if (backend === "spotify") { sp.position = sec; sp.controller && sp.controller.seek(sec); }
-    else if (isFinite(P.duration)) P.currentTime = sec;
+    if (backend === "spotify") {
+      sp.position = sec;
+      // SDK takes MILLISECONDS, the embed takes SECONDS. Same bar, two units.
+      if (sp.mode === "sdk" && sp.player) sp.player.seek(Math.round(sec * 1000));
+      else if (sp.controller) sp.controller.seek(sec);
+    } else if (isFinite(P.duration)) P.currentTime = sec;
     paintTransport();
   },
   nudge(sec) { T.seekTo(Math.max(0, Math.min(T.duration || 0, T.position + sec))); },
@@ -552,83 +606,172 @@ document.onkeydown = e => {
 };
 
 /* ---------------- Spotify backend ----------------
- * Used when a track is neither on disk nor available as a 30-second preview.
- * It is driven through Spotify's official iFrame API rather than dropped in as
- * a bare <iframe>, which is what lets the app's own long seek bar scrub it:
- * the API reports position and duration (in MILLISECONDS) and takes seek() in
- * SECONDS. Docs: developer.spotify.com/documentation/embeds/references/iframe-api
+ * Two ways to play a track we have neither on disk nor as a 30-second preview,
+ * and the app always tries the good one first:
  *
- * HONEST LIMIT: an embedded player cannot be pointed at the CUE device, so this
- * one comes out of the default output. It also plays a 30-second preview unless
- * Spotify is logged in inside this window — logging in once from the embed is
- * remembered, after which it plays the whole track.
+ *  1. WEB PLAYBACK SDK — the whole track, played by an audio element that lives
+ *     in THIS page. Because the element is ours, the app's own seek bar scrubs
+ *     it and — the part that matters live — setSinkId can send it to the CUE
+ *     headphones like everything else. Needs Spotify Premium and the
+ *     `streaming` permission (run spotify_authorize.py once to grant it).
  *
- * HOW TO TWEAK: API_TIMEOUT is how long to wait for Spotify's script before
- * giving up and saying so. */
+ *  2. EMBED — Spotify's own little player, driven through the iFrame API. Only
+ *     a 30-second preview, and it CANNOT be routed to the headphones, because
+ *     the sound is produced inside Spotify's own frame. Used only when the SDK
+ *     is unavailable.
+ *
+ * Docs: developer.spotify.com/documentation/web-playback-sdk (SDK, seek takes
+ * MILLISECONDS) and .../embeds/references/iframe-api (embed, seek takes
+ * SECONDS). The units differ; that is not a typo below. */
 const API_TIMEOUT = 15000;
 const sp = { api: null, controller: null, duration: 0, position: 0, paused: true,
-             lastUpdate: 0, ticker: null };
+             lastUpdate: 0, ticker: null,
+             sdk: null, player: null, device: null, streaming: null, cued: false };
 
-function spotifyApi() {
-  if (sp.api) return sp.api;
-  sp.api = new Promise((resolve, reject) => {
-    window.onSpotifyIframeApiReady = api => resolve(api);
-    const tag = document.createElement("script");
-    tag.src = "https://open.spotify.com/embed/iframe-api/v1";
-    tag.async = true;
-    tag.onerror = () => reject(new Error("Spotify sa nepodarilo načítať"));
-    document.head.appendChild(tag);
-    setTimeout(() => reject(new Error("Spotify neodpovedá")), API_TIMEOUT);
-  });
-  return sp.api;
+async function spotifyAuth() {
+  const r = await api("/api/spotify/token");
+  if (r.error) throw new Error(r.error);
+  sp.streaming = !!r.streaming;
+  return r.token;
 }
 
-async function showEmbed(r) {
+/* ---- 1. the good one: full tracks, our audio element, CUE works ---- */
+function loadSdk() {
+  if (sp.sdk) return sp.sdk;
+  sp.sdk = new Promise((resolve, reject) => {
+    window.onSpotifyWebPlaybackSDKReady = () => resolve(window.Spotify);
+    const tag = document.createElement("script");
+    tag.src = "https://sdk.scdn.co/spotify-player.js";
+    tag.async = true;
+    tag.onerror = () => reject(new Error("Spotify SDK sa nenačítal"));
+    document.head.appendChild(tag);
+    setTimeout(() => reject(new Error("Spotify SDK neodpovedá")), API_TIMEOUT);
+  });
+  return sp.sdk;
+}
+
+async function sdkReady() {
+  if (sp.device) return true;
+  const token = await spotifyAuth();
+  if (!sp.streaming) return false;              // permission not granted yet
+  const Spotify = await loadSdk();
+  const player = new Spotify.Player({
+    name: "Similar Tracks (CUE)",
+    getOAuthToken: cb => spotifyAuth().then(cb).catch(() => {}),
+    volume: +$("vol").value,
+  });
+  sp.player = player;
+  player.addListener("player_state_changed", st => {
+    if (!st) return;
+    sp.duration = (st.duration || 0) / 1000;
+    sp.position = (st.position || 0) / 1000;
+    sp.paused = !!st.paused;
+    sp.lastUpdate = Date.now();
+    paintTransport();
+    nowPlayingToHost();
+    routeSpotifyToCue();
+  });
+  ["initialization_error", "authentication_error", "account_error",
+   "playback_error"].forEach(kind =>
+    player.addListener(kind, ({ message }) => nlog(`SDK ${kind}: ${message}`)));
+
+  const ok = await new Promise(resolve => {
+    player.addListener("ready", ({ device_id }) => { sp.device = device_id; resolve(true); });
+    player.addListener("not_ready", () => resolve(false));
+    player.connect().then(c => { if (!c) resolve(false); });
+    setTimeout(() => resolve(!!sp.device), API_TIMEOUT);
+  });
+  return ok;
+}
+
+/* THE CUE TRICK. The SDK builds its own <audio> element inside this document,
+ * so it can be found and pointed at the headphones exactly like our own player.
+ * Re-applied on every state change because the SDK replaces the element when it
+ * changes track. */
+async function routeSpotifyToCue() {
+  const want = $("sink").value;
+  if (!want) return;
+  for (const el of document.querySelectorAll("audio, video")) {
+    if (el === P || !el.setSinkId) continue;
+    try {
+      if (el.sinkId !== want) { await el.setSinkId(want); sp.cued = true; }
+    } catch (e) { if (!sp.cued) nlog("CUE pre Spotify zlyhalo: " + e.message); }
+  }
+}
+
+/* ---- 2. the fallback: 30 seconds, Spotify's own frame, no CUE ---- */
+async function embedFallback(r) {
   const box = $("embed");
-  backend = "spotify";
   box.classList.add("on");
   document.querySelector("footer").classList.add("embed");
-  $("now").innerHTML = `${esc(r.artist)} — ${esc(r.title)}<br>`
-    + `<small>Spotify · mimo slúchadiel</small>`;
   if (!box.querySelector(".lbl")) {
-    box.innerHTML = `<div class="lbl">▶ hrá cez <b>SPOTIFY</b> — nemáme súbor ani 30s ukážku`
+    box.innerHTML = `<div class="lbl">▶ hrá cez <b>SPOTIFY</b> — 30s ukážka`
       + `<span>· ide do predvoleného výstupu, nie do slúchadiel</span></div><div id="spHost"></div>`;
   }
   const uri = "spotify:track:" + r.spotify_id;
+  if (!sp.api) {
+    sp.api = new Promise((resolve, reject) => {
+      window.onSpotifyIframeApiReady = a => resolve(a);
+      const tag = document.createElement("script");
+      tag.src = "https://open.spotify.com/embed/iframe-api/v1";
+      tag.async = true;
+      tag.onerror = () => reject(new Error("Spotify sa nepodarilo načítať"));
+      document.head.appendChild(tag);
+      setTimeout(() => reject(new Error("Spotify neodpovedá")), API_TIMEOUT);
+    });
+  }
+  const a = await sp.api;
+  if (!sp.controller) {
+    await new Promise(done => a.createController($("spHost"),
+      { uri, width: "100%", height: 80 }, c => {
+        sp.controller = c;
+        // The embed reports MILLISECONDS but takes seek() in SECONDS.
+        c.addListener("playback_update", e => {
+          sp.duration = (e.data.duration || 0) / 1000;
+          sp.position = (e.data.position || 0) / 1000;
+          sp.paused = !!e.data.isPaused;
+          sp.lastUpdate = Date.now();
+          paintTransport(); nowPlayingToHost();
+        });
+        c.addListener("ready", () => c.resume());
+        done();
+      }));
+  } else { sp.controller.loadUri(uri); sp.controller.resume(); }
+  startSpotifyTicker();
+}
+
+/* The one the player calls. */
+async function showEmbed(r) {
+  backend = "spotify";
+  $("now").innerHTML = `${esc(r.artist)} — ${esc(r.title)}<br><small>Spotify…</small>`;
   try {
-    const api = await spotifyApi();
-    if (!sp.controller) {
-      await new Promise(done => api.createController(
-        $("spHost"), { uri, width: "100%", height: 80 },
-        c => {
-          sp.controller = c;
-          c.addListener("playback_update", e => onSpotifyUpdate(e.data));
-          c.addListener("ready", () => c.resume());
-          done();
-        }));
-    } else {
-      sp.controller.loadUri(uri);
-      sp.controller.resume();
+    if (await sdkReady()) {
+      sp.mode = "sdk";
+      hideEmbedBox();
+      const res = await api("/api/spotify/play", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: r.spotify_id, device_id: sp.device }) });
+      if (res.error) throw new Error(res.error);
+      $("now").innerHTML = `${esc(r.artist)} — ${esc(r.title)}<br>`
+        + `<small>SPOTIFY · celá skladba${$("sink").value ? " · do slúchadiel" : ""}</small>`;
+      startSpotifyTicker();
+      return;
     }
-    startSpotifyTicker();
+    sp.mode = "embed";
+    await embedFallback(r);
+    if (sp.streaming === false) {
+      toast("Spotify hrá len 30s ukážku. Celé skladby zapneš raz cez "
+          + "<b>python3 spotify_authorize.py</b> (chýba povolenie „streaming“).", 12000);
+    }
   } catch (err) {
-    box.innerHTML = `<div class="lbl" style="color:#ff8080">${esc(err.message)}</div>`;
-    toast("Spotify prehrávač sa nenačítal — skontroluj pripojenie.");
+    $("embed").classList.add("on");
+    $("embed").innerHTML = `<div class="lbl" style="color:#ff8080">${esc(err.message)}</div>`;
+    toast("Spotify prehrávanie zlyhalo: " + esc(err.message));
   }
 }
 
-/* playback_update arrives only when something changes, which would make the bar
- * jump once a second at best. Between updates the position is advanced locally
- * so the bar moves smoothly, and every real update snaps it back to the truth. */
-function onSpotifyUpdate(d) {
-  sp.duration = (d.duration || 0) / 1000;
-  sp.position = (d.position || 0) / 1000;
-  sp.paused = !!d.isPaused;
-  sp.lastUpdate = Date.now();
-  paintTransport();
-  nowPlayingToHost();
-}
-
+/* State updates are sparse; between them the position is advanced locally so
+ * the bar moves smoothly, and every real update snaps it back to the truth. */
 function startSpotifyTicker() {
   clearInterval(sp.ticker);
   sp.ticker = setInterval(() => {
@@ -638,18 +781,27 @@ function startSpotifyTicker() {
   }, 250);
 }
 
-function hideEmbed() {
+function hideEmbedBox() {
   const box = $("embed");
-  clearInterval(sp.ticker);
-  if (sp.controller) { try { sp.controller.pause(); } catch {} }
-  backend = "audio";
-  if (!box.classList.contains("on")) return;
   box.classList.remove("on");
   document.querySelector("footer").classList.remove("embed");
 }
 
+function hideEmbed() {
+  clearInterval(sp.ticker);
+  if (sp.mode === "sdk" && sp.player) { try { sp.player.pause(); } catch {} }
+  if (sp.mode === "embed" && sp.controller) { try { sp.controller.pause(); } catch {} }
+  backend = "audio";
+  hideEmbedBox();
+}
+
 /* ---------------- CUE output ---------------- */
-async function applySink(id) { if (P.setSinkId) { try { await P.setSinkId(id || "default"); } catch {} } }
+async function applySink(id) {
+  if (P.setSinkId) { try { await P.setSinkId(id || "default"); } catch {} }
+  // Spotify's own audio element lives in this page too when the SDK is used,
+  // so the CUE device applies to it as well — that is the whole point.
+  routeSpotifyToCue();
+}
 async function loadSinks() {
   try {
     await navigator.mediaDevices.getUserMedia({ audio: true })

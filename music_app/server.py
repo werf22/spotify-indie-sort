@@ -135,6 +135,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"signals": similar_api.engine.signals()})
             if url.path == "/api/preview":
                 return similar_api.preview_response(self, query["id"])
+            if url.path == "/api/spotify/token":
+                return self._send(similar_api.spotify_token())
             if url.path == "/api/audio":
                 # Streams the file itself; must not go through _send(), which
                 # buffers a whole body and cannot answer a Range request.
@@ -170,6 +172,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"ok": True, "queued": len(paths)})
             if url.path == "/api/traktor/paths":
                 return self._send(traktor_bridge.file_list(body.get("ids") or []))
+            if url.path == "/api/spotify/play":
+                return self._send(similar_api.spotify_play(
+                    body.get("id", ""), body.get("device_id", ""),
+                    int(body.get("position_ms") or 0)))
             if url.path == "/api/traktor/reveal":
                 return self._send(traktor_bridge.reveal(body.get("ids") or []))
             if url.path == "/api/traktor/playlist":

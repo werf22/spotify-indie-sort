@@ -667,12 +667,37 @@ PRESETS = [
         "numbers": ["onset_rate", "dynamic_complexity"],
         "embeddings": ["MAEST"], "musical": [],
     },
+    {
+        "id": "mood_in_scene",
+        "label": "Nálada v scéne",
+        "note": "Presne tá nálada a energia — ale v tom istom žánri a scéne.",
+        "why": "Spojenie dvoch predošlých režimov, a spojenie zámerne "
+               "nerovnomerné. 'Nálada a energia' zámerne vyhadzuje žánrové "
+               "tagy, aby našla ten istý pocit inde; 'Žáner a scéna' zase "
+               "nepozerá na náladu. Tu bežia obidva modely naraz — CLAP nesie "
+               "náladu a textúru (MRR 0.43), MAEST žáner (0.39) — a tagy sú "
+               "oboje: mood spolu s genre, subgenre a style. Label je VON, "
+               "hoci má najvyšší recall: vydavateľstvo je znak scény, nie "
+               "nálady, a v tomto režime by ťa stiahol späť ku katalógu jednej "
+               "firmy namiesto k tomu pocitu. Použi to, keď vieš presne, akú "
+               "náladu chceš, ale nechceš, aby ti to vyskočilo zo žánru — "
+               "typicky uprostred setu, keď držíš scénu a hýbeš energiou.",
+        "groups": {"audio": 1.2, "tags": 0.3, "numbers": 0.25, "musical": 0.0},
+        "tags": ["mood", "mood_candidate", "theme", "vocal_character", "voice",
+                 "genre", "subgenre", "style", "audio_style_candidate",
+                 "genre_audio_candidate", "production_style"],
+        "numbers": ["energy", "valence", "danceability", "average_loudness",
+                    "dynamic_complexity", "acousticness", "onset_rate"],
+        "embeddings": ["CLAP", "MAEST"], "musical": [],
+    },
 ]
 
 
 def presets() -> list[dict]:
-    """The five selections, resolved against the signals this library actually
-    has — so a preset never asks for a tag type or number that is missing."""
+    """The built-in selections, resolved against the signals this library
+    actually has — so a preset never asks for a tag type or number that is
+    missing. Adding one means adding an entry to PRESETS above; nothing else
+    in the app needs to know about it."""
     catalogue = signals()
     by_group: dict[str, list[dict]] = {}
     for item in catalogue:

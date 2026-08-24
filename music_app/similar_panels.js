@@ -182,6 +182,7 @@ function applyPreset(i, run = true) {
   const f = p.filters || {};
   const kr = new Set(f.same_key ? ["exact"] : []);
   document.querySelectorAll("#shiftBody .kr").forEach(c => c.checked = kr.has(c.value));
+  paintMik({ adopt: true });   // remember the profile's own rules, then override
   if (run) rerun();
 }
 
@@ -363,6 +364,7 @@ window.signalsReady = (async function boot() {
   state.tagValues = vals.values || {};
   renderCompare(signals);
   renderShift(signals);
+  paintMik();
   await loadPresets();
   await loadProfiles();
 })();
