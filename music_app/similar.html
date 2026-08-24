@@ -55,6 +55,19 @@
            border:1px solid var(--accent); padding:10px 18px; border-radius:8px; display:none; z-index:60; }
   #toast a { color:var(--accent); }
   .muted { color:var(--dim); }
+  td.pick { width:26px; }
+  .rowsel { cursor:pointer; }
+  .act2 { display:flex; gap:4px; }
+  .act2 button { padding:3px 8px; border-radius:6px; font-size:12.5px; }
+  #cue { display:flex; gap:6px; align-items:center; }
+  #cue select { max-width:190px; }
+  #selbar { display:flex; gap:8px; align-items:center; margin-top:8px; }
+  #selbar b { color:var(--ink); }
+  #hits .an { float:right; font-size:11.5px; padding:1px 8px; border-radius:5px;
+              background:var(--accent); color:#0b0d14; border:none; font-weight:600; }
+  #job { margin-top:6px; font-size:12.5px; color:var(--dim); display:none; }
+  #job.on { display:block; }
+  #job b { color:var(--ink); }
   #harm label { margin-right:7px; }
   #harm input { margin-right:3px; }
   #presets button { border-radius:20px; padding:6px 14px; font-size:13px; }
@@ -89,6 +102,11 @@
   .grp h3 button { padding:2px 8px; font-size:11px; border-radius:5px; }
   .sig { display:inline-flex; align-items:center; gap:5px; width:262px; padding:2px 0;
          color:var(--dim); font-size:13px; }
+  .sig .md { font-size:11px; padding:1px 2px; background:#1b1e2c; color:var(--ink);
+             border:1px solid var(--line); border-radius:4px; }
+  .sig .md.diff { border-color:#ff9d5c; color:#ff9d5c; }
+  .sig .tg { width:44px; padding:1px 4px; font-size:11px; background:#1b1e2c;
+             border:1px solid var(--line); border-radius:4px; color:var(--ink); }
   .sig .sw { width:46px; padding:1px 4px; font-size:11.5px; text-align:right;
              background:#1b1e2c; border:1px solid var(--line); border-radius:4px; color:var(--ink); }
   .sig .sw:focus { outline:1px solid var(--accent); }
@@ -120,12 +138,23 @@
     <button id="make" class="spotify" disabled>Vytvor Spotify playlist</button>
     <input id="plname" placeholder="Názov playlistu" style="width:220px">
     <button id="tune">Čo porovnávať…</button>
+    <span id="cue" class="muted" title="Kam ide zvuk z tejto appky — vyber slúchadlá, Traktor hrá von cez reproduktory">
+      🎧 <select id="sink"><option value="">predvolený výstup</option></select>
+    </span>
     <button id="profBtn">Moje profily</button>
     <button id="saveProf">＋ Ulož ako profil</button>
   </div>
   <div class="row" id="presets" style="margin-top:8px"></div>
   <div class="row" style="display:none">
   </div>
+  <div id="selbar">
+    <label class="muted"><input type="checkbox" id="selAll"> označiť všetko</label>
+    <span class="muted" id="selCount">0 označených</span>
+    <button id="toPlaylist">→ Traktor playlist (.m3u)</button>
+    <button id="revealSel">Ukáž v Finderi</button>
+    <button id="analyzeSelSim">Analyzuj označené</button>
+  </div>
+  <div id="job"></div>
   <div id="pinbar"></div>
   <div id="profiles"></div>
   <div id="why-preset"></div>
@@ -135,7 +164,7 @@
 </header>
 
 <table><thead><tr>
-  <th class="num">#</th><th>Interpret</th><th>Track</th><th>Zhoda</th>
+  <th class="pick"></th><th class="num">#</th><th>Interpret</th><th>Track</th><th>Zhoda</th>
   <th>Prečo</th><th>BPM</th><th>Tónina</th><th></th>
 </tr></thead><tbody id="body"></tbody></table>
 
@@ -162,7 +191,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const P = $("player");
-const state = { rows: [], index: -1, refId: null, signals: [], presets: [], preset: 0, profiles: [], dragId: null };
+const state = { rows: [], index: -1, refId: null, signals: [], presets: [], preset: 0, profiles: [], dragId: null, picked: new Set() };
 const esc = s => (s||"").replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
 const mmss = s => (!isFinite(s) || s < 0) ? "0:00"
   : Math.floor(s/60) + ":" + String(Math.floor(s%60)).padStart(2,"0");
@@ -194,7 +223,11 @@ async function doSearch() {
   const { results } = await api("/api/similar/search?q=" + encodeURIComponent(q));
   $("hits").innerHTML = results.length ? results.map(r =>
     `<div data-id="${r.spotify_id}" class="${r.analysed===false?'no':''}">${esc(r.artist)} — ${esc(r.title)}${
-      r.analysed===false?' · zatiaľ bez analýzy':''}</div>`).join("") : '<div class="no">nič</div>';
+      r.analysed===false?' · zatiaľ bez analýzy':''}${
+      r.analysed===false?`<button class="an" data-an="${r.spotify_id}">Analyzuj hneď</button>`:''}</div>`)
+      .join("") : '<div class="no">nič</div>';
+  $("hits").querySelectorAll("[data-an]").forEach(b => b.onclick = ev => {
+    ev.stopPropagation(); analyzeNow([b.dataset.an]); });
   $("hits").style.display = "block";
   $("hits").querySelectorAll("div[data-id]").forEach(el =>
     el.onclick = () => pick(el.dataset.id, el.textContent.trim()));
@@ -213,7 +246,8 @@ async function pick(id, label) {
         spotify_only: $("spotifyOnly").checked, same_key: $("sameKey").checked,
         bpm_window: +$("bpm").value || 0, key_rules: keyRules(),
         enabled: enabledSignals(), group_weights: groupWeights(),
-        signal_weights: signalWeights() }) });
+        signal_weights: signalWeights(),
+    signal_modes: signalModes(), signal_modes: signalModes() }) });
     state.rows = res.results; render();
     const u = res.signals_used || {};
     $("ref").innerHTML = `<b>${esc($("q").value)}</b> — ${res.results.length} najpodobnejších `
@@ -230,12 +264,116 @@ const GROUP_NOTE = {
   numbers:"hľadá najbližšiu hodnotu", musical:"tempo a tónina" };
 
 
+
+
+// ---- CUE: send this app's audio to the headphones -------------------------
+// Traktor keeps the main output; the browser plays into whichever device is
+// chosen here. setSinkId needs device LABELS, and labels only appear after the
+// user has granted audio permission once — hence the getUserMedia call.
+async function loadSinks() {
+  try {
+    await navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(st => st.getTracks().forEach(t => t.stop())).catch(() => {});
+    const outs = (await navigator.mediaDevices.enumerateDevices())
+      .filter(d => d.kind === "audiooutput");
+    $("sink").innerHTML = '<option value="">predvolený výstup</option>' +
+      outs.map(d => `<option value="${d.deviceId}">${esc(d.label || "výstup")}</option>`).join("");
+    const saved = localStorage.getItem("cueSink");
+    if (saved && outs.some(d => d.deviceId === saved)) {
+      $("sink").value = saved; applySink(saved);
+    }
+  } catch { $("cue").title = "prehliadač nedovolil výber výstupu"; }
+}
+async function applySink(id) {
+  if (!P.setSinkId) return;
+  try { await P.setSinkId(id || "default"); } catch (e) { toast("Výstup sa nepodarilo prepnúť"); }
+}
+$("sink").onchange = () => { localStorage.setItem("cueSink", $("sink").value); applySink($("sink").value); };
+
+// ---- selection -------------------------------------------------------------
+function updateSel() {
+  $("selCount").textContent = `${state.picked.size} označených`;
+  const boxes = [...document.querySelectorAll(".rowsel")];
+  $("selAll").checked = boxes.length > 0 && boxes.every(b => b.checked);
+}
+$("selAll").onchange = () => {
+  document.querySelectorAll(".rowsel").forEach(b => {
+    b.checked = $("selAll").checked;
+    b.checked ? state.picked.add(b.dataset.id) : state.picked.delete(b.dataset.id);
+  });
+  updateSel();
+};
+const pickedIds = () => state.rows.filter(r => state.picked.has(r.spotify_id)).map(r => r.spotify_id);
+
+async function revealOne(id) {
+  try { await api("/api/traktor/reveal", { method:"POST",
+    headers:{"Content-Type":"application/json"}, body: JSON.stringify({ ids:[id] }) }); }
+  catch (e) { toast(e.message); }
+}
+$("revealSel").onclick = () => { const ids = pickedIds();
+  if (!ids.length) return toast("Najprv označ tracky"); revealOne(ids[0]); };
+
+$("toPlaylist").onclick = async () => {
+  const ids = pickedIds();
+  if (!ids.length) return toast("Najprv označ tracky");
+  try {
+    const res = await api("/api/traktor/playlist", { method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ ids, name: $("q").value.slice(0, 40) }) });
+    toast(`Playlist s ${res.count} trackmi je vo Finderi — chyť ho a pusti do Traktora`
+      + (res.skipped ? ` (${res.skipped} bez súboru)` : ""), 12000);
+  } catch (e) { toast(e.message); }
+};
+
+$("analyzeSelSim").onclick = () => {
+  const ids = pickedIds();
+  if (!ids.length) return toast("Najprv označ tracky");
+  analyzeNow(ids);
+};
+
+// ---- pivot: make THIS track the new reference ------------------------------
+function pivotTo(row) {
+  state.refId = row.spotify_id;
+  $("q").value = `${row.artist} — ${row.title}`;
+  state.picked.clear();
+  pick(row.spotify_id, $("q").value);
+}
+
+// ---- analyse on demand ------------------------------------------------------
+async function analyzeNow(ids) {
+  if (!ids.length) return;
+  $("job").classList.add("on");
+  $("job").innerHTML = `spúšťam analýzu ${ids.length} track(ov)…`;
+  try {
+    const job = await api("/api/analyze", { method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({ ids }) });
+    pollJob(job.id);
+  } catch (e) { $("job").innerHTML = '<b style="color:#ff8080">' + esc(e.message) + "</b>"; }
+}
+
+async function pollJob(id) {
+  try {
+    const j = await api("/api/analyze/status?job=" + encodeURIComponent(id));
+    const last = (j.lines || []).slice(-1)[0] || "";
+    const mins = ((Date.now()/1000 - j.started) / 60).toFixed(1);
+    if (j.state === "running") {
+      $("job").innerHTML = `<b>Analyzujem ${j.total} track(ov)</b> · ${mins} min · ${esc(last)}`;
+      return setTimeout(() => pollJob(id), 3000);
+    }
+    $("job").innerHTML = j.state === "done"
+      ? `<b>Hotovo</b> — ${j.total} track(ov) za ${mins} min. ${esc(last)}`
+      : `<b style="color:#ff8080">Nepodarilo sa</b> — ${esc(last)}`;
+    if (j.state === "done") loadSignals();     // the new tracks are comparable now
+  } catch (e) { $("job").innerHTML = "chyba pri sledovaní úlohy"; }
+}
+
 // ---- my profiles: saved preference sets, in folders --------------------------
 function currentSettings() {
   return {
     enabled: enabledSignals(),
     group_weights: groupWeights(),
     signal_weights: signalWeights(),
+    signal_modes: signalModes(),
     filters: { bpm_window: +$("bpm").value || 0, same_key: $("sameKey").checked,
                key_rules: keyRules(),
                limit: +$("limit").value, spotify_only: $("spotifyOnly").checked },
@@ -252,6 +390,20 @@ function applySettings(s) {
   Object.entries(s.signal_weights || {}).forEach(([id, w]) => {
     const el = $("panel").querySelector(`[data-sw="${CSS.escape(id)}"]`);
     if (el) el.value = w;
+  });
+  document.querySelectorAll("#panel [data-md]").forEach(sel => {
+    sel.value = "same"; sel.classList.remove("diff");
+    const tg = $("panel").querySelector(`[data-tg="${CSS.escape(sel.dataset.md)}"]`);
+    if (tg) tg.value = "";
+  });
+  Object.entries(s.signal_modes || {}).forEach(([id, spec]) => {
+    const sel = $("panel").querySelector(`[data-md="${CSS.escape(id)}"]`);
+    if (!sel) return;
+    sel.value = spec.mode; sel.classList.add("diff");
+    if (spec.mode === "target") {
+      const tg = $("panel").querySelector(`[data-tg="${CSS.escape(id)}"]`);
+      if (tg && spec.target != null) tg.value = spec.target;
+    }
   });
   const f = s.filters || {};
   if (f.bpm_window != null) $("bpm").value = f.bpm_window;
@@ -412,8 +564,9 @@ async function loadSignals() {
   signals.forEach(s => (groups[s.group] = groups[s.group] || []).push(s));
   $("panel").innerHTML = '<div class="formula">Skóre = pre každú kategóriu: '
     + '<code>váha kategórie × (signál×váha + signál×váha + …)</code>. '
-    + 'Váhy signálov sa teda najprv sčítajú a až ten súčet sa násobí váhou kategórie — '
-    + 'čím viac signálov zapneš, tým väčšie slovo tá kategória má.</div>'
+    + 'Váhy signálov sa teda najprv sčítajú a až ten súčet sa násobí váhou kategórie. '
+    + '<b>=</b> drž rovnaké · <b>≠</b> chcem odlišné · <b>→</b> mier na hodnotu — '
+    + 'tak sa dá posúvať set: groove a tónina zostanú, energia sa zmení.</div>'
     + Object.entries(groups).map(([g, list]) => `
     <div class="grp" data-g="${g}">
       <h3>${GROUP_LABEL[g]||g}
@@ -427,6 +580,14 @@ async function loadSignals() {
       ${list.map(s => `<label class="sig" title="${esc(s.note||"")} · ${s.coverage.toLocaleString()} trackov">
           <input type="checkbox" data-sig="${esc(s.id)}" ${s.default?"checked":""}>
           <b>${esc(s.label)}</b> <i>${(s.coverage/1000).toFixed(0)}k</i>
+          <select class="md" data-md="${esc(s.id)}" title="rovnaké / odlišné${
+              s.group === "numbers" ? " / cieľová hodnota" : ""}">
+            <option value="same">=</option>
+            <option value="diff">≠</option>
+            ${s.group === "numbers" ? '<option value="target">→</option>' : ""}
+          </select>
+          ${s.group === "numbers" ? `<input class="tg" type="number" step="0.05"
+              data-tg="${esc(s.id)}" placeholder="cieľ" title="cieľová hodnota">` : ""}
           <input class="sw" type="number" step="0.1" min="0" max="9"
                  data-sw="${esc(s.id)}" value="${(s.weight ?? 1).toFixed(1)}"
                  title="Váha tohto signálu"></label>`).join("")}
@@ -435,6 +596,16 @@ async function loadSignals() {
     setGroup(b.dataset.all, true));
   $("panel").querySelectorAll("[data-none]").forEach(b => b.onclick = () =>
     setGroup(b.dataset.none, false));
+  // Asking for CONTRAST only bites if the signal carries weight: one of ~45
+  // signals at its default barely moves a ranking, so switching to ≠ or →
+  // raised nothing visible. Switching the mode now raises that signal's weight
+  // to a level where the request is actually felt; it stays editable.
+  $("panel").querySelectorAll("[data-md]").forEach(sel => sel.onchange = () => {
+    const box = $("panel").querySelector(`[data-sw="${CSS.escape(sel.dataset.md)}"]`);
+    if (!box) return;
+    if (sel.value !== "same" && +box.value < 5) box.value = "5.0";
+    if (sel.value === "same" && +box.value === 5) box.value = "1.0";
+  });
   $("panel").querySelectorAll("[data-w]").forEach(sl => sl.oninput = () =>
     $("panel").querySelector(`[data-wv="${sl.dataset.w}"]`).textContent = (+sl.value).toFixed(1));
 }
@@ -447,6 +618,19 @@ const enabledSignals = () =>
 const groupWeights = () => Object.fromEntries(
   [...$("panel").querySelectorAll("[data-w]")].map(sl => [sl.dataset.w, +sl.value]));
 const keyRules = () => [...document.querySelectorAll(".kr:checked")].map(c => c.value);
+// mode per signal: "=" keep it alike, "≠" deliberately different, "→" aim at a value
+const signalModes = () => {
+  const out = {};
+  document.querySelectorAll("#panel [data-md]").forEach(sel => {
+    const id = sel.dataset.md, mode = sel.value;
+    if (mode === "same") return;
+    const tg = $("panel").querySelector(`[data-tg="${CSS.escape(id)}"]`);
+    out[id] = mode === "target" && tg && tg.value !== ""
+      ? { mode: "target", target: +tg.value } : { mode };
+    sel.classList.toggle("diff", mode !== "same");
+  });
+  return out;
+};
 const signalWeights = () => Object.fromEntries(
   [...$("panel").querySelectorAll("[data-sw]")].map(el => [el.dataset.sw, +el.value || 0]));
 
@@ -458,7 +642,8 @@ $("tune").onclick = () => {
 document.querySelectorAll(".kr").forEach(c => c.onchange = () => {
   if (state.refId) pick(state.refId, $("q").value); });
 $("panel").addEventListener("change", e => {
-  if ((e.target.dataset.sig || e.target.dataset.sw || e.target.dataset.w)
+  if ((e.target.dataset.sig || e.target.dataset.sw || e.target.dataset.w
+       || e.target.dataset.md || e.target.dataset.tg)
       && state.refId) pick(state.refId, $("q").value);
 });
 
@@ -480,16 +665,31 @@ function render() {
     if (r.bpm_diff != null && r.bpm_diff <= 2) bits.unshift("BPM");
     const why = [...new Set(bits)].slice(0, 4).join(" · ");
     return `<tr data-i="${i}">
+      <td class="pick"><input type="checkbox" class="rowsel" data-id="${r.spotify_id}"
+          ${state.picked.has(r.spotify_id) ? "checked" : ""}></td>
       <td class="num">${i+1}</td><td>${esc(r.artist)}</td><td>${esc(r.title)}</td>
       <td><span class="bar"><i style="width:${Math.max(4,Math.round(r.score/max*100))}%"></i></span></td>
       <td class="why">${why||"&nbsp;"}</td>
       <td class="muted">${r.bpm ?? ""}</td>
       <td class="muted">${esc(r.key||"")}${r.key_rel && r.key_rel !== "rovnaká"
           ? ` <i style="opacity:.55">${esc(r.key_rel)}</i>` : ""}</td>
-      <td><button class="play">${r.has_file ? "▶" : "▶ Spotify"}</button></td></tr>`;
+      <td><span class="act2">
+        <button class="play" title="Prehrať (ide do vybraného výstupu)">${r.has_file ? "▶" : "▶ Spotify"}</button>
+        <button class="pivot" title="Nájdi podobné na TENTO track">⇄</button>
+        <button class="rev" title="Ukáž v Finderi — odtiaľ ťahaj do decku">⇱</button>
+      </span></td></tr>`;
   }).join("");
-  $("body").querySelectorAll("tr").forEach(tr =>
-    tr.querySelector(".play").onclick = () => playIndex(+tr.dataset.i));
+  $("body").querySelectorAll("tr").forEach(tr => {
+    const i = +tr.dataset.i, row = state.rows[i];
+    tr.querySelector(".play").onclick = () => playIndex(i);
+    tr.querySelector(".pivot").onclick = () => pivotTo(row);
+    tr.querySelector(".rev").onclick = () => revealOne(row.spotify_id);
+    tr.querySelector(".rowsel").onchange = e => {
+      e.target.checked ? state.picked.add(row.spotify_id) : state.picked.delete(row.spotify_id);
+      updateSel();
+    };
+  });
+  updateSel();
 }
 
 function playIndex(i) {
@@ -561,6 +761,7 @@ $("make").onclick = async () => {
   $("make").disabled = false;
 };
 pollReady();
+loadSinks();
 loadSignals().then(loadPresets).then(loadProfiles);
 </script>
 </body>

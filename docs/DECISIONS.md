@@ -1598,3 +1598,40 @@ The results table now prints the relationship next to the key ("B-Minor +1").
 key relationship never reached the cell because a template edit had not matched,
 and the "Prečo" column read "tónina · … · Tónina" because the de-duplication
 list was written in English while the signal labels had become Slovak.
+
+## D-079 — playing from the app: CUE, Traktor, and building a set (2026-08-24)
+
+Four things the owner asked for while DJing, and one honest refusal.
+
+**The refusal first: a web page cannot drag a file into Traktor.** The browser
+sandbox will not hand a real filesystem path to a native app, and no JavaScript
+changes that. So the bridge is Finder: `⇱` on a row reveals the file with it
+selected, ready to drag onto a deck, and a multi-selection writes an **.m3u**
+next to the music and reveals that — dragging one file into Traktor's playlist
+tree imports the whole selection. `.m3u` rather than a playlist inside
+collection.nml, because Traktor reads that file only at STARTUP: a playlist
+written there would be invisible until a restart, which is useless mid-gig.
+
+**CUE through the headphones — the part that makes it a browser replacement.**
+`setSinkId()` routes this app's audio to a chosen output device while Traktor
+keeps the main one, so a track can be auditioned in headphones over the record
+playing out. Device labels only appear after audio permission is granted, hence
+the one-time prompt. The choice is remembered.
+
+**Pivot.** `⇄` on any row makes THAT track the new reference and re-runs the
+search, so following a thread through the library is one click instead of
+retyping a name.
+
+**Contrast — same, different, or aimed at a value.** Every signal now carries an
+intent as well as a weight: `=` hold it alike, `≠` deliberately unlike, `→` aim
+a number at a value. This is what turns "find me clones" into "hold the groove
+and the key, lift the energy" — a set that develops instead of repeating.
+
+Verified with the reference at energy 0.58: `=` returned 0.55-0.61, `≠` returned
+0.98-1.00, `→0.95` returned 0.88-0.98 and `→0.20` returned 0.25-0.40.
+
+**The first attempt looked broken and the maths explained why.** Flipping one
+signal among ~45 barely moved the ranking, because that signal contributed a
+fraction of the total. Switching a signal to `≠` or `→` therefore now raises its
+weight to where the request is actually felt — still editable, but no longer a
+control that appears to do nothing.

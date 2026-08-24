@@ -198,7 +198,7 @@ def _z(values: np.ndarray, mask: np.ndarray) -> np.ndarray:
     return out
 
 
-def _signal_vector(lib, sid: str, ref: str, row: int, n: int):
+def _signal_vector(lib, sid: str, ref: str, row: int, n: int, target=None):
     """One signal's raw opinion, plus the mask of tracks it can speak about."""
     if sid.startswith("emb:"):
         model = lib.models.get(sid[4:])
@@ -235,7 +235,16 @@ def _signal_vector(lib, sid: str, ref: str, row: int, n: int):
     if sid.startswith("num:"):
         name = sid[4:]
         values, present = lib.numbers.get(name), lib.number_present.get(name)
-        if values is None or not present[row]:
+        if values is None:
+            return None
+        if target is not None:
+            # AIM AT A VALUE instead of at the reference. The owner types it in
+            # real units ("energy 0.8"), so it is converted onto the same
+            # standardised scale the column lives on.
+            mean, std = lib.number_stats.get(name, (0.0, 1.0))
+            wanted = (float(target) - mean) / (std or 1.0)
+            return -np.abs(values - wanted), present.copy()
+        if not present[row]:
             return None
         return -np.abs(values - values[row]), present.copy()
 
@@ -258,7 +267,8 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
             key_rules: list[str] | None = None,
             enabled: list[str] | None = None,
             group_weights: dict | None = None,
-            signal_weights: dict | None = None) -> dict:
+            signal_weights: dict | None = None,
+            signal_modes: dict | None = None) -> dict:
     if not _state["ready"]:
         warm()
     if _state["error"]:
@@ -290,11 +300,24 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
     # tags ticked at weight 1.0 the tag group contributes roughly forty times
     # one signal, so it will dominate audio unless its group weight is lowered.
     # That is why the panel shows both numbers.
+    # PER-SIGNAL INTENT. "same" is the default; "diff" flips the sign so the
+    # signal rewards CONTRAST instead of likeness, and "target" aims a number at
+    # a value the owner names. This is what lets a set move: hold the groove and
+    # the key, but ask for different energy or a different mood, so the next
+    # record belongs without repeating the last one.
+    modes = signal_modes or {}
     collected: dict[str, list] = {}
     for sid in enabled:
-        result = _signal_vector(lib, sid, ref, row, n)
-        if result is not None:
-            collected.setdefault(group_of.get(sid, "other"), []).append((sid, result))
+        spec = modes.get(sid) or {}
+        mode = spec.get("mode", "same")
+        target = spec.get("target") if mode == "target" else None
+        result = _signal_vector(lib, sid, ref, row, n, target=target)
+        if result is None:
+            continue
+        if mode == "diff":
+            values, mask = result
+            result = (-values, mask)
+        collected.setdefault(group_of.get(sid, "other"), []).append((sid, result))
 
     score = np.zeros(n, dtype=np.float32)
     used: dict[str, int] = {}

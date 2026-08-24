@@ -30,6 +30,8 @@ from urllib.parse import parse_qs, urlparse
 import db
 import similar_api
 import profiles
+import analyze_jobs
+import traktor_bridge
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -103,6 +105,10 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/similar/search":
                 return self._send({"results": similar_api.engine.search(
                     query.get("q", ""), limit=int(query.get("limit", 25)))})
+            if url.path == "/api/analyze/status":
+                return self._send(analyze_jobs.status(query.get("job", "")))
+            if url.path == "/api/analyze/recent":
+                return self._send({"jobs": analyze_jobs.recent()})
             if url.path == "/api/profiles":
                 return self._send({"profiles": profiles.list_profiles()})
             if url.path == "/api/similar/presets":
@@ -143,6 +149,13 @@ class Handler(BaseHTTPRequestHandler):
                     run_detached([str(ROOT / ".venv/bin/python"), "index_audio_files.py",
                                   "--roots", ":".join(paths)])
                 return self._send({"ok": True, "queued": len(paths)})
+            if url.path == "/api/traktor/reveal":
+                return self._send(traktor_bridge.reveal(body.get("ids") or []))
+            if url.path == "/api/traktor/playlist":
+                return self._send(traktor_bridge.playlist(
+                    body.get("ids") or [], body.get("name") or ""))
+            if url.path == "/api/analyze":
+                return self._send(analyze_jobs.start(body.get("ids") or []))
             if url.path == "/api/profiles/save":
                 return self._send(profiles.save(body))
             if url.path == "/api/profiles/delete":
@@ -163,7 +176,8 @@ class Handler(BaseHTTPRequestHandler):
                     key_rules=body.get("key_rules"),
                     enabled=body.get("enabled"),
                     group_weights=body.get("group_weights"),
-                    signal_weights=body.get("signal_weights")))
+                    signal_weights=body.get("signal_weights"),
+                    signal_modes=body.get("signal_modes")))
             if url.path == "/api/playlist":
                 return self._send(similar_api.create_playlist(
                     body.get("name") or "Similar tracks",

@@ -53,6 +53,7 @@
   <button id="swap">Swap</button>
   <button id="addFiles">+ Súbory</button>
   <button id="addFolder">+ Priečinok</button>
+  <button id="analyzeSel">Analyzuj označené</button>
   <button id="resume" class="primary">Resume analysis</button>
   <span id="stats"></span>
 </header>
@@ -66,6 +67,9 @@
 </footer>
 <div class="drop" id="drop">Pusti súbory alebo priečinky sem</div>
 <div id="toast"></div>
+<div id="job" style="position:fixed;bottom:60px;left:14px;background:#232636;
+     border:1px solid var(--accent);padding:8px 14px;border-radius:8px;display:none;
+     font-size:12.5px;z-index:60"></div>
 
 <script>
 const state = { offset:0, limit:100, total:0, sort:"title", cols:[], visible:[], editable:[], selected:new Set(), rows:[] };
@@ -207,6 +211,35 @@ async function addPaths(paths){
 }
 $("addFiles").onclick = async () => addPaths((await api("/api/pick")).paths);
 $("addFolder").onclick = async () => addPaths((await api("/api/pick?folders=1")).paths);
+// Analyse the ticked rows right now, ahead of the nightly queue. The library
+// view is where unanalysed tracks are actually visible, so this is where the
+// owner reaches for it.
+$("analyzeSel").onclick = async () => {
+  const ids = [...state.selected];
+  if (!ids.length) { toast("Najprv označ tracky (klik na riadok)"); return; }
+  const job = document.getElementById("job");
+  job.style.display = "block";
+  job.textContent = `spúšťam analýzu ${ids.length} track(ov)…`;
+  try {
+    const started = await api("/api/analyze", { method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({ ids }) });
+    const poll = async () => {
+      const j = await api("/api/analyze/status?job=" + encodeURIComponent(started.id));
+      const last = (j.lines || []).slice(-1)[0] || "";
+      const mins = ((Date.now()/1000 - j.started) / 60).toFixed(1);
+      if (j.state === "running") {
+        job.textContent = `Analyzujem ${j.total} · ${mins} min · ${last}`;
+        return setTimeout(poll, 3000);
+      }
+      job.textContent = j.state === "done"
+        ? `Hotovo — ${j.total} track(ov) za ${mins} min`
+        : `Nepodarilo sa — ${last}`;
+      if (j.state === "done") { refresh(); stats(); }
+    };
+    poll();
+  } catch (e) { job.textContent = "Chyba: " + e.message; }
+};
+
 $("resume").onclick = async () => { await api("/api/resume", { method:"POST" });
   toast("Analýza sa rozbieha pre všetko, čo ňou ešte neprešlo."); };
 

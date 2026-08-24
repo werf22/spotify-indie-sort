@@ -98,6 +98,9 @@ class Library:
         self.tag_of: dict[str, dict] = {}        # tag_type -> {track: set(tags)}
         self.numbers: dict[str, np.ndarray] = {} # attribute -> standardised values
         self.number_present: dict[str, np.ndarray] = {}
+        # Raw mean/std per number, so a TARGET the owner types in real units
+        # ("energy 0.8") can be placed on the same standardised scale.
+        self.number_stats: dict[str, tuple[float, float]] = {}
         self.bpm = None
         self.key = None
 
@@ -168,6 +171,7 @@ class Library:
         out[present] = (block - mean) / std
         self.numbers[name] = out
         self.number_present[name] = present
+        self.number_stats[name] = (mean, std)
 
     def _load_numbers(self, db, n: int) -> None:
         pools: dict[str, np.ndarray] = {}

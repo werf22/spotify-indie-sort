@@ -284,6 +284,7 @@ def prepare_row(row, clips: Path, codec: str, seconds: float, ffmpeg: str, ffpro
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--ids", help="comma-separated spotify ids to prepare right now")
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--seconds", type=float, default=45.0)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
@@ -315,7 +316,17 @@ def main() -> None:
     pending = [row for row in candidates(connect())
                if not (clips / f"{row['spotify_id']}.{args.codec}").is_file()
                and Path(row["path"]).exists()]
-    selected = select_balanced(pending, args.limit)
+    if args.ids:
+        # ON-DEMAND MODE: prepare exactly these tracks and nothing else, in the
+        # order asked for. The balanced selection below exists to spread a big
+        # nightly batch across the library; when the owner clicks one track in
+        # the app, "balanced" is the wrong idea entirely.
+        wanted = [i.strip() for i in args.ids.split(",") if i.strip()]
+        order = {sid: n for n, sid in enumerate(wanted)}
+        selected = sorted((r for r in pending if r["spotify_id"] in order),
+                          key=lambda r: order[r["spotify_id"]])
+    else:
+        selected = select_balanced(pending, args.limit)
     records, failures = [], []
     worker = lambda row: prepare_row(
         row, clips, args.codec, args.seconds, ffmpeg, ffprobe, args.full_track
