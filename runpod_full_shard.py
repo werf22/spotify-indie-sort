@@ -246,7 +246,10 @@ def create_pod(shard: Path, pending: set[tuple[str, str]], vcpu_floor: int = 0) 
     return pod_id
 
 
-UPLOAD_SLOTS = 2  # concurrent 1.5 GB bundle uploads; more saturates the home
+UPLOAD_SLOTS = 3  # concurrent 1.5 GB bundle uploads. Raised 2 -> 3 once a
+                  # multiplexed connection made each upload ~15x faster, so
+                  # the line is no longer the thing being shared thin.
+                  # Originally: more saturates the home
                   # uplink and starves the SSH polls of already-running pods
 
 

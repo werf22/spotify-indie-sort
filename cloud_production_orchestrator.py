@@ -43,7 +43,7 @@ RUNPODCTL = Path.home() / ".local" / "bin" / "runpodctl"
 SHARD_SIZE = 200       # bigger shards amortize pod setup cost (D-026)
 MIN_BALANCE = 1.0      # below this: park and wait for the owner (D-012)
 SHARD_COST_EST = 0.5   # measured ~$0.44/200-track shard; used to scale parallelism
-MAX_PARALLEL = 3       # Bounded by the UPLINK, not by funds or by GPU supply.
+MAX_PARALLEL = 5       # Bounded by the UPLINK, not by funds or by GPU supply.
                        # Each shard must push a 1.3 GB bundle through one of
                        # UPLOAD_SLOTS=2, which takes ~9 min, so the home line
                        # can start ~13 shards/h; a shard then occupies its pod
@@ -55,6 +55,12 @@ MAX_PARALLEL = 3       # Bounded by the UPLINK, not by funds or by GPU supply.
                        # limit are harmless since D-047 (they wait for a slot
                        # BEFORE creating a pod) but they add nothing and their
                        # polling contends for runpodctl.
+                       # 3 -> 5 on 24 Aug: the bottleneck MOVED. Multiplexing the
+                       # ssh connection took the upload from 0.2 MB/s to 3.6, so
+                       # a 1.5 GB bundle now takes ~7 min instead of ~45 and the
+                       # uplink can feed roughly eight shards an hour. Analysis
+                       # (~25 min) is the slow half again, which is exactly what
+                       # more pods DO help with. Earlier note, still true:
                        # 8 -> 3 on 23 Aug, from measurement rather than theory.
                        # The best hour the pipeline has ever had produced 1,400
                        # tracks — 7 shards — with about three pods working. The
