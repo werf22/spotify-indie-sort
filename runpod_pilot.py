@@ -210,7 +210,7 @@ def pod_alive(pod_id: str) -> bool:
     return any(str(p.get("id")) == str(pod_id) for p in pods if isinstance(p, dict))
 
 
-def wait_for_ssh(pod_id: str, timeout_seconds: int = 180) -> str:
+def wait_for_ssh(pod_id: str, timeout_seconds: int = 330) -> str:
     """Wait for a new pod's SSH, then give up fast.
 
     MEASURED, not guessed: across 33 healthy shards the time from pod creation
@@ -220,6 +220,11 @@ def wait_for_ssh(pod_id: str, timeout_seconds: int = 180) -> str:
     timeouts are in the log. 180 s is three times the worst healthy case, so it
     still cannot fail a slow-but-fine pod, while a dud now costs ~3 minutes
     instead of 10.
+
+    Raised 180 -> 330 s on 24 Aug: an on-demand analysis died outright with
+    "Pod SSH not ready within 180s". A nightly shard can shrug that off and take
+    the next pod; a track the owner is waiting for cannot. 330 s still abandons
+    a genuinely dead host in well under six minutes.
     """
     deadline = time.monotonic() + timeout_seconds
     last = ""

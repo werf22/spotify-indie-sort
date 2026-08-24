@@ -33,6 +33,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SOURCE = ROOT / "data" / "cloud_full"
 SHARDS = ROOT / "data" / "cloud_full_shards"
+POD_ATTEMPTS = 3     # community hosts fail to boot often enough to matter
 STAGES = ("rhythm_full", "maest_full", "essentia_full", "clap_full")
 
 
@@ -92,13 +93,13 @@ def build_express_shard(ids: list[str], machine: bool) -> Path:
         writer.writeheader()
         writer.writerows(picked)
 
-    subprocess.run(["tar", "-cf", str(shard / "bundle.tar"), "-C", str(ROOT),
-                    str((shard / "manifest.csv").relative_to(ROOT)),
-                    str((shard / "clips").relative_to(ROOT))],
-                   check=True, cwd=ROOT)
-    digest = subprocess.run(["shasum", "-a", "256", str(shard / "bundle.tar")],
-                            capture_output=True, text=True, check=True).stdout
-    (shard / "bundle.tar.sha256").write_text(digest)
+    # Use the REAL bundle builder, not a hand-rolled tar. The pod runs
+    # cloud_audio_full.py and its helpers FROM the bundle, and an express tar of
+    # only the manifest and clips left the pod with no analysis code at all:
+    # "python: can't open file '/workspace/cloud_audio_full.py'". Sharing this
+    # function means the express path can never drift from the nightly one.
+    import build_cloud_full_shard as builder
+    builder.build_bundle(shard)
     size = (shard / "bundle.tar").stat().st_size / 1e6
     log(f"shard {shard.name}: {len(picked)} trackov, {size:.0f} MB", machine)
     return shard
@@ -127,14 +128,22 @@ def main() -> None:
         sys.exit("nepodarilo sa pripraviť ani jeden klip (chýba súbor?)")
     shard = build_express_shard(ready, machine)
 
-    log("spúšťam pod…", machine)
-    proc = subprocess.run([str(ROOT / ".venv/bin/python"), "runpod_full_shard.py",
-                           "--shard", str(shard)],
-                          cwd=ROOT, capture_output=True, text=True, timeout=5400)
-    if proc.returncode:
-        tail = (proc.stderr or proc.stdout)[-400:]
-        log(f"CHYBA: {tail}", machine)
-        sys.exit(1)
+    # A community pod that never boots is common and is NOT a reason to fail the
+    # whole request — the nightly loop just takes the next one, and someone
+    # waiting on a single track deserves the same. Try a few hosts before giving
+    # up, and say which attempt is running so the app can show it.
+    for attempt in range(1, POD_ATTEMPTS + 1):
+        log(f"spúšťam pod… (pokus {attempt}/{POD_ATTEMPTS})", machine)
+        proc = subprocess.run([str(ROOT / ".venv/bin/python"), "runpod_full_shard.py",
+                               "--shard", str(shard)],
+                              cwd=ROOT, capture_output=True, text=True, timeout=5400)
+        if proc.returncode == 0:
+            break
+        tail = " ".join((proc.stderr or proc.stdout).split())[-220:]
+        if attempt == POD_ATTEMPTS:
+            log(f"CHYBA: {tail}", machine)
+            sys.exit(1)
+        log(f"pod nenabehol ({tail[-90:]}) — skúšam iný", machine)
     got = already_done(ready)
     log(f"hotovo: {len(got)} z {len(ready)} zanalyzovaných", machine)
 

@@ -36,8 +36,16 @@
   #hits button{margin-left:auto;font-size:11.5px;padding:2px 9px}
   /* ---------- panels ---------- */
   .panel{display:none;background:#14161f;border-bottom:1px solid var(--line);
-         padding:10px 16px;max-height:38vh;overflow:auto;flex:0 0 auto}
+         padding:10px 16px;max-height:34vh;overflow:auto;flex:0 0 auto}
   .panel.open{display:block}
+  /* folder tree */
+  .tree-folder{cursor:pointer;user-select:none}
+  .tree-folder .caret{display:inline-block;width:12px;color:var(--dim)}
+  .tree-kids{margin-left:14px;border-left:1px solid var(--line);padding-left:10px}
+  .tree-kids.hidden{display:none}
+  #pins{gap:6px}
+  .chipwrap{display:inline-flex;align-items:center;gap:1px}
+  .chipwrap .ghost{padding:2px 5px;font-size:11px}
   .panel h4{margin:0 0 8px;font-size:11.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--accent)}
   .note{color:var(--dim);font-size:11.5px;margin:-4px 0 10px;max-width:900px}
   .grp{margin-bottom:12px}
@@ -119,6 +127,7 @@
     <button id="btnSave" class="ghost">+ ulož profil</button>
   </div>
   <div class="row" style="margin-top:8px" id="presets"></div>
+  <div class="row" id="pins" style="margin-top:6px"></div>
   <div id="ref" class="muted">Vyber track hore a nájdem najpodobnejšie.</div>
   <div id="hits"></div>
   <div id="job"></div>
@@ -178,6 +187,7 @@
     <button id="big" title="Prehrať / pauza (medzerník)">▶</button>
     <button class="ghost" id="next" title="Ďalší">⏭</button>
     <div id="now"><small>nič sa nehrá</small></div>
+    <span id="embed"></span>
     <span class="muted">🔊</span><input id="vol" type="range" min="0" max="1" step="0.01" value="1">
   </div>
   <div class="times">

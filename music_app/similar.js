@@ -26,12 +26,27 @@ async function api(path, opts) {
 }
 
 /* ---------------- panels ---------------- */
+/* All three panels are visible by default and independent of each other — the
+ * owner wants to see what is being compared and what is being shifted without
+ * opening anything first. The buttons only fold a panel away; whatever is
+ * folded is remembered, so the screen looks the same after a reload.
+ * TWEAK: to start with a panel folded, add its id to the array below. */
 const panels = { btnCompare: "panelCompare", btnShift: "panelShift", btnProfiles: "panelProfiles" };
+const shutPanels = () => new Set(JSON.parse(localStorage.getItem("shutPanels") || "[]"));
+function paintPanels() {
+  const shut = shutPanels();
+  Object.entries(panels).forEach(([btn, id]) => {
+    $(id).classList.toggle("open", !shut.has(id));
+    $(btn).classList.toggle("on", !shut.has(id));
+  });
+}
 Object.entries(panels).forEach(([btn, id]) => $(btn).onclick = () => {
-  const open = $(id).classList.contains("open");
-  Object.values(panels).forEach(p => $(p).classList.remove("open"));
-  if (!open) $(id).classList.add("open");
+  const shut = shutPanels();
+  shut.has(id) ? shut.delete(id) : shut.add(id);
+  localStorage.setItem("shutPanels", JSON.stringify([...shut]));
+  paintPanels();
 });
+paintPanels();
 
 /* ---------------- readiness ---------------- */
 async function pollReady() {
@@ -281,8 +296,12 @@ function playIndex(i) {
   P.src = r.has_file ? "/api/audio?id=" + encodeURIComponent(r.spotify_id)
                      : "/api/preview?id=" + encodeURIComponent(r.spotify_id);
   applySink($("sink").value);
+  // If there is no local file AND no preview to fetch, fall back to Spotify's
+  // own player rather than telling the owner it cannot be played. The rewrite
+  // dropped that fallback, so a Spotify-only track with no Deezer match just
+  // failed.
   P.play().then(() => $("big").textContent = "❚❚")
-          .catch(() => { $("big").textContent = "▶"; toast("Tento track sa nedá prehrať"); });
+          .catch(() => { $("big").textContent = "▶"; showEmbed(r); });
 }
 $("big").onclick = () => { if (!P.src) return playIndex(0);
   P.paused ? P.play() : P.pause(); };
@@ -306,6 +325,15 @@ document.onkeydown = e => {
   else if (e.code === "ArrowDown") { e.preventDefault(); playIndex(state.index + 1); }
   else if (e.code === "ArrowUp") { e.preventDefault(); playIndex(state.index - 1); }
 };
+
+/* Last resort for a track we have neither on disk nor as a preview. It cannot
+ * follow the CUE device — that is a limit of Spotify's embedded player, not a
+ * bug here — so it is only ever used when nothing else can sound. */
+function showEmbed(r) {
+  $("embed").innerHTML = `<iframe src="https://open.spotify.com/embed/track/${encodeURIComponent(r.spotify_id)}?utm_source=app"
+      width="260" height="80" frameborder="0" allow="autoplay; encrypted-media" style="border:0"></iframe>`;
+  toast("Tento track nemáme na disku ani ako ukážku — hrá cez Spotify, mimo slúchadiel", 9000);
+}
 
 /* ---------------- CUE output ---------------- */
 async function applySink(id) { if (P.setSinkId) { try { await P.setSinkId(id || "default"); } catch {} } }

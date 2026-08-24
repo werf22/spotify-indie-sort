@@ -121,11 +121,55 @@ $("addRule").onclick = () => addRule();
 async function loadPresets() {
   const { presets } = await api("/api/similar/presets");
   state.presets = presets;
-  $("presets").innerHTML = '<span class="muted">Režim:</span>' + presets.map((p, i) =>
-    `<button class="chip" data-p="${i}" title="${esc(p.note)}">${esc(p.label)}</button>`).join("");
-  $("presets").querySelectorAll("[data-p]").forEach(b => b.onclick = () => applyPreset(+b.dataset.p));
+  renderPresets();
   applyPreset(0, false);
 }
+
+function renderPresets() {
+  const hidden = hiddenPresets();
+  $("presets").innerHTML = '<span class="muted">Režim:</span>' + state.presets.map((p, i) =>
+    hidden.has(p.id) ? "" :
+    `<span class="chipwrap"><button class="chip" data-p="${i}" title="${esc(p.note)}">${esc(p.label)}</button>`
+    + `<button class="ghost" data-hide="${esc(p.id)}" title="Odopnúť z lišty">✕</button></span>`).join("")
+    + (hidden.size ? `<button class="ghost" id="showHidden">+ ${hidden.size} skrytých</button>` : "");
+  $("presets").querySelectorAll("[data-p]").forEach(b => b.onclick = () => applyPreset(+b.dataset.p));
+  $("presets").querySelectorAll("[data-hide]").forEach(b => b.onclick = () => togglePreset(b.dataset.hide));
+  const show = document.getElementById("showHidden");
+  if (show) show.onclick = () => { localStorage.setItem("hiddenPresets", "[]"); renderPresets(); };
+}
+
+/* Pinned profiles sit on the same bar as the built-in modes — the owner asked
+ * for them to look and behave the same, not to live inside a panel. */
+function renderPins() {
+  const pinned = (state.profiles || []).filter(p => p.pinned);
+  $("pins").innerHTML = pinned.length
+    ? '<span class="muted">Moje:</span>' + pinned.map(p =>
+        `<span class="chipwrap"><button class="chip" data-open="${p.id}">${esc(p.name)}</button>`
+        + `<button class="ghost" data-unpin="${p.id}" title="Odopnúť">✕</button></span>`).join("")
+    : "";
+  $("pins").querySelectorAll("[data-open]").forEach(b => b.onclick = () => {
+    applySettings(state.profiles.find(x => x.id === b.dataset.open)); rerun();
+    $("pins").querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c === b));
+    $("presets").querySelectorAll(".chip").forEach(c => c.classList.remove("on"));
+  });
+  $("pins").querySelectorAll("[data-unpin]").forEach(b => b.onclick = async () => {
+    const p = state.profiles.find(x => x.id === b.dataset.unpin);
+    await api("/api/profiles/save", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...p, pinned: false }) });
+    loadProfiles();
+  });
+}
+/* Which built-in modes the owner wants on the bar. They asked to be able to
+ * unpin the system ones too, so hidden ids live beside the rest of the UI
+ * state — in the browser, because it is a per-screen preference, not data. */
+const hiddenPresets = () => new Set(JSON.parse(localStorage.getItem("hiddenPresets") || "[]"));
+function togglePreset(id) {
+  const h = hiddenPresets();
+  h.has(id) ? h.delete(id) : h.add(id);
+  localStorage.setItem("hiddenPresets", JSON.stringify([...h]));
+  renderPresets(); renderPins();
+}
+
 function applyPreset(i, run = true) {
   const p = state.presets[i]; if (!p) return;
   $("presets").querySelectorAll("[data-p]").forEach(b => b.classList.toggle("on", +b.dataset.p === i));
@@ -182,22 +226,54 @@ function applySettings(s) {
 async function loadProfiles() {
   const { profiles } = await api("/api/profiles");
   state.profiles = profiles;
-  const byFolder = {};
-  profiles.forEach(p => (byFolder[p.folder || "—"] = byFolder[p.folder || "—"] || []).push(p));
-  $("profiles").innerHTML = Object.keys(byFolder).sort().map(folder => `
-    <div class="grp">
-      <div class="grp-head"><span class="name">📁 ${esc(folder)}</span>
-        <span class="muted">${byFolder[folder].length}</span></div>
-      ${byFolder[folder].map(p => `
-        <div class="rule">
-          <button class="chip ${p.pinned ? "on" : ""}" data-open="${p.id}">${esc(p.name)}</button>
-          <span class="muted">${(p.enabled || []).length} signálov</span>
-          <button class="ghost" data-pin="${p.id}" title="Pripnúť">📌</button>
-          <button class="ghost" data-edit="${p.id}" title="Premenovať / presunúť">✎</button>
-          <button class="ghost" data-upd="${p.id}" title="Prepíš aktuálnym nastavením">⟳</button>
-          <button class="ghost" data-del="${p.id}" title="Zmazať">✕</button>
-        </div>`).join("")}
-    </div>`).join("") || '<span class="muted">Zatiaľ žiadne profily.</span>';
+  renderPins();
+
+  // Folders are stored as a path ("Techno/Peak/Vocal"), so the tree is built by
+  // splitting on "/" — one flat list renders at any depth, and a folder can be
+  // collapsed like anywhere else.
+  const root = { kids: {}, items: [] };
+  profiles.forEach(p => {
+    let node = root;
+    (p.folder || "").split("/").filter(Boolean).forEach(part => {
+      node.kids[part] = node.kids[part] || { kids: {}, items: [] };
+      node = node.kids[part];
+    });
+    node.items.push(p);
+  });
+
+  const collapsed = new Set(JSON.parse(localStorage.getItem("collapsedFolders") || "[]"));
+  const rowHtml = p => `
+    <div class="rule">
+      <button class="chip" data-open="${p.id}">${esc(p.name)}</button>
+      <span class="muted">${(p.enabled || []).length} signálov</span>
+      <button class="ghost" data-pin="${p.id}" title="${p.pinned ? "Odopnúť" : "Pripnúť na lištu"}">${p.pinned ? "📌" : "📍"}</button>
+      <button class="ghost" data-edit="${p.id}" title="Premenovať / presunúť">✎</button>
+      <button class="ghost" data-upd="${p.id}" title="Prepíš aktuálnym nastavením">⟳</button>
+      <button class="ghost" data-del="${p.id}" title="Zmazať">✕</button>
+    </div>`;
+  const nodeHtml = (node, path) => {
+    const folders = Object.keys(node.kids).sort().map(name => {
+      const full = path ? `${path}/${name}` : name;
+      const shut = collapsed.has(full);
+      return `<div>
+          <div class="tree-folder" data-folder="${esc(full)}">
+            <span class="caret">${shut ? "▸" : "▾"}</span>📁 ${esc(name)}
+          </div>
+          <div class="tree-kids ${shut ? "hidden" : ""}">${nodeHtml(node.kids[name], full)}</div>
+        </div>`;
+    }).join("");
+    return folders + node.items.map(rowHtml).join("");
+  };
+  $("profiles").innerHTML = profiles.length ? nodeHtml(root, "")
+    : '<span class="muted">Zatiaľ žiadne profily.</span>';
+
+  $("profiles").querySelectorAll(".tree-folder").forEach(el => el.onclick = () => {
+    const full = el.dataset.folder;
+    const c = new Set(JSON.parse(localStorage.getItem("collapsedFolders") || "[]"));
+    c.has(full) ? c.delete(full) : c.add(full);
+    localStorage.setItem("collapsedFolders", JSON.stringify([...c]));
+    loadProfiles();
+  });
 
   const find = id => state.profiles.find(x => x.id === id);
   $("profiles").querySelectorAll("[data-open]").forEach(b => b.onclick = () => {
@@ -223,12 +299,17 @@ async function loadProfiles() {
     await api("/api/profiles/save", { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...p, ...currentSettings() }) }); loadProfiles(); });
 }
+
 $("btnSave").onclick = async () => {
   const name = prompt("Názov profilu:"); if (!name) return;
   const folder = prompt("Priečinok (nepovinné):", "") || "";
   await api("/api/profiles/save", { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, folder, ...currentSettings() }) });
-  $("panelProfiles").classList.add("open"); loadProfiles();
+  // Unfold the profiles panel if it happened to be folded away, so the
+  // freshly saved profile is visible where it landed.
+  const shut = shutPanels(); shut.delete("panelProfiles");
+  localStorage.setItem("shutPanels", JSON.stringify([...shut])); paintPanels();
+  loadProfiles();
 };
 
 /* ---------- on-demand analysis ---------- */
