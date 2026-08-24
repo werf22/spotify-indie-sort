@@ -246,7 +246,18 @@ def create_pod(shard: Path, pending: set[tuple[str, str]], vcpu_floor: int = 0) 
     return pod_id
 
 
-UPLOAD_SLOTS = 3  # concurrent 1.5 GB bundle uploads. Raised 2 -> 3 once a
+UPLOAD_SLOTS = 1  # ONE upload at a time, deliberately.
+                  # The line is ~2.4-3.6 MB/s no matter how it is divided, so
+                  # three concurrent uploads do not move more bytes — they just
+                  # make each pod crawl at a third of the speed. And a crawling
+                  # pod trips MIN_UPLOAD_MBPS below, so the runner threw away a
+                  # perfectly good host, created another, and repeated: measured
+                  # "uploads at 0.21 MB/s (floor 0.4); abandoning it" while the
+                  # line itself was fine. Serialised, one bundle takes ~10 min at
+                  # full speed instead of ~30 at a third, the pod stops billing
+                  # for the wait sooner, and the other pods get on with analysis
+                  # (~25 min), which is the half that actually wants parallelism.
+                  # Previous note: raised 2 -> 3 once a
                   # multiplexed connection made each upload ~15x faster, so
                   # the line is no longer the thing being shared thin.
                   # Originally: more saturates the home
@@ -475,9 +486,14 @@ def push_bundle(ssh: list[str], target: str, bundle: Path, remote: str) -> None:
         elapsed = time.monotonic() - started_at
         if moved >= SPEED_CHECK_AFTER_MB and elapsed > 0:
             rate = moved / elapsed
-            if rate < MIN_UPLOAD_MBPS:
+            # Judge the pod against ITS FAIR SHARE of the line, not against the
+            # whole of it. With several uploads running, each one is meant to be
+            # slower; comparing every pod to the full-line figure is what made
+            # the runner discard healthy hosts one after another.
+            floor = MIN_UPLOAD_MBPS / max(1, UPLOAD_SLOTS)
+            if rate < floor:
                 raise RuntimeError(
-                    f"pod uploads at {rate:.2f} MB/s (floor {MIN_UPLOAD_MBPS}); "
+                    f"pod uploads at {rate:.2f} MB/s (floor {floor:.2f}); "
                     "abandoning it for a faster one")
         # HEARTBEAT. pod_reaper judges a pod by the freshness of this state file
         # (D-067) and, failing that, by results.jsonl — which does not exist yet
