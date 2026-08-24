@@ -289,6 +289,8 @@ CHUNK_RETRIES = 12               # consecutive chunk failures before giving up
 # costs ~2 minutes and pods are plentiful; an hour spent crawling is not.
 MIN_UPLOAD_MBPS = 0.40           # below this, the pod is not worth the wait
 SPEED_CHECK_AFTER_MB = 24        # judge only once there is enough to judge on  # a stalled consumer link should not scrap a paid pod
+SPEED_REJECTS_BEFORE_ACCEPT = 2   # consecutive slow pods tolerated before the
+                                  # runner concludes the LINE is slow, not the pod
 
 
 def gpu_healthy(command: str) -> tuple[bool, str]:
@@ -312,6 +314,31 @@ def gpu_healthy(command: str) -> tuple[bool, str]:
         return False, "gpu probe timed out"
     out = (proc.stdout or proc.stderr or "").strip()
     return ("gpu-ok" in out), " ".join(out.split())[:200]
+
+
+# --- slow-line detector ---------------------------------------------------
+# Counts how many pods in a row were rejected for upload speed. Shared by every
+# runner (they all compete for the same uplink) and kept on disk so a restarted
+# runner does not forget. Deleting the file resets the count by hand.
+SPEED_REJECT_FILE = IMPORT_LOCK.parent / "slow-uploads.count"
+
+
+def speed_rejects() -> int:
+    try:
+        return int(SPEED_REJECT_FILE.read_text().strip() or 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def note_speed_reject() -> None:
+    try:
+        SPEED_REJECT_FILE.write_text(str(speed_rejects() + 1))
+    except OSError:
+        pass
+
+
+def clear_speed_rejects() -> None:
+    SPEED_REJECT_FILE.unlink(missing_ok=True)
 
 
 def acquire_upload_slot():
@@ -491,10 +518,22 @@ def push_bundle(ssh: list[str], target: str, bundle: Path, remote: str) -> None:
             # slower; comparing every pod to the full-line figure is what made
             # the runner discard healthy hosts one after another.
             floor = MIN_UPLOAD_MBPS / max(1, UPLOAD_SLOTS)
-            if rate < floor:
+            # A SLOW LINE IS NOT A SLOW POD. When several pods in a row all
+            # measure just under the floor, the shared thing between them is the
+            # home uplink, not the hosts - and abandoning each one buys another
+            # create/terminate cycle while the line stays exactly as slow. On the
+            # night of 24 Aug the log showed three consecutive pods rejected at
+            # 0.34-0.39 MB/s against a 0.40 floor, so the shard made no progress
+            # at all. After SPEED_REJECTS_BEFORE_ACCEPT rejections the runner
+            # stops blaming the pod and rides the one it has.
+            # TWEAK: raise it to be pickier, set 0 to never give up on the floor.
+            if rate < floor and speed_rejects() < SPEED_REJECTS_BEFORE_ACCEPT:
+                note_speed_reject()
                 raise RuntimeError(
                     f"pod uploads at {rate:.2f} MB/s (floor {floor:.2f}); "
                     "abandoning it for a faster one")
+            if rate >= floor:
+                clear_speed_rejects()
         # HEARTBEAT. pod_reaper judges a pod by the freshness of this state file
         # (D-067) and, failing that, by results.jsonl — which does not exist yet
         # during an upload. With two upload slots sharing the uplink a bundle
