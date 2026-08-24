@@ -288,7 +288,7 @@ def sweep_orphans(active: dict | None = None) -> list[str]:
 
 
 
-def sweep_dead_runners(active: dict) -> list[str]:
+def sweep_dead_runners(active: dict, spawned_at: dict | None = None) -> list[str]:
     """Kill a runner whose pod no longer exists.
 
     THE MIRROR OF sweep_orphans. That one deletes a pod no runner owns; this one
@@ -317,10 +317,18 @@ def sweep_dead_runners(active: dict) -> list[str]:
         if not pod_id or pod_id in live:
             continue
         try:
-            quiet = (time.time() - (shard / "runpod_state.json").stat().st_mtime) / 60
+            written = (shard / "runpod_state.json").stat().st_mtime
         except OSError:
             continue
-        if quiet < DEAD_RUNNER_QUIET_MIN:
+        started = (spawned_at or {}).get(shard, 0)
+        # THE STATE MUST BELONG TO **THIS** RUN. A shard file still names the pod
+        # from the previous attempt, so judging on it alone killed every fresh
+        # runner within seconds of starting — "starting shard runner" and "DEAD
+        # RUNNER" alternated forever and no pod was ever created. Only act once
+        # this runner has written its own state and then gone quiet.
+        if written <= started:
+            continue
+        if (time.time() - written) / 60 < DEAD_RUNNER_QUIET_MIN:
             continue
         print(f"DEAD RUNNER: {shard.name} pod {pod_id} is gone; ending it", flush=True)
         try:
@@ -394,6 +402,7 @@ def main() -> None:
         active: dict[Path, subprocess.Popen] = {}
         cooldown: dict[Path, float] = {}
         failures = 0
+        spawned_at: dict = {}
         while True:
             try:
                 for shard, proc in list(active.items()):
@@ -409,7 +418,7 @@ def main() -> None:
                 done, ready, target_n = completed_count(), ready_count(), target_count()
                 funds, hourly = balance()
                 swept = sweep_orphans(active)
-                sweep_dead_runners(active)
+                sweep_dead_runners(active, spawned_at)
                 # Compare POD COUNT, not recorded prices: a runner that has just
                 # spawned has no hourly_cost_usd yet, so summing prices made
                 # expected spend look like $0.22 against a real $0.90 and
@@ -448,6 +457,7 @@ def main() -> None:
                                 break
                             shard = built
                         active[shard] = spawn(shard)
+                        spawned_at[shard] = time.time()
                 # Build-ahead: keep exactly one spare shard bundled while all
                 # slots are busy, so a finishing pod never waits ~2 min for
                 # tar/bundling before its successor can launch (time win only;
