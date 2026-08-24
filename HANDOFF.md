@@ -4,17 +4,24 @@ This is the canonical cold-start document for the next AI agent. Read it before
 changing code, restarting services, creating cloud resources, calling a paid API,
 or modifying Spotify playlists.
 
-**STATUS 2026-08-24 — analysis running; the similarity app is the active work.**
+**STATUS 2026-08-24 — analysis running; the similarity app is now a NATIVE macOS app.**
+
+**THE APP IS NO LONGER A WEB PAGE.** `Similar Tracks.app` (built from
+`native/SimilarTracksApp.swift` by `native/build.sh`, git-ignored) is an AppKit
+window hosting the existing HTML UI in a WKWebView. It starts its own engine and
+owns the drag. Rebuild after ANY change to the Swift file; the HTML/JS/Python
+need no rebuild, just ⌘R in the app. Diagnostics land in `native/app.log`
+(page + drag events) and `native/engine.log` (the engine's stdout).
 
 **DO THIS NOW — money is the binding constraint.** The RunPod balance is
-**$5.89** and the remaining 12,167 tracks cost about **$16.75** at the
+**$5.89** and the remaining 11,566 tracks cost about **$15.96** at the
 measured $0.00138/track. That buys roughly 4,276 of them — about
-35 % of what is left. The run parks itself cleanly below
+37 % of what is left. The run parks itself cleanly below
 $1.00 (`MIN_BALANCE`, D-012), so nothing will be left billing; it will simply
-stop with ~7,891 tracks unanalysed until the owner tops up.
+stop with ~7,290 tracks unanalysed until the owner tops up.
 Tell the owner the number — do not silently let it stall.
 
-**Analysis state:** 54,666 of 66,833 tracks complete (81.8 %).
+**Analysis state:** 55,267 of 66,833 tracks complete (82.7 %).
 Ledger to date: $75.25 over 344 pod-hours, 1159 shards.
 Read progress with `cloud_production_orchestrator.completed_count()` — NOT by
 counting `audio_analysis_artifacts`, which is pruned once payloads are folded
@@ -244,3 +251,57 @@ The project is not complete merely when workers stop. Completion requires:
 - search validated on representative DJ use cases;
 - dynamic ingestion of newly liked/playlist/local tracks;
 - a current backup/export and updated status documentation.
+
+
+---
+
+## The native app (added 2026-08-24, D-072)
+
+**Why it exists.** A browser may not put a filesystem path on the drag
+pasteboard, so dragging a track from the app into Traktor could never work while
+the app was a page on localhost. It is now a real application and the drag is a
+genuine `NSDraggingSession` carrying file URLs — the same pasteboard Finder
+writes, which is why Traktor accepts it.
+
+**How the drag works.** The page arms it: on `mousedown` over a row it posts the
+file paths to the app (`armDrag`), and a local `.leftMouseDragged` monitor turns
+that into a drag once the pointer has actually moved. The checkbox column is
+excluded, so dragging across checkboxes still selects rows. Finder's rule
+applies: dragging a row that is part of the selection drags the whole selection.
+Verified with a synthetic CGEvent drag — `native/app.log` shows `armDrag` with a
+real path followed by `startDrag: … natívna session spustená`.
+
+**setSinkId works in WKWebView** (verified from inside the app and logged), so
+CUE routing to headphones survived the move. Do not "fix" it with native audio.
+
+**Engine lifecycle.** The app starts the engine if nothing answers on 8765 and
+reuses it otherwise. It deliberately does NOT kill it on quit: a cold start
+costs about 164 s (34 s embeddings, 44 s tags, 80 s numbers — measured), so
+reopening would pay that again. The engine retires itself after
+`IDLE_EXIT_MINUTES = 45` with no requests (`music_app/server.py`), and the page
+pings `/api/similar/status` every 30 s while open, which is what keeps it alive.
+Measured: cold start 164 s, quit-and-reopen 0 s.
+
+**Known cost, not yet fixed:** the first launch of the day still pays 164 s. The
+proper fix is caching the built Library to disk and refreshing it in the
+background; it has NOT been done and was not asked for.
+
+## Multi-seed similarity (D-072)
+
+`similarity_engine.similar()` takes `refs=[id, …]` as well as a single `ref`.
+Each seed's opinion per signal is z-scored and the seeds are then averaged
+**without re-normalising** — that one choice is the whole feature: where the
+seeds agree the average keeps its size, where they disagree it cancels toward
+zero, so what the tracks have in common drives the ranking on its own. It also
+returns `agreement` per signal and `common` (tags at least half the seeds share,
+shown under the seed bar). Key and BPM filters pass on the BEST-matching seed,
+because in a set a record only has to sit next to one of them.
+
+Verified: Lila + Camo & Krooked returns pure drum'n'bass with 0 of 5 overlap
+against either seed alone.
+
+**In the UI:** seed chips under the presets, `＋ pridať track` (or ⌘/Shift-click
+a search hit) to add, and `◎ Použi vybrané ako seed` to promote ticked rows.
+The last seed set is restored on start — and that restore **waits for
+`window.signalsReady`**, because it used to race the signal panel and quietly
+compare on three signals instead of twenty-four.

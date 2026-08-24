@@ -57,7 +57,10 @@ async function pollReady() {
     if (s.ready) {
       $("status").textContent = `${s.tracks.toLocaleString()} zanalyzovaných`;
       if (!restored) { restored = true; restoreSeeds(); }   // once the engine can answer
-      return;
+      // Keep asking, slowly. It refreshes the count as tracks finish analysing,
+      // and it is what tells the engine the app is still open so it does not
+      // retire underneath it.
+      return void setTimeout(pollReady, 30000);
     }
     $("status").textContent = "načítavam odtlačky… (raz za spustenie)";
   } catch { $("status").textContent = "server nedostupný"; }
@@ -157,10 +160,16 @@ function setSeeds(list) {
   runSeeds();
 }
 
-function restoreSeeds() {
+async function restoreSeeds() {
   try {
     const saved = JSON.parse(localStorage.getItem("lastSeeds") || "[]");
-    if (saved.length) { state.seeds = saved; $("search").value = saved[0].label || ""; runSeeds(); }
+    if (!saved.length) return;
+    // WAIT for the signal panel. Without this the restored query runs against
+    // whatever checkboxes happen to exist yet, which is almost none of them.
+    await (window.signalsReady || Promise.resolve());
+    state.seeds = saved;
+    $("search").value = saved[0].label || "";
+    runSeeds();
   } catch {}
 }
 function addSeed(id, label) {

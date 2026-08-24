@@ -338,8 +338,12 @@ async function pollJob(id) {
   } catch { $("job").textContent = "chyba pri sledovaní úlohy"; }
 }
 
-/* ---------- boot ---------- */
-(async function boot() {
+/* ---------- boot ----------
+ * Published as a promise, because anything that reads the ticked signals must
+ * WAIT for it. Restoring the last seed set on start-up used to race this and
+ * ran the query against a half-built panel, quietly comparing tracks on three
+ * signals instead of twenty-four. */
+window.signalsReady = (async function boot() {
   pollReady();
   loadSinks();
   const dl = document.createElement("datalist"); dl.id = "tagvals"; document.body.appendChild(dl);

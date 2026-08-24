@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import json
 import subprocess
+import os
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -67,6 +69,9 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):        # keep the console quiet
         pass
 
+    def _touch(self):
+        LAST_REQUEST[0] = time.time()
+
     def _send(self, payload, status=200, content_type="application/json"):
         body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
         self.send_response(status)
@@ -85,6 +90,7 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(length) or b"{}")
 
     def do_GET(self):
+        self._touch()
         url = urlparse(self.path)
         query = {k: v[0] for k, v in parse_qs(url.query).items()}
         try:
@@ -138,6 +144,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send({"error": f"{type(exc).__name__}: {exc}"}, 500)
 
     def do_POST(self):
+        self._touch()
         url = urlparse(self.path)
         try:
             body = self._body()
@@ -207,10 +214,32 @@ class Handler(BaseHTTPRequestHandler):
             self._send({"error": f"{type(exc).__name__}: {exc}"}, 500)
 
 
+# HOW LONG the engine keeps running with nobody using it. It survives the app
+# closing on purpose — reopening then costs nothing instead of the two and a
+# half minutes it takes to read 165k embeddings, 5.5M tags and 8.3M numbers
+# again. But it must not sit in memory forever, so it retires on its own once
+# nothing has asked it anything for this long.
+# TWEAK: raise it to keep the engine warm longer, lower it to free memory sooner.
+IDLE_EXIT_MINUTES = 45
+
+
+def retire_when_idle() -> None:
+    while True:
+        time.sleep(60)
+        quiet = (time.time() - LAST_REQUEST[0]) / 60.0
+        if quiet >= IDLE_EXIT_MINUTES:
+            print(f"nikto sa {quiet:.0f} minút nič nepýtal — engine sa vypína")
+            os._exit(0)
+
+
+LAST_REQUEST = [time.time()]
+
+
 def main() -> None:
     # Load the embeddings in the BACKGROUND. It takes about a minute, and doing
     # it lazily on the first click would look like the app had frozen.
     threading.Thread(target=similar_api.engine.warm, daemon=True).start()
+    threading.Thread(target=retire_when_idle, daemon=True).start()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     url = f"http://127.0.0.1:{PORT}/"
     print(f"Music database browser running at {url}")

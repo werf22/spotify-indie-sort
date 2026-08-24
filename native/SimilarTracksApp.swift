@@ -220,8 +220,11 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
     }
 
     func applicationWillTerminate(_ note: Notification) {
-        // Leave nothing running behind the app; the engine holds the database.
-        server?.terminate()
+        // The engine is deliberately LEFT RUNNING. Reading 165k embeddings,
+        // 5.5M tags and 8.3M numbers takes about two and a half minutes, so
+        // killing it here would make every reopen cost that again. It retires
+        // on its own once nothing has asked it anything for 45 minutes
+        // (IDLE_EXIT_MINUTES in music_app/server.py), so nothing is orphaned.
         if let m = monitor { NSEvent.removeMonitor(m) }
     }
 
