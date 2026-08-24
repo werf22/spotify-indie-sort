@@ -122,6 +122,12 @@
      harmonic rules the current profile carries, and it stays put when the
      profile changes. Marked so it does not read as just another checkbox. */
   .mik{border:1px solid var(--line);border-radius:8px;padding:3px 8px}
+  /* The META panel outranks profiles, so it is marked as a different kind of
+     thing rather than looking like a second copy of the same panel. */
+  .panel.meta{border-left:2px solid var(--accent)}
+  .metatag{font-size:9.5px;letter-spacing:.12em;background:var(--accent);color:#0b0d14;
+      padding:2px 6px;border-radius:4px;vertical-align:middle;margin-left:6px}
+  #btnShiftMeta.lit{border-color:var(--accent);color:var(--accent)}
   .mik b{color:var(--dim)}
   .mik.on{border-color:var(--accent);background:rgba(90,140,255,.12)}
   .mik.on b{color:var(--accent)}
@@ -139,10 +145,12 @@
     </select>
     <label class="muted"><input type="checkbox" id="spotifyOnly" checked> len zo Spotify</label>
     <label class="muted mik" title="Nad všetkými profilmi: pustí len tracky, ktoré sú v Mixed In Key mixovateľné (rovnaká, ±1, ±2, ±7 poltón)"><input type="checkbox" id="mikOn"> <b>Mixed in Key</b></label>
+    <label class="muted mik" title="Nad všetkými profilmi: pustí len tracky do zadaného rozsahu BPM od zvoleného tracku"><input type="checkbox" id="bpmOn"> <b>BPM</b> ±<input type="number" id="bpmTol" min="0" step="0.5" value="3" style="width:46px"></label>
     <span class="muted">🎧<select id="sink" title="Kam ide zvuk z tejto appky"><option value="">predvolený</option></select></span>
     <button id="btnAddSeed" class="ghost" title="Ďalší klik na výsledok hľadania pridá track k seedom (alebo ⌘/Shift-klik)">＋ pridať track</button>
     <button id="btnCompare">Čo porovnávať</button>
     <button id="btnShift">Čo posunúť</button>
+    <button id="btnShiftMeta">Čo posunúť (META)</button>
     <button id="btnProfiles">Profily</button>
     <button id="btnSave" class="ghost">+ ulož profil</button>
   </div>
@@ -164,11 +172,25 @@
 <div class="panel" id="panelShift">
   <h4>Čo posunúť</h4>
   <div class="note">Tu hovoríš, čo má byť <b>iné</b>. Ostatné zostáva podobné, takže set sa posúva
-     namiesto opakovania. <b>≠</b> chcem odlišné · <b>→</b> mier na hodnotu · a dole tvrdé pravidlá na tagy.</div>
+     namiesto opakovania. <b>≠</b> chcem odlišné · <b>→</b> mier na hodnotu, a <b>±</b> vedľa nej je
+     tvrdý filter — bez nej je cieľ len jemná preferencia. Dole tvrdé pravidlá na tagy.
+     <b>Toto patrí k profilu</b> a zmenou profilu sa prepíše.</div>
   <div id="rules"></div>
   <button id="addRule" class="ghost">+ pridaj pravidlo na tag</button>
   <div style="height:12px"></div>
   <div id="shiftBody"></div>
+</div>
+
+<div class="panel meta" id="panelShiftMeta">
+  <h4>Čo posunúť (META) <span class="metatag">nad profilmi</span>
+      <span class="muted" id="metaCount" style="font-weight:400;text-transform:none;letter-spacing:0">nič</span></h4>
+  <div class="note">To isté, ale <b>zostáva pri zmene profilu</b>. Čo nastavíš tu, prebije profil;
+     tvrdé pravidlá na tagy sa k profilu <b>pripočítajú</b>. Nastav sem to, čo platí pre celý večer —
+     napríklad „Style musí obsahovať drum n bass“ alebo „BPM 174 ± 4“ — a profily prepínaj pod tým.</div>
+  <div id="rulesMeta"></div>
+  <button id="addRuleMeta" class="ghost">+ pridaj pravidlo na tag</button>
+  <div style="height:12px"></div>
+  <div id="shiftBodyMeta"></div>
 </div>
 
 <div class="panel" id="panelProfiles">

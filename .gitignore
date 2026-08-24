@@ -22,3 +22,7 @@ data/.metadata_never_index
 Similar Tracks.app/
 native/engine.log
 traktor_drag/Traktor Drag.app/
+
+# Timestamped .env backups — they contain the same secrets as .env itself.
+.env.bak-*
+.env.bak

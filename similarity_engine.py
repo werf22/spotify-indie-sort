@@ -174,13 +174,28 @@ def signals() -> list[dict]:
                     "default": ttype in feat.TAG_DEFAULT_ON,
                     "weight": SIGNAL_WEIGHT_HINTS.get(ttype, 1.0)})
     for name in sorted(lib.numbers):
-        out.append({"id": f"num:{name}", "group": "numbers", "label": name,
-                    "note": "najbližšia hodnota",
+        mean, std = lib.number_stats.get(name, (0.0, 1.0))
+        # The panel needs REAL units to pre-fill a tolerance the owner
+        # recognises: "BPM ±5", not "±0.25 standard deviations".
+        # These columns are ANOTHER provider's tempo/key and disagree with the
+        # BPM and key shown in the table on most of the library. Saying so in
+        # the label is what stops "BPM = 90" from returning 125 BPM tracks.
+        rival = {"bpm": "bpm (iný zdroj!)", "tempo": "tempo (iný zdroj!)",
+                 "track.bpm": "bpm (Spotify)", "key": "key (iný zdroj!)",
+                 "key_int": "key_int (iný zdroj!)"}
+        out.append({"id": f"num:{name}", "group": "numbers",
+                    "label": rival.get(name, name),
+                    "note": ("nesúhlasí s BPM/tóninou v tabuľke — cieľ nastav "
+                             "radšej na BPM v sekcii Hudobné"
+                             if name in rival else "najbližšia hodnota"),
                     "coverage": int(lib.number_present[name].sum()),
                     "default": name in feat.NUMBER_DEFAULT_ON,
-                    "weight": SIGNAL_WEIGHT_HINTS.get(name, 1.0)})
+                    "weight": SIGNAL_WEIGHT_HINTS.get(name, 1.0),
+                    "mean": round(float(mean), 4), "std": round(float(std), 4),
+                    "tol": round(float(std) / 4.0, 4)})
     out.append({"id": "bpm", "group": "musical", "label": "BPM",
-                "note": "vzdialenosť tempa", "weight": 1.0,
+                "note": "to isté BPM, aké je v tabuľke", "weight": 1.0,
+                "mean": 0.0, "std": 1.0, "tol": 3.0,
                 "coverage": int(np.isfinite(lib.bpm).sum()), "default": True})
     out.append({"id": "key", "group": "musical", "label": "Tónina",
                 "note": "Camelot — rovnaká 1.0, mixovateľná 0.6", "weight": 1.0,
@@ -249,10 +264,14 @@ def _signal_vector(lib, sid: str, ref: str, row: int, n: int, target=None):
         return -np.abs(values - values[row]), present.copy()
 
     if sid == "bpm":
-        ref_bpm = lib.bpm[row]
-        if not np.isfinite(ref_bpm) or ref_bpm <= 0:
+        # Aim at a named tempo, or at the reference's own. This is the SAME
+        # number the results table prints — deliberately, because the separate
+        # `num:bpm` column comes from another provider and disagrees with it on
+        # roughly two thirds of the library.
+        aim = float(target) if target is not None else lib.bpm[row]
+        if not np.isfinite(aim) or aim <= 0:
             return None
-        return -np.abs(lib.bpm - ref_bpm) / ref_bpm, np.isfinite(lib.bpm)
+        return -np.abs(lib.bpm - aim) / aim, np.isfinite(lib.bpm)
 
     if sid == "key":
         if not lib.key[row]:
@@ -298,7 +317,8 @@ def common_ground(lib, seeds: list[str], min_share: float = 0.5) -> list[dict]:
 
 
 def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
-            bpm_window: float = 0.0, same_key: bool = False, dedupe: bool = True,
+            bpm_window: float = 0.0, bpm_tol: float = 0.0,
+            same_key: bool = False, dedupe: bool = True,
             key_rules: list[str] | None = None,
             enabled: list[str] | None = None,
             group_weights: dict | None = None,
@@ -370,6 +390,36 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
     modes = signal_modes or {}
     collected: dict[str, list] = {}
     agreement: dict[str, float] = {}
+
+    # A TARGET IS A CONSTRAINT, NOT A HINT. Asking for "BPM = 90" used to be a
+    # scoring preference worth about a fifteenth of one embedding, so the answer
+    # came back full of 125 BPM tracks — measured: 20 of 20 outside 85-95. When
+    # a tolerance comes with the target the number now FILTERS: anything outside
+    # target ± tolerance cannot appear at all, and closeness still orders what
+    # remains. Leaving the tolerance empty keeps the old soft behaviour.
+    number_gates: list[np.ndarray] = []
+    for sid, spec in modes.items():
+        spec = spec or {}
+        if spec.get("mode") != "target":
+            continue
+        tol = spec.get("tol")
+        if tol in (None, "", 0) or spec.get("target") in (None, ""):
+            continue
+        if sid == "bpm":
+            raw, present = lib.bpm, np.isfinite(lib.bpm)
+        elif sid.startswith("num:"):
+            name = sid[4:]
+            values, present = lib.numbers.get(name), lib.number_present.get(name)
+            if values is None:
+                continue
+            mean, std = lib.number_stats.get(name, (0.0, 1.0))
+            raw = values * (std or 1.0) + mean       # back to real units
+        else:
+            continue
+        with np.errstate(invalid="ignore"):
+            ok = present & (np.abs(raw - float(spec["target"])) <= abs(float(tol)))
+        number_gates.append(ok)
+
     for sid in enabled:
         spec = modes.get(sid) or {}
         mode = spec.get("mode", "same")
@@ -410,11 +460,25 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
     key_cols = [np.array([key_score(lib.key[r], k) for k in lib.key], dtype=np.float32)
                 for r in rows]
     keys = key_cols[0] if len(key_cols) == 1 else np.max(np.stack(key_cols), axis=0)
-    bpm_cols = []
+    bpm_cols, bpm_abs_cols = [], []
     for r in rows:
         rb = lib.bpm[r]
-        bpm_cols.append((np.abs(lib.bpm - rb) / rb) if np.isfinite(rb) and rb > 0
+        good = np.isfinite(rb) and rb > 0
+        bpm_cols.append((np.abs(lib.bpm - rb) / rb) if good
                         else np.full(n, np.nan, dtype=np.float32))
+        # Absolute distance too, because "± 3 BPM from what I picked" is what a
+        # DJ actually means — a percentage moves with the tempo and 3 % is a
+        # different thing at 90 than at 174.
+        bpm_abs_cols.append(np.abs(lib.bpm - rb) if good
+                            else np.full(n, np.nan, dtype=np.float32))
+    if len(bpm_abs_cols) == 1:
+        bpm_abs = bpm_abs_cols[0]
+    else:
+        st = np.stack(bpm_abs_cols)
+        bpm_abs = np.full(n, np.nan, dtype=np.float32)
+        any_a = np.isfinite(st).any(axis=0)
+        if any_a.any():
+            bpm_abs[any_a] = np.nanmin(st[:, any_a], axis=0)
     if len(bpm_cols) == 1:
         bpm_rel = bpm_cols[0]
     else:
@@ -439,11 +503,18 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
             continue
         if bpm_window and np.isfinite(bpm_rel[idx]) and bpm_rel[idx] * 100 > bpm_window:
             continue
+        # A track with no known tempo cannot satisfy a tempo window, so it is
+        # excluded rather than quietly let through.
+        if bpm_tol:
+            if not np.isfinite(bpm_abs[idx]) or bpm_abs[idx] > bpm_tol:
+                continue
         if same_key and not keys[idx] >= 1.0:
             continue
         if key_rules and not any(key_allowed(lib.key[r], lib.key[idx], key_rules) for r in rows):
             continue
         if tag_rules and not passes_tag_rules(lib, idx, tag_rules):
+            continue
+        if number_gates and not all(ok[idx] for ok in number_gates):
             continue
         info = db.execute("""SELECT t.title, t.artist_names,
                                 (SELECT path FROM audio_files f WHERE f.spotify_id=t.spotify_id

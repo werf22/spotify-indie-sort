@@ -52,11 +52,23 @@ function setGroup(scope, g, on) {
 }
 
 /* ---------- SHIFT panel: what should differ ---------- */
-function renderShift(signals) {
-  const shiftable = signals.filter(s => s.group !== "musical");
+/* The shift panel is rendered TWICE: once for the profile (scope "") and once
+ * as the META panel (scope "Meta"), which survives a profile change. Both use
+ * the same markup, only the container differs, so there is one renderer.
+ *
+ * The "→" target mode now carries a ± box. That box is what makes a target a
+ * real constraint: with it, anything outside target ± tolerance cannot appear
+ * at all. Without it a target was only a scoring nudge worth a fraction of one
+ * embedding, which is why asking for BPM 90 used to return 125 BPM tracks. */
+function renderShift(signals, scope = "") {
+  // BPM belongs here (it is targetable and it is the number the table shows);
+  // the key does not, because the harmonic checkboxes above already own it.
+  const shiftable = signals.filter(s => s.group !== "musical" || s.id === "bpm");
   const groups = {};
   shiftable.forEach(s => (groups[s.group] = groups[s.group] || []).push(s));
-  $("shiftBody").innerHTML = `
+  const canTarget = g => g === "numbers" || g === "musical";
+  const body = $("shiftBody" + scope);
+  body.innerHTML = (scope ? "" : `
     <div class="grp">
       <div class="grp-head"><span class="name">Harmonicky</span>
         <span class="muted">čo sa smie objaviť podľa tóniny (Camelot)</span></div>
@@ -65,29 +77,36 @@ function renderShift(signals) {
            ["semitone","±7 (poltón)"]].map(([v, l]) =>
           `<label class="muted"><input type="checkbox" class="kr" value="${v}"> ${l}</label>`).join("")}
       </div>
-    </div>` + Object.entries(groups).map(([g, list]) => `
+    </div>`) + Object.entries(groups).map(([g, list]) => `
     <div class="grp">
       <div class="grp-head"><span class="name">${esc(GROUP_LABEL[g] || g)}</span>
-        <span class="muted">= rovnaké · ≠ odlišné${g === "numbers" ? " · → mier na hodnotu" : ""}</span></div>
+        <span class="muted">= rovnaké · ≠ odlišné${canTarget(g) ? " · → mier na hodnotu (± je tvrdý filter)" : ""}</span></div>
       <div class="grid">
-        ${list.map(s => `<label class="sig">
+        ${list.map(s => `<label class="sig" title="${esc(s.note || "")}">
             <span class="nm">${esc(s.label)}</span>
             <select data-md="${esc(s.id)}">
               <option value="same">=</option><option value="diff">≠</option>
-              ${g === "numbers" ? '<option value="target">→</option>' : ""}
+              ${canTarget(g) ? '<option value="target">→</option>' : ""}
             </select>
-            ${g === "numbers" ? `<input type="number" step="0.05" style="width:52px"
-                data-tg="${esc(s.id)}" placeholder="cieľ">` : ""}
+            ${canTarget(g) ? `<input type="number" step="any" style="width:54px"
+                data-tg="${esc(s.id)}" placeholder="cieľ">
+              <input type="number" step="any" style="width:48px"
+                data-tl="${esc(s.id)}" placeholder="±" value="${s.tol ?? ""}"
+                title="Povolená odchýlka v skutočných jednotkách. Prázdne = len jemná preferencia.">` : ""}
           </label>`).join("")}
       </div>
     </div>`).join("");
-  $("shiftBody").addEventListener("change", e => {
-    if (e.target.dataset.md || e.target.dataset.tg || e.target.classList.contains("kr")) rerun();
+  body.addEventListener("change", e => {
+    if (e.target.dataset.md || e.target.dataset.tg || e.target.dataset.tl
+        || e.target.classList.contains("kr")) {
+      if (scope) { saveMetaShift(); paintMetaBadge(); }
+      rerun();
+    }
   });
 }
 
 /* ---------- hard tag rules ---------- */
-function addRule(preset) {
+function addRule(preset, scope = "") {
   const types = Object.keys(state.tagValues).sort();
   const div = document.createElement("div");
   div.className = "rule";
@@ -97,7 +116,7 @@ function addRule(preset) {
                     <option value="must_not">nesmie obsahovať</option></select>
     <input class="val" data-rv list="tagvals" placeholder="napr. drum and bass">
     <button class="ghost" data-rx>✕</button>`;
-  $("rules").appendChild(div);
+  $("rules" + (scope || "")).appendChild(div);
   if (preset) {
     div.querySelector("[data-rt]").value = preset.type || types[0];
     div.querySelector("[data-rm]").value = preset.mode || "must";
@@ -108,14 +127,16 @@ function addRule(preset) {
     document.getElementById("tagvals").innerHTML =
       vals.slice(0, 300).map(v => `<option value="${esc(v)}">`).join("");
   };
-  div.querySelector("[data-rt]").onchange = () => { refreshList(); rerun(); };
+  const changed = () => { if (scope) { saveMetaShift(); paintMetaBadge(); } rerun(); };
+  div.querySelector("[data-rt]").onchange = () => { refreshList(); changed(); };
   div.querySelector("[data-rt]").onfocus = refreshList;
   div.querySelector("[data-rv]").onfocus = refreshList;
-  div.querySelector("[data-rm]").onchange = rerun;
-  div.querySelector("[data-rv]").onchange = rerun;
-  div.querySelector("[data-rx]").onclick = () => { div.remove(); rerun(); };
+  div.querySelector("[data-rm]").onchange = changed;
+  div.querySelector("[data-rv]").onchange = changed;
+  div.querySelector("[data-rx]").onclick = () => { div.remove(); changed(); };
 }
 $("addRule").onclick = () => addRule();
+$("addRuleMeta").onclick = () => { addRule(null, "Meta"); saveMetaShift(); paintMetaBadge(); };
 
 /* ---------- presets ---------- */
 async function loadPresets() {
@@ -179,6 +200,11 @@ function applyPreset(i, run = true) {
     const sl = document.querySelector(`#cmpBody [data-w="${g}"]`);
     if (sl) { sl.value = w; document.querySelector(`#cmpBody [data-wv="${g}"]`).textContent = (+w).toFixed(2); }
   });
+  // A preset replaces the whole stance, so the profile's shift panel goes back
+  // to neutral. The META panel is deliberately untouched.
+  document.querySelectorAll("#shiftBody [data-md]").forEach(sel => sel.value = "same");
+  document.querySelectorAll("#shiftBody [data-tg]").forEach(t => t.value = "");
+  $("rules").innerHTML = "";
   const f = p.filters || {};
   const kr = new Set(f.same_key ? ["exact"] : []);
   document.querySelectorAll("#shiftBody .kr").forEach(c => c.checked = kr.has(c.value));
@@ -188,9 +214,12 @@ function applyPreset(i, run = true) {
 
 /* ---------- profiles ---------- */
 function currentSettings() {
+  // readShift("")/readRules("") — NOT signalModes()/tagRules(), which merge the
+  // META panel in. Saving a profile while META is on must not bake META into
+  // it; META is a layer above profiles, not part of one.
   return { enabled: enabledSignals(), group_weights: groupWeights(),
-           signal_weights: signalWeights(), signal_modes: signalModes(),
-           filters: { key_rules: keyRules(), tag_rules: tagRules(),
+           signal_weights: signalWeights(), signal_modes: readShift(""),
+           filters: { key_rules: ownKeyRules.slice(), tag_rules: readRules(""),
                       limit: +$("limit").value, spotify_only: $("spotifyOnly").checked } };
 }
 function applySettings(s) {
@@ -212,7 +241,9 @@ function applySettings(s) {
     sel.value = spec.mode;
     if (spec.mode === "target") {
       const tg = document.querySelector(`#shiftBody [data-tg="${CSS.escape(id)}"]`);
+      const tl = document.querySelector(`#shiftBody [data-tl="${CSS.escape(id)}"]`);
       if (tg && spec.target != null) tg.value = spec.target;
+      if (tl) tl.value = spec.tol ?? "";        // the ± is part of the setting
     }
   });
   const f = s.filters || {};
@@ -364,6 +395,8 @@ window.signalsReady = (async function boot() {
   state.tagValues = vals.values || {};
   renderCompare(signals);
   renderShift(signals);
+  renderShift(signals, "Meta");
+  restoreMetaShift();
   paintMik();
   await loadPresets();
   await loadProfiles();

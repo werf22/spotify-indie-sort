@@ -31,7 +31,8 @@ async function api(path, opts) {
  * opening anything first. The buttons only fold a panel away; whatever is
  * folded is remembered, so the screen looks the same after a reload.
  * TWEAK: to start with a panel folded, add its id to the array below. */
-const panels = { btnCompare: "panelCompare", btnShift: "panelShift", btnProfiles: "panelProfiles" };
+const panels = { btnCompare: "panelCompare", btnShift: "panelShift",
+                 btnShiftMeta: "panelShiftMeta", btnProfiles: "panelProfiles" };
 const shutPanels = () => new Set(JSON.parse(localStorage.getItem("shutPanels") || "[]"));
 function paintPanels() {
   const shut = shutPanels();
@@ -108,22 +109,72 @@ const signalWeights = () => Object.fromEntries(
   [...document.querySelectorAll("#cmpBody [data-sw]")].map(e => [e.dataset.sw, +e.value || 0]));
 
 /* Shift panel: a signal is only "shifted" when its mode is not `same`. */
-const signalModes = () => {
+/* Read one shift panel. Two exist: the profile's own, and the META one that
+ * survives a profile change. META is read LAST so it wins where both speak —
+ * that is the whole point of it being "above" the profile. */
+function readShift(scope) {
   const out = {};
-  document.querySelectorAll("#shiftBody [data-md]").forEach(sel => {
+  const root = document.getElementById("shiftBody" + scope);
+  if (!root) return out;
+  root.querySelectorAll("[data-md]").forEach(sel => {
     if (sel.value === "same") return;
     const id = sel.dataset.md;
-    const tg = document.querySelector(`#shiftBody [data-tg="${CSS.escape(id)}"]`);
-    out[id] = sel.value === "target" && tg && tg.value !== ""
-      ? { mode: "target", target: +tg.value } : { mode: sel.value };
+    const tg = root.querySelector(`[data-tg="${CSS.escape(id)}"]`);
+    const tl = root.querySelector(`[data-tl="${CSS.escape(id)}"]`);
+    if (sel.value === "target" && tg && tg.value !== "") {
+      out[id] = { mode: "target", target: +tg.value };
+      // A tolerance turns the target into a hard filter. Empty leaves it as
+      // the old soft preference, which is almost never what someone means.
+      if (tl && tl.value !== "") out[id].tol = Math.abs(+tl.value);
+    } else if (sel.value !== "target") {
+      out[id] = { mode: sel.value };
+    }
   });
   return out;
-};
-const tagRules = () => [...document.querySelectorAll("#rules .rule")].map(r => ({
+}
+const signalModes = () => ({ ...readShift(""), ...readShift("Meta") });
+
+const readRules = scope => [...document.querySelectorAll(`#rules${scope} .rule`)].map(r => ({
   type: r.querySelector("[data-rt]").value,
   mode: r.querySelector("[data-rm]").value,
   value: r.querySelector("[data-rv]").value.trim(),
 })).filter(r => r.value);
+// Both sets of hard rules apply — META adds to the profile's, never replaces.
+const tagRules = () => [...readRules(""), ...readRules("Meta")];
+
+/* META survives profile changes, so it lives in the browser, not in a profile. */
+function saveMetaShift() {
+  try {
+    localStorage.setItem("metaShift", JSON.stringify(
+      { modes: readShift("Meta"), rules: readRules("Meta") }));
+  } catch {}
+}
+function restoreMetaShift() {
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem("metaShift") || "null"); } catch {}
+  if (!saved) return;
+  const root = document.getElementById("shiftBodyMeta");
+  Object.entries(saved.modes || {}).forEach(([id, spec]) => {
+    const sel = root && root.querySelector(`[data-md="${CSS.escape(id)}"]`);
+    if (!sel) return;
+    sel.value = spec.mode;
+    const tg = root.querySelector(`[data-tg="${CSS.escape(id)}"]`);
+    const tl = root.querySelector(`[data-tl="${CSS.escape(id)}"]`);
+    if (tg && spec.target !== undefined) tg.value = spec.target;
+    if (tl) tl.value = spec.tol ?? "";
+  });
+  (saved.rules || []).forEach(r => addRule(r, "Meta"));
+  paintMetaBadge();
+}
+
+/* Say out loud how many META rules are live, so an override is never invisible. */
+function paintMetaBadge() {
+  const n = Object.keys(readShift("Meta")).length + readRules("Meta").length;
+  const el = document.getElementById("metaCount");
+  if (el) el.textContent = n ? `${n} aktívnych` : "nič";
+  const btn = document.getElementById("btnShiftMeta");
+  if (btn) btn.classList.toggle("lit", n > 0);
+}
 
 /* MIXED IN KEY — a switch that sits ABOVE the profiles.
  *
@@ -163,6 +214,26 @@ function paintMik(opts = {}) {
     c.checked = on ? MIK_RULES.includes(c.value) : ownKeyRules.includes(c.value);
   });
 }
+/* BPM WINDOW — the second switch that sits above the profiles.
+ *
+ * Same idea as Mixed in Key: a hard limit on what may appear, expressed the way
+ * a DJ says it ("± 3 BPM from the one I picked"), kept in the browser so it
+ * survives every profile change. Absolute BPM, not a percentage: 3 % is a
+ * different thing at 90 than at 174. */
+const bpmTol = () => ($("bpmOn").checked ? Math.abs(+$("bpmTol").value || 0) : 0);
+function paintBpm() {
+  const on = $("bpmOn").checked;
+  $("bpmOn").closest("label").classList.toggle("on", on);
+  $("bpmTol").disabled = !on;
+  localStorage.setItem("bpmOn", on ? "1" : "0");
+  localStorage.setItem("bpmTol", $("bpmTol").value);
+}
+$("bpmOn").checked = localStorage.getItem("bpmOn") === "1";
+$("bpmTol").value = localStorage.getItem("bpmTol") || "3";
+$("bpmOn").onchange = () => { paintBpm(); rerun(); };
+$("bpmTol").onchange = () => { paintBpm(); if ($("bpmOn").checked) rerun(); };
+paintBpm();
+
 $("mikOn").checked = localStorage.getItem("mikOn") === "1";
 $("mikOn").onchange = () => {
   // Going ON must not adopt the forced set as "the profile's own"; going OFF
@@ -246,7 +317,7 @@ async function runSeeds() {
         spotify_only: $("spotifyOnly").checked,
         enabled: enabledSignals(), group_weights: groupWeights(),
         signal_weights: signalWeights(), signal_modes: signalModes(),
-        key_rules: keyRules(), tag_rules: tagRules() }) });
+        key_rules: keyRules(), tag_rules: tagRules(), bpm_tol: bpmTol() }) });
     state.rows = res.results;
     render();
     const used = Object.entries(res.signals_used || {}).map(([g, n]) => `${n} ${g}`).join(", ");
