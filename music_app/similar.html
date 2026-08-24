@@ -55,6 +55,8 @@
            border:1px solid var(--accent); padding:10px 18px; border-radius:8px; display:none; z-index:60; }
   #toast a { color:var(--accent); }
   .muted { color:var(--dim); }
+  #harm label { margin-right:7px; }
+  #harm input { margin-right:3px; }
   #presets button { border-radius:20px; padding:6px 14px; font-size:13px; }
   #presets button.on { background:var(--accent); color:#0b0d14; border-color:var(--accent); font-weight:600; }
   #why-preset { color:var(--dim); font-size:12.5px; margin-top:6px; max-width:960px; line-height:1.45; }
@@ -106,7 +108,14 @@
     <select id="limit"><option value="100" selected>100</option><option value="50">50</option>
       <option value="200">200</option><option value="500">500</option></select>
     <label class="muted"><input type="checkbox" id="spotifyOnly" checked> len zo Spotify</label>
-    <label class="muted"><input type="checkbox" id="sameKey"> rovnaká tónina</label>
+    <span class="muted" id="harm" title="Mixed In Key / Camelot — filter, nie váha">Harmonicky:
+      <label><input type="checkbox" class="kr" value="exact"> rovnaká</label>
+      <label><input type="checkbox" class="kr" value="relative"> rel.</label>
+      <label><input type="checkbox" class="kr" value="step1"> ±1</label>
+      <label><input type="checkbox" class="kr" value="step2"> ±2</label>
+      <label><input type="checkbox" class="kr" value="semitone" title="posun o poltón = ±7 na kolese"> ±7 poltón</label>
+    </span>
+    <label class="muted" style="display:none"><input type="checkbox" id="sameKey"></label>
     <label class="muted">BPM ±<input id="bpm" type="number" value="0" min="0" max="20" style="width:60px"> %</label>
     <button id="make" class="spotify" disabled>Vytvor Spotify playlist</button>
     <input id="plname" placeholder="Názov playlistu" style="width:220px">
@@ -202,7 +211,7 @@ async function pick(id, label) {
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({ id, limit:+$("limit").value,
         spotify_only: $("spotifyOnly").checked, same_key: $("sameKey").checked,
-        bpm_window: +$("bpm").value || 0,
+        bpm_window: +$("bpm").value || 0, key_rules: keyRules(),
         enabled: enabledSignals(), group_weights: groupWeights(),
         signal_weights: signalWeights() }) });
     state.rows = res.results; render();
@@ -228,6 +237,7 @@ function currentSettings() {
     group_weights: groupWeights(),
     signal_weights: signalWeights(),
     filters: { bpm_window: +$("bpm").value || 0, same_key: $("sameKey").checked,
+               key_rules: keyRules(),
                limit: +$("limit").value, spotify_only: $("spotifyOnly").checked },
   };
 }
@@ -246,6 +256,8 @@ function applySettings(s) {
   const f = s.filters || {};
   if (f.bpm_window != null) $("bpm").value = f.bpm_window;
   if (f.same_key != null) $("sameKey").checked = !!f.same_key;
+  if (f.key_rules) { const want = new Set(f.key_rules);
+    document.querySelectorAll(".kr").forEach(c => c.checked = want.has(c.value)); }
   if (f.limit) $("limit").value = f.limit;
   if (f.spotify_only != null) $("spotifyOnly").checked = !!f.spotify_only;
 }
@@ -387,6 +399,8 @@ function applyPreset(i) {
   const f = p.filters || {};
   $("bpm").value = f.bpm_window || 0;
   $("sameKey").checked = !!f.same_key;
+  const kr = new Set(f.key_rules || (f.same_key ? ["exact"] : []));
+  document.querySelectorAll(".kr").forEach(c => c.checked = kr.has(c.value));
   $("why-preset").innerHTML = `<b>${esc(p.label)}</b> — ${esc(p.note)}<br>${esc(p.why)}`;
   if (state.refId) pick(state.refId, $("q").value);
 }
@@ -432,6 +446,7 @@ const enabledSignals = () =>
   [...$("panel").querySelectorAll("input[data-sig]:checked")].map(cb => cb.dataset.sig);
 const groupWeights = () => Object.fromEntries(
   [...$("panel").querySelectorAll("[data-w]")].map(sl => [sl.dataset.w, +sl.value]));
+const keyRules = () => [...document.querySelectorAll(".kr:checked")].map(c => c.value);
 const signalWeights = () => Object.fromEntries(
   [...$("panel").querySelectorAll("[data-sw]")].map(el => [el.dataset.sw, +el.value || 0]));
 
@@ -440,6 +455,8 @@ $("tune").onclick = () => {
   p.style.display = p.style.display === "block" ? "none" : "block";
 };
 // Re-run the search when the selection changes, so ticking a box shows its effect.
+document.querySelectorAll(".kr").forEach(c => c.onchange = () => {
+  if (state.refId) pick(state.refId, $("q").value); });
 $("panel").addEventListener("change", e => {
   if ((e.target.dataset.sig || e.target.dataset.sw || e.target.dataset.w)
       && state.refId) pick(state.refId, $("q").value);
@@ -453,7 +470,11 @@ function render() {
     // here on its own.
     // Drop the raw "key"/"bpm" signal names: the two lines below already say
     // the same thing in words, and printing both reads as a duplicate.
-    const bits = (r.why || []).filter(x => x !== "key" && x !== "bpm").slice(0, 3);
+    // The two musical signals are already spelled out by the lines below, and
+    // their labels are Slovak ("Tónina", "BPM"), so the earlier english-only
+    // filter let them through and the cell read "tónina · … · Tónina".
+    const DUP = new Set(["key", "bpm", "Tónina", "BPM"]);
+    const bits = (r.why || []).filter(x => !DUP.has(x)).slice(0, 3);
     if (r.key_match === 1) bits.unshift("tónina");
     else if (r.key_match >= 0.6) bits.unshift("mixovateľná");
     if (r.bpm_diff != null && r.bpm_diff <= 2) bits.unshift("BPM");
@@ -462,7 +483,9 @@ function render() {
       <td class="num">${i+1}</td><td>${esc(r.artist)}</td><td>${esc(r.title)}</td>
       <td><span class="bar"><i style="width:${Math.max(4,Math.round(r.score/max*100))}%"></i></span></td>
       <td class="why">${why||"&nbsp;"}</td>
-      <td class="muted">${r.bpm ?? ""}</td><td class="muted">${esc(r.key||"")}</td>
+      <td class="muted">${r.bpm ?? ""}</td>
+      <td class="muted">${esc(r.key||"")}${r.key_rel && r.key_rel !== "rovnaká"
+          ? ` <i style="opacity:.55">${esc(r.key_rel)}</i>` : ""}</td>
       <td><button class="play">${r.has_file ? "▶" : "▶ Spotify"}</button></td></tr>`;
   }).join("");
   $("body").querySelectorAll("tr").forEach(tr =>

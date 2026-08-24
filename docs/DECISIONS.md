@@ -1569,3 +1569,32 @@ top three scored 8.39 / 8.29 / 8.09; raising `genre` alone to 10x moved the
 scores to 15.11 / 15.00 / 14.01 AND changed the order, promoting a track by the
 reference's own artist. In the UI all 77 weight boxes render and editing one
 re-runs the search immediately (9.878 -> 16.255 after setting genre to 8).
+
+## D-078 — harmonic filtering on the Camelot wheel (2026-08-24)
+
+Mixed In Key relationships as a FILTER, not a weight: the same key, the relative
+major/minor, one or two steps around the wheel, and — the one the owner
+specifically wanted — the key you land on by transposing a semitone.
+
+**The semitone case is why the wheel matters.** The Camelot wheel is laid out in
+fifths, and a semitone is seven fifths, so shifting a record up one semitone
+moves it **+7 positions**; down one semitone is -7, which is +5 going the other
+way round. Verified against known keys before anything was wired up: A-Minor to
+B♭-Minor reads +7 (semitone up) and A-Minor to A♭-Minor reads -7 (semitone
+down), with ±1 giving E/D-Minor and ±2 giving B/G-Minor.
+
+**Filter, never score — and the measurement is the reason.** D-074 found key
+ranked near-last of 77 signals for deciding *similarity* (MRR 0.002): thousands
+of tracks share a key, so it cannot point at the right one. What it does decide
+is whether two records can be played together, which is a yes/no question about
+what may appear at all.
+
+**Verified against a live reference in E-Minor (9A):** `exact` returned only
+E-Minor; `±1` returned only A-Minor and B-Minor; `±2` only D-Minor and F#-Minor;
+`semitone` only F-Minor and E♭-Minor — musically exactly a semitone either side.
+The results table now prints the relationship next to the key ("B-Minor +1").
+
+**Two UI defects found by reading the rendered table rather than the API:** the
+key relationship never reached the cell because a template edit had not matched,
+and the "Prečo" column read "tónina · … · Tónina" because the de-duplication
+list was written in English while the signal labels had become Slovak.

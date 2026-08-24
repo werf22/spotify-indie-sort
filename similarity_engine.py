@@ -101,6 +101,42 @@ def key_score(a, b) -> float:
     return 0.0
 
 
+
+# --- harmonic filtering (Mixed In Key / Camelot) ------------------------------
+# The wheel is laid out in fifths, so the DISTANCE between two positions says
+# what the relationship is. Everything here is a filter, never a score: the
+# measurement in D-074 showed key ranks near-last of 77 signals for deciding
+# similarity, but it is exactly what decides whether two records can be played
+# together.
+#
+#   delta = (candidate - reference) mod 12, same letter unless stated
+#     0        the same key
+#     1 or 11  one step around the wheel — the classic harmonic mix
+#     2 or 10  two steps
+#     7 or 5   what you get by transposing ONE SEMITONE (a semitone is seven
+#              fifths, so +1 semitone = +7 on the wheel and -1 = -7 = +5)
+#   relative   same number, other letter — minor <-> its relative major
+KEY_RULES = {
+    "exact":    lambda d, same_mode: d == 0 and same_mode,
+    "relative": lambda d, same_mode: d == 0 and not same_mode,
+    "step1":    lambda d, same_mode: d in (1, 11) and same_mode,
+    "step2":    lambda d, same_mode: d in (2, 10) and same_mode,
+    "semitone": lambda d, same_mode: d in (7, 5) and same_mode,
+}
+
+
+def key_allowed(ref_key, cand_key, rules) -> bool:
+    """Does the candidate satisfy ANY of the selected harmonic relationships?"""
+    if not rules:
+        return True
+    a, b = camelot(ref_key), camelot(cand_key)
+    if not a or not b:
+        return False          # unknown key cannot be proven mixable
+    delta = (b[0] - a[0]) % 12
+    same_mode = a[1] == b[1]
+    return any(KEY_RULES[r](delta, same_mode) for r in rules if r in KEY_RULES)
+
+
 def status() -> dict:
     lib = _state["lib"]
     return {"ready": _state["ready"], "loading": _state["loading"],
@@ -219,6 +255,7 @@ def _signal_vector(lib, sid: str, ref: str, row: int, n: int):
 
 def similar(ref: str, limit: int = 100, spotify_only: bool = True,
             bpm_window: float = 0.0, same_key: bool = False, dedupe: bool = True,
+            key_rules: list[str] | None = None,
             enabled: list[str] | None = None,
             group_weights: dict | None = None,
             signal_weights: dict | None = None) -> dict:
@@ -291,6 +328,8 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
             continue
         if same_key and not keys[idx] >= 1.0:
             continue
+        if key_rules and not key_allowed(lib.key[row], lib.key[idx], key_rules):
+            continue
         info = db.execute("""SELECT t.title, t.artist_names,
                                 (SELECT path FROM audio_files f WHERE f.spotify_id=t.spotify_id
                                  AND f.path IS NOT NULL LIMIT 1) path
@@ -313,12 +352,28 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
                     "key": lib.key[idx],
                     "bpm_diff": None if not np.isfinite(bpm_rel[idx]) else round(float(bpm_rel[idx] * 100), 1),
                     "key_match": None if not np.isfinite(keys[idx]) else float(keys[idx]),
+                    "key_rel": key_relation(lib.key[row], lib.key[idx]),
                     "why": [name for name, v in top if v > 0.5]})
         if len(out) >= limit:
             break
     db.close()
     return {"results": out, "signals_used": used}
 
+
+
+def key_relation(ref_key, cand_key) -> str | None:
+    """A short human label for how two keys relate — shown in the results."""
+    a, b = camelot(ref_key), camelot(cand_key)
+    if not a or not b:
+        return None
+    delta = (b[0] - a[0]) % 12
+    same_mode = a[1] == b[1]
+    if delta == 0:
+        return "rovnaká" if same_mode else "relatívna"
+    if not same_mode:
+        return None
+    return {1: "+1", 11: "-1", 2: "+2", 10: "-2",
+            7: "+7 (poltón hore)", 5: "-7 (poltón dole)"}.get(delta)
 
 def song_key(title: str, artist: str) -> str:
     """Identity of a SONG, ignoring which mix it is — radio edit, extended and

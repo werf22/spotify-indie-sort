@@ -160,6 +160,7 @@ class Handler(BaseHTTPRequestHandler):
                     spotify_only=bool(body.get("spotify_only", True)),
                     bpm_window=float(body.get("bpm_window") or 0),
                     same_key=bool(body.get("same_key")),
+                    key_rules=body.get("key_rules"),
                     enabled=body.get("enabled"),
                     group_weights=body.get("group_weights"),
                     signal_weights=body.get("signal_weights")))
