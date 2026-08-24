@@ -217,13 +217,41 @@ def shard_state(shard: Path) -> dict:
         return {}
 
 
+def quarantined_pairs(shard: Path) -> set[tuple[str, str]]:
+    """(track, stage) pairs this shard has already given up on, permanently.
+
+    The runner writes them to quarantine.json with the reason — decode failures
+    on damaged media, mostly. They cannot be retried into existence, so for the
+    question "is this shard finished?" they count as settled.
+    """
+    path = shard / "quarantine.json"
+    if not path.is_file():
+        return set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    pairs = set()
+    for key in (data or {}):
+        track, _, stage = str(key).partition(":")
+        if track and stage:
+            pairs.add((track, stage))
+    return pairs
+
+
 def incomplete_shards() -> list[Path]:
     found = []
     for shard in sorted(SHARDS.glob("shard-*")):
         manifest = shard / "manifest.csv"
         if not manifest.is_file() or not (shard / "bundle.tar").is_file():
             continue
-        required = required_pairs(manifest)
+        # A track whose audio cannot be decoded will NEVER succeed, and the run
+        # already recorded that in quarantine.json. Counting those pairs as
+        # outstanding made the shard permanently "incomplete": the orchestrator
+        # respawned a runner for it forever, and each zombie held one of only
+        # five parallel slots. Two finished shards (792 and 799 rows, both with
+        # imported.ok) were blocking 40% of the pipeline this way.
+        required = required_pairs(manifest) - quarantined_pairs(shard)
         if not required <= successful(shard / "results.jsonl"):
             found.append(shard)
         elif not (shard / "imported.ok").is_file():
