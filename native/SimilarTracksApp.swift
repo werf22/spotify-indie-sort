@@ -19,6 +19,7 @@
 // Rebuild with native/build.sh after any change.
 
 import AppKit
+import MediaPlayer
 import WebKit
 
 let PORT = 8765
@@ -141,7 +142,52 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
             return ev
         }
 
+        wireMediaKeys()
         startServer()
+    }
+
+    // MARK: media keys
+    //
+    // The keyboard's ▶❚❚ / ⏭ / ⏮ keys go to whichever app macOS considers to be
+    // "now playing", and an app only becomes that by publishing what it plays.
+    // So the page reports the current track (see `nowPlaying` below) and these
+    // commands hand the key presses straight back to it. The app never needs to
+    // know whether the sound is coming from its own audio element or from the
+    // embedded Spotify player.
+    func wireMediaKeys() {
+        let c = MPRemoteCommandCenter.shared()
+        c.togglePlayPauseCommand.addTarget { [weak self] _ in self?.key("toggle"); return .success }
+        c.playCommand.addTarget            { [weak self] _ in self?.key("play");   return .success }
+        c.pauseCommand.addTarget           { [weak self] _ in self?.key("pause");  return .success }
+        c.nextTrackCommand.addTarget       { [weak self] _ in self?.key("next");   return .success }
+        c.previousTrackCommand.addTarget   { [weak self] _ in self?.key("prev");   return .success }
+        [c.togglePlayPauseCommand, c.playCommand, c.pauseCommand,
+         c.nextTrackCommand, c.previousTrackCommand].forEach { $0.isEnabled = true }
+    }
+
+    func key(_ name: String) {
+        note("media command from macOS: \(name)")
+        DispatchQueue.main.async {
+            self.web.evaluateJavaScript("window.__mediaKey && window.__mediaKey('\(name)')")
+        }
+    }
+
+    func publishNowPlaying(_ body: [String: Any]) {
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: (body["title"] as? String) ?? "",
+            MPMediaItemPropertyArtist: (body["artist"] as? String) ?? "",
+        ]
+        let duration = (body["duration"] as? Double) ?? 0
+        let position = (body["position"] as? Double) ?? 0
+        let paused = (body["paused"] as? Bool) ?? true
+        if duration > 0 {
+            info[MPMediaItemPropertyPlaybackDuration] = duration
+            info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = position
+        }
+        info[MPNowPlayingInfoPropertyPlaybackRate] = paused ? 0.0 : 1.0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        // Claiming .playing is what actually moves the media keys over to us.
+        MPNowPlayingInfoCenter.default().playbackState = paused ? .paused : .playing
     }
 
     // MARK: engine process
@@ -230,6 +276,14 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
 
     func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
 
+    /// Take the media keys back. Whichever app most recently declared itself to
+    /// be playing owns them, so another media app (Spotify's desktop client is
+    /// the usual one) can quietly steal them. Re-declaring when this window
+    /// comes forward wins them back without fighting anyone for the key itself.
+    func applicationDidBecomeActive(_ note: Notification) {
+        web?.evaluateJavaScript("window.__reclaimMediaKeys && window.__reclaimMediaKeys()")
+    }
+
     // MARK: the page talking to us
 
     func userContentController(_ c: WKUserContentController, didReceive msg: WKScriptMessage) {
@@ -248,6 +302,8 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler,
             // this there is no way to see what the UI actually does in the app,
             // because its console is not the app's console.
             note((body["text"] as? String) ?? "")
+        case "nowPlaying":
+            publishNowPlaying(body)
         case "reveal":
             let paths = (body["paths"] as? [String]) ?? []
             NSWorkspace.shared.activateFileViewerSelecting(paths.map { URL(fileURLWithPath: $0) })

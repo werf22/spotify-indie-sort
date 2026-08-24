@@ -316,7 +316,7 @@ $("btnSave").onclick = async () => {
 async function analyzeNow(ids) {
   if (!ids.length) return;
   $("job").classList.add("on");
-  $("job").textContent = `spúšťam analýzu ${ids.length} track(ov)…`;
+  $("job").textContent = `zaraďujem ${ids.length} track(ov) do analýzy…`;
   try {
     const job = await api("/api/analyze", { method: "POST",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
@@ -328,6 +328,14 @@ async function pollJob(id) {
     const j = await api("/api/analyze/status?job=" + encodeURIComponent(id));
     const last = (j.lines || []).slice(-1)[0] || "";
     const mins = ((Date.now() / 1000 - j.started) / 60).toFixed(1);
+    if (j.state === "queued") {
+      // Only one pod runs at a time, so a second request waits instead of
+      // starting its own machine. Say so, or it looks like nothing happened.
+      $("job").textContent = j.ahead
+        ? `V rade — čaká sa na ${j.ahead} predchádzajúc${j.ahead === 1 ? "u úlohu" : "e úlohy"}. Spustí sa hneď po nej.`
+        : "V rade — spúšťam…";
+      return setTimeout(() => pollJob(id), 2000);
+    }
     if (j.state === "running") {
       $("job").textContent = `Analyzujem ${j.total} · ${mins} min · ${last}`;
       return setTimeout(() => pollJob(id), 3000);

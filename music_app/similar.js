@@ -254,9 +254,9 @@ function wireRows() {
     box.checked = state.picked.has(row.spotify_id);
     box.onclick = e => e.stopPropagation();
     box.onchange = () => { setPicked(i, box.checked); state.lastClicked = i; };
-    tr.onmousedown = e => { armNativeDrag(e, i); startDragSelect(e, i); };
+    tr.onmousedown = e => { rowMouseDown(e, i); armNativeDrag(e, i); startDragSelect(e, i); };
     tr.onmouseenter = () => dragSelectOver(i);
-    tr.onclick = e => rowClick(e, i);
+    tr.onclick = e => e.stopPropagation();     // selection already happened on mousedown
     if (NATIVE) {
       tr.draggable = false;                  // the app owns the gesture, not WebKit
     } else {
@@ -279,16 +279,47 @@ function startDragSelect(e, i) {
 document.addEventListener("mouseup", () => dragSelecting = false);
 function dragSelectOver(i) { if (dragSelecting) setPicked(i, dragValue); }
 
-function rowClick(e, i) {
-  if (e.target.closest("button") || e.target.classList.contains("rowsel")) return;
+/* SELECTION HAPPENS ON MOUSE-DOWN, exactly like Finder — and for the same
+ * reason. It used to happen on click, i.e. on mouse-UP, so the moment the
+ * pointer moved a few pixels the drag swallowed the gesture and nothing got
+ * selected. Deciding on mouse-down makes it impossible to miss.
+ *
+ * Clicking an ALREADY selected row is the one case that has to wait: it must
+ * still be draggable, so the row is only unselected on release, and only if no
+ * drag happened in between. That is Finder's rule too. */
+let pendingUnselect = -1, downAt = null, movedSinceDown = false;
+
+function rowMouseDown(e, i) {
+  if (e.button !== 0) return;
+  if (e.target.closest("button, input, select, a")) return;
+  downAt = { x: e.clientX, y: e.clientY };
+  movedSinceDown = false;
+  pendingUnselect = -1;
+
   if (e.shiftKey && state.lastClicked >= 0) {
     const [a, b] = [state.lastClicked, i].sort((x, y) => x - y);
     for (let k = a; k <= b; k++) setPicked(k, true);
-  } else {
-    setPicked(i, !state.picked.has(state.rows[i].spotify_id));
+    return;
+  }
+  if (!state.picked.has(state.rows[i].spotify_id)) {
+    setPicked(i, true);
     state.lastClicked = i;
+  } else {
+    pendingUnselect = i;                    // decided on release, see above
   }
 }
+
+document.addEventListener("mousemove", e => {
+  if (!downAt) return;
+  if (Math.abs(e.clientX - downAt.x) > 5 || Math.abs(e.clientY - downAt.y) > 5) movedSinceDown = true;
+});
+document.addEventListener("mouseup", () => {
+  if (pendingUnselect >= 0 && !movedSinceDown) {
+    setPicked(pendingUnselect, false);
+    state.lastClicked = pendingUnselect;
+  }
+  pendingUnselect = -1; downAt = null;
+});
 
 function setPicked(i, on) {
   const row = state.rows[i]; if (!row) return;
@@ -360,6 +391,27 @@ function armNativeDrag(e, i) {
   native({ cmd: "armDrag", paths });
 }
 const nlog = text => native({ cmd: "log", text: String(text) });
+
+/* MEDIA KEYS. macOS routes the keyboard's ▶❚❚ / ⏭ / ⏮ keys to whichever app is
+ * currently the "now playing" one, and an app only becomes that by publishing
+ * what it is playing. So the page keeps the app informed, the app publishes it
+ * to the system, and the system's key presses come back through __mediaKey.
+ * Works for both backends — the app never needs to know which is sounding. */
+function nowPlayingToHost() {
+  if (!NATIVE) return;
+  const r = state.rows[state.index];
+  if (!r) return;
+  native({ cmd: "nowPlaying", title: r.title || "", artist: r.artist || "",
+           duration: T.duration || 0, position: T.position || 0, paused: !!T.paused });
+}
+window.__reclaimMediaKeys = () => nowPlayingToHost();
+window.__mediaKey = key => {
+  if (key === "next") playIndex(state.index + 1);
+  else if (key === "prev") playIndex(state.index - 1);
+  else if (key === "play") { if (T.paused) T.toggle(); }
+  else if (key === "pause") { if (!T.paused) T.toggle(); }
+  else $("big").click();
+};
 if (NATIVE) {
   // One line in native/app.log on every start, so what the UI can and cannot do
   // inside the app is a fact on disk instead of a guess.
@@ -427,6 +479,7 @@ function playIndex(i) {
   document.querySelectorAll("tr.playing").forEach(e => e.classList.remove("playing"));
   const tr = $("body").querySelector(`tr[data-i="${i}"]`);
   if (tr) { tr.classList.add("playing"); tr.scrollIntoView({ block: "nearest" }); }
+  setTimeout(nowPlayingToHost, 0);
   hideEmbed();                              // a previous Spotify frame must stop
   $("now").innerHTML = `${esc(r.artist)} — ${esc(r.title)}<br>`
     + `<small>${r.bpm ?? "?"} BPM · ${esc(r.key || "?")}${r.has_file ? "" : " · 30s ukážka"}</small>`;
@@ -442,52 +495,156 @@ function playIndex(i) {
   P.play().then(() => $("big").textContent = "❚❚")
           .catch(() => { $("big").textContent = "▶"; showEmbed(r); });
 }
-$("big").onclick = () => { if (!P.src) return playIndex(0);
-  P.paused ? P.play() : P.pause(); };
+/* ONE TRANSPORT, TWO BACKENDS. The buttons, the long seek bar and the clock
+ * belong to the app, not to whatever is producing the sound. `backend` says who
+ * is playing: our own <audio> element, or Spotify's embedded player driven
+ * through its iFrame API. Everything below routes to the right one, so the
+ * Spotify fallback scrubs on the same bar as a local file instead of being a
+ * crippled little box in the corner. */
+let backend = "audio";
+const T = {
+  get duration() { return backend === "spotify" ? sp.duration : (isFinite(P.duration) ? P.duration : 0); },
+  get position() { return backend === "spotify" ? sp.position : P.currentTime; },
+  get paused()   { return backend === "spotify" ? sp.paused : P.paused; },
+  toggle() { backend === "spotify" ? sp.controller && sp.controller.togglePlay() : (P.paused ? P.play() : P.pause()); },
+  seekTo(sec) {
+    if (backend === "spotify") { sp.position = sec; sp.controller && sp.controller.seek(sec); }
+    else if (isFinite(P.duration)) P.currentTime = sec;
+    paintTransport();
+  },
+  nudge(sec) { T.seekTo(Math.max(0, Math.min(T.duration || 0, T.position + sec))); },
+};
+
+function paintTransport() {
+  const d = T.duration, pos = T.position;
+  $("big").textContent = T.paused ? "▶" : "❚❚";
+  $("dur").textContent = mmss(d);
+  if (seeking) return;
+  $("seek").value = d ? Math.round(pos / d * 1000) : 0;
+  $("cur").textContent = mmss(pos);
+}
+
+$("big").onclick = () => { if (backend === "audio" && !P.src) return playIndex(0); T.toggle(); };
 $("prev").onclick = () => playIndex(state.index - 1);
 $("next").onclick = () => playIndex(state.index + 1);
 P.onended = () => playIndex(state.index + 1);
-P.onplay = () => $("big").textContent = "❚❚";
-P.onpause = () => $("big").textContent = "▶";
+P.onplay = () => { paintTransport(); nowPlayingToHost(); };
+P.onpause = () => { paintTransport(); nowPlayingToHost(); };
 let seeking = false;
-P.ontimeupdate = () => { if (seeking || !isFinite(P.duration)) return;
-  $("seek").value = Math.round(P.currentTime / P.duration * 1000); $("cur").textContent = mmss(P.currentTime); };
-P.onloadedmetadata = () => { $("dur").textContent = mmss(P.duration); };
-$("seek").oninput = () => { seeking = true; $("cur").textContent = mmss($("seek").value / 1000 * P.duration); };
-$("seek").onchange = () => { if (isFinite(P.duration)) P.currentTime = $("seek").value / 1000 * P.duration; seeking = false; };
+let lastPush = 0;
+P.ontimeupdate = () => {
+  if (backend !== "audio") return;
+  paintTransport();
+  // Refresh the system's idea of the position, but not sixty times a second.
+  if (Date.now() - lastPush > 2000) { lastPush = Date.now(); nowPlayingToHost(); }
+};
+P.onloadedmetadata = () => { if (backend === "audio") paintTransport(); };
+$("seek").oninput = () => { seeking = true; $("cur").textContent = mmss($("seek").value / 1000 * T.duration); };
+$("seek").onchange = () => { const to = $("seek").value / 1000 * T.duration; seeking = false; T.seekTo(to); };
 $("vol").oninput = () => P.volume = +$("vol").value;
 document.onkeydown = e => {
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
   if (e.code === "Space") { e.preventDefault(); $("big").click(); }
-  else if (e.code === "ArrowRight") P.currentTime = Math.min(P.duration || 0, P.currentTime + 10);
-  else if (e.code === "ArrowLeft") P.currentTime = Math.max(0, P.currentTime - 10);
+  else if (e.code === "ArrowRight") T.nudge(10);
+  else if (e.code === "ArrowLeft") T.nudge(-10);
   else if (e.code === "ArrowDown") { e.preventDefault(); playIndex(state.index + 1); }
   else if (e.code === "ArrowUp") { e.preventDefault(); playIndex(state.index - 1); }
 };
 
-/* Last resort for a track we have neither on disk nor as a preview. It cannot
- * follow the CUE device — that is a limit of Spotify's embedded player, not a
- * bug here — so it is only ever used when nothing else can sound. */
-/* Full-width Spotify player, used when a track exists neither on disk nor as a
- * Deezer preview. Same footprint as our own player so it does not look like an
- * afterthought — with one honest warning: an iframe cannot be routed to the CUE
- * device, so this one comes out of the default output. */
-function showEmbed(r) {
+/* ---------------- Spotify backend ----------------
+ * Used when a track is neither on disk nor available as a 30-second preview.
+ * It is driven through Spotify's official iFrame API rather than dropped in as
+ * a bare <iframe>, which is what lets the app's own long seek bar scrub it:
+ * the API reports position and duration (in MILLISECONDS) and takes seek() in
+ * SECONDS. Docs: developer.spotify.com/documentation/embeds/references/iframe-api
+ *
+ * HONEST LIMIT: an embedded player cannot be pointed at the CUE device, so this
+ * one comes out of the default output. It also plays a 30-second preview unless
+ * Spotify is logged in inside this window — logging in once from the embed is
+ * remembered, after which it plays the whole track.
+ *
+ * HOW TO TWEAK: API_TIMEOUT is how long to wait for Spotify's script before
+ * giving up and saying so. */
+const API_TIMEOUT = 15000;
+const sp = { api: null, controller: null, duration: 0, position: 0, paused: true,
+             lastUpdate: 0, ticker: null };
+
+function spotifyApi() {
+  if (sp.api) return sp.api;
+  sp.api = new Promise((resolve, reject) => {
+    window.onSpotifyIframeApiReady = api => resolve(api);
+    const tag = document.createElement("script");
+    tag.src = "https://open.spotify.com/embed/iframe-api/v1";
+    tag.async = true;
+    tag.onerror = () => reject(new Error("Spotify sa nepodarilo načítať"));
+    document.head.appendChild(tag);
+    setTimeout(() => reject(new Error("Spotify neodpovedá")), API_TIMEOUT);
+  });
+  return sp.api;
+}
+
+async function showEmbed(r) {
   const box = $("embed");
-  box.innerHTML = `<div class="lbl">▶ hrá cez <b>SPOTIFY</b> — nemáme súbor ani 30s ukážku`
-    + `<span>· ide do predvoleného výstupu, nie do slúchadiel</span></div>`
-    + `<iframe src="https://open.spotify.com/embed/track/${encodeURIComponent(r.spotify_id)}?utm_source=app"
-        allow="autoplay; encrypted-media" loading="eager"></iframe>`;
+  backend = "spotify";
   box.classList.add("on");
   document.querySelector("footer").classList.add("embed");
-  $("now").innerHTML = `${esc(r.artist)} — ${esc(r.title)}<br><small>Spotify</small>`;
+  $("now").innerHTML = `${esc(r.artist)} — ${esc(r.title)}<br>`
+    + `<small>Spotify · mimo slúchadiel</small>`;
+  if (!box.querySelector(".lbl")) {
+    box.innerHTML = `<div class="lbl">▶ hrá cez <b>SPOTIFY</b> — nemáme súbor ani 30s ukážku`
+      + `<span>· ide do predvoleného výstupu, nie do slúchadiel</span></div><div id="spHost"></div>`;
+  }
+  const uri = "spotify:track:" + r.spotify_id;
+  try {
+    const api = await spotifyApi();
+    if (!sp.controller) {
+      await new Promise(done => api.createController(
+        $("spHost"), { uri, width: "100%", height: 80 },
+        c => {
+          sp.controller = c;
+          c.addListener("playback_update", e => onSpotifyUpdate(e.data));
+          c.addListener("ready", () => c.resume());
+          done();
+        }));
+    } else {
+      sp.controller.loadUri(uri);
+      sp.controller.resume();
+    }
+    startSpotifyTicker();
+  } catch (err) {
+    box.innerHTML = `<div class="lbl" style="color:#ff8080">${esc(err.message)}</div>`;
+    toast("Spotify prehrávač sa nenačítal — skontroluj pripojenie.");
+  }
+}
+
+/* playback_update arrives only when something changes, which would make the bar
+ * jump once a second at best. Between updates the position is advanced locally
+ * so the bar moves smoothly, and every real update snaps it back to the truth. */
+function onSpotifyUpdate(d) {
+  sp.duration = (d.duration || 0) / 1000;
+  sp.position = (d.position || 0) / 1000;
+  sp.paused = !!d.isPaused;
+  sp.lastUpdate = Date.now();
+  paintTransport();
+  nowPlayingToHost();
+}
+
+function startSpotifyTicker() {
+  clearInterval(sp.ticker);
+  sp.ticker = setInterval(() => {
+    if (backend !== "spotify" || sp.paused) return;
+    const drift = (Date.now() - sp.lastUpdate) / 1000;
+    if (drift > 0.2 && drift < 3) { sp.position += 0.25; sp.lastUpdate += 250; paintTransport(); }
+  }, 250);
 }
 
 function hideEmbed() {
   const box = $("embed");
+  clearInterval(sp.ticker);
+  if (sp.controller) { try { sp.controller.pause(); } catch {} }
+  backend = "audio";
   if (!box.classList.contains("on")) return;
   box.classList.remove("on");
-  box.innerHTML = "";                       // stops the iframe's audio
   document.querySelector("footer").classList.remove("embed");
 }
 

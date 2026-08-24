@@ -23,7 +23,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 swiftc -O -o "$APP/Contents/MacOS/SimilarTracks" \
-  native/SimilarTracksApp.swift -framework AppKit -framework WebKit
+  native/SimilarTracksApp.swift -framework AppKit -framework WebKit -framework MediaPlayer
 # Ad-hoc signature: without it macOS refuses the microphone prompt and the
 # window can be killed on launch.
 codesign --force --deep --sign - "$APP" 2>/dev/null || true

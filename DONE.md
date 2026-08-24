@@ -76,3 +76,46 @@ and launching it on the owner's machine mid-work was not appropriate. One real
 drag by the owner settles it.
 
 **Measured** RunPod: 55,267 / 66,833 done. One pod live at $0.22/h, no orphans.
+
+
+## 2026-08-24 — D-073 · Spotify scrubbing, Finder-style selection, analysis queue, media keys
+
+**Changed**
+- `music_app/similar.js` — one transport, two backends. The footer's buttons,
+  long seek bar and clock now drive either the app's own `<audio>` or Spotify's
+  embedded player through the official iFrame API
+  (`open.spotify.com/embed/iframe-api/v1`; `seek()` takes SECONDS,
+  `playback_update` reports MILLISECONDS). Position is interpolated between
+  updates so the bar moves smoothly.
+- `music_app/similar.js` — selection is decided on MOUSE-DOWN, like Finder. It
+  used to happen on click, i.e. on mouse-up, so any pointer movement let the
+  drag swallow the gesture and nothing got selected. Clicking an already
+  selected row still unselects on release, and only if no drag happened, so a
+  selected row stays draggable.
+- `music_app/analyze_jobs.py` — a single worker drains a FIFO queue. Every job
+  used to spawn its own process, so a second track while the first was running
+  created a SECOND pod. The worker also takes everything waiting in one go:
+  three tracks queued during a pod boot are analysed by one pod, not three.
+- `music_app/similar_panels.js` — the UI shows the queued state and position.
+- `native/SimilarTracksApp.swift` — MediaPlayer framework: remote commands for
+  play/pause/next/previous, and now-playing info published from the page so
+  macOS routes the keyboard's media keys to the app. Re-published when the app
+  becomes active, to take the keys back from other media apps.
+
+**Verified**
+- Spotify backend: 13 `playback_update` events, position advanced 0 → 6.8 s,
+  the app's own bar tracked it, and `T.seekTo(60 % of duration)` landed at 0:20
+  of 0:29 with the clock and bar agreeing. (Duration is 30 s because Spotify is
+  not logged in; logging in from the embed plays the whole track.)
+- Selection: a synthetic click WITH 8 px of movement — the case that used to
+  fail — selected row 5 and showed "1 označených", and the same gesture still
+  started a real file drag (`startDrag` in `native/app.log`).
+- Queue: three requests, A ran alone immediately, B and C waited and merged
+  into a single run (`ids = AAA`, then `ids = BBB,CCC`).
+- Media keys: `media command from macOS: next` and `: prev` reached the app.
+
+**NOT working, and why:** the play/pause key does not reach the app while the
+Spotify desktop client is running — Spotify holds that key globally and also
+steals next/previous once it grabs it. next/previous work when Spotify is not
+contending. Quitting Spotify's desktop app (or turning off its media-key
+setting) is the only fix; the spacebar always works inside the app.
