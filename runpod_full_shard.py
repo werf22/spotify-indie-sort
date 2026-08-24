@@ -831,7 +831,13 @@ def main() -> None:
     # is invisible at 1-2 pods and ruinous at 16: with UPLOAD_SLOTS=2, the other
     # fourteen would bill $0.22/h each while waiting their turn to receive a
     # bundle. Waiting here costs nothing because no pod exists yet.
-    slot = acquire_upload_slot() if needs_upload else None
+    # AN EXPRESS SHARD NEVER QUEUES. The slot exists to stop several 1.5 GB
+    # bundles fighting over one uplink; an on-demand shard is a handful of
+    # tracks (~7 MB, seconds) and competes with nobody. Queueing it behind the
+    # nightly backlog is what made "analyse this now" sit at "spúšťam pod…"
+    # indefinitely — the slot is held for ~10 minutes at a time, continuously.
+    express = shard.name.startswith("express-")
+    slot = acquire_upload_slot() if (needs_upload and not express) else None
     try:
         if not pod_id or dead:
             # Hunt for a well-provisioned host first; settle for any pod on the last

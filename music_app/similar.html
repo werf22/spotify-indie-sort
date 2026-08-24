@@ -4,773 +4,193 @@
 <meta charset="utf-8">
 <title>Similar Tracks</title>
 <style>
-  :root { --bg:#12131a; --panel:#1b1d27; --line:#2a2d3a; --ink:#e6e7ee; --dim:#8f93a8;
-          --accent:#6d8cff; --green:#1db954; }
-  * { box-sizing:border-box; }
-  body { margin:0 0 118px; font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-         background:var(--bg); color:var(--ink); }
-  header { padding:14px 18px; background:var(--panel); border-bottom:1px solid var(--line);
-           position:sticky; top:0; z-index:10; }
-  h1 { margin:0 0 10px; font-size:17px; font-weight:650; }
-  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  input, select, button { background:#232636; color:var(--ink); border:1px solid var(--line);
-           border-radius:8px; padding:8px 12px; font-size:14px; font-family:inherit; }
-  input:focus { outline:2px solid var(--accent); }
-  button { cursor:pointer; } button:hover:not(:disabled) { border-color:var(--accent); }
-  button:disabled { opacity:.45; cursor:default; }
-  button.spotify { background:var(--green); color:#04150b; border-color:var(--green); font-weight:600; }
-  #hits { margin-top:8px; display:none; background:#232636; border:1px solid var(--line);
-          border-radius:8px; max-height:250px; overflow:auto; }
-  #hits div { padding:8px 12px; cursor:pointer; border-bottom:1px solid var(--line); }
-  #hits div:hover { background:#2b2f42; } #hits .no { color:var(--dim); }
-  #ref { margin-top:10px; color:var(--dim); } #ref b { color:var(--ink); }
-  table { border-collapse:collapse; width:100%; }
-  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line);
-           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  th { color:var(--dim); font-weight:600; font-size:12px; text-transform:uppercase;
-       letter-spacing:.5px; position:sticky; top:0; background:var(--bg); }
-  tr:hover td { background:#191c28; } tr.playing td { background:#1e2438; }
-  tr.playing td:first-child { box-shadow:inset 3px 0 0 var(--accent); }
-  td.num { color:var(--dim); width:38px; }
-  .bar { height:5px; background:#2a2d3a; border-radius:3px; width:70px; display:inline-block; }
-  .bar i { display:block; height:100%; background:var(--accent); border-radius:3px; }
-  .why { color:var(--dim); font-size:12px; }
-  .play { padding:3px 10px; border-radius:6px; font-size:13px; }
-  /* ---- player ---- */
-  #player-bar { position:fixed; left:0; right:0; bottom:0; background:var(--panel);
-                border-top:1px solid var(--line); padding:10px 18px; z-index:40; }
-  #player-bar .top { display:flex; gap:14px; align-items:center; }
-  #now { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  #now small { color:var(--dim); }
-  .ctl { background:none; border:none; color:var(--ink); font-size:19px; padding:4px 9px; }
-  .ctl:hover { color:var(--accent); }
-  #big { background:var(--accent); color:#0b0d14; border-radius:50%; width:40px; height:40px;
-         font-size:16px; display:flex; align-items:center; justify-content:center; padding:0; border:none; }
-  #seek, #vol { -webkit-appearance:none; height:6px; border-radius:3px; background:#2a2d3a; padding:0; border:none; }
-  #seek { flex:1; } #vol { width:90px; }
-  #seek::-webkit-slider-thumb, #vol::-webkit-slider-thumb { -webkit-appearance:none;
-      width:13px; height:13px; border-radius:50%; background:var(--accent); cursor:pointer; }
-  .times { display:flex; gap:10px; align-items:center; margin-top:7px; color:var(--dim); font-variant-numeric:tabular-nums; }
-  #toast { position:fixed; bottom:130px; left:50%; transform:translateX(-50%); background:#232636;
-           border:1px solid var(--accent); padding:10px 18px; border-radius:8px; display:none; z-index:60; }
-  #toast a { color:var(--accent); }
-  .muted { color:var(--dim); }
-  td.pick { width:26px; }
-  .rowsel { cursor:pointer; }
-  .act2 { display:flex; gap:4px; }
-  .act2 button { padding:3px 8px; border-radius:6px; font-size:12.5px; }
-  #cue { display:flex; gap:6px; align-items:center; }
-  #cue select { max-width:190px; }
-  #selbar { display:flex; gap:8px; align-items:center; margin-top:8px; }
-  #selbar b { color:var(--ink); }
-  #hits .an { float:right; font-size:11.5px; padding:1px 8px; border-radius:5px;
-              background:var(--accent); color:#0b0d14; border:none; font-weight:600; }
-  #job { margin-top:6px; font-size:12.5px; color:var(--dim); display:none; }
-  #job.on { display:block; }
-  #job b { color:var(--ink); }
-  #harm label { margin-right:7px; }
-  #harm input { margin-right:3px; }
-  #presets button { border-radius:20px; padding:6px 14px; font-size:13px; }
-  #presets button.on { background:var(--accent); color:#0b0d14; border-color:var(--accent); font-weight:600; }
-  #why-preset { color:var(--dim); font-size:12.5px; margin-top:6px; max-width:960px; line-height:1.45; }
-  /* ---- profiles ---- */
-  #profiles { margin-top:8px; background:#161824; border:1px solid var(--line);
-              border-radius:8px; padding:8px 12px; display:none; max-height:340px; overflow:auto; }
-  #profiles.open { display:block; }
-  .pf-folder { margin:6px 0 2px; color:var(--accent); font-size:11.5px; text-transform:uppercase;
-               letter-spacing:.5px; display:flex; gap:8px; align-items:center; }
-  .pf-folder .fname { cursor:pointer; }
-  .pf { display:flex; align-items:center; gap:7px; padding:4px 6px; border-radius:6px; cursor:pointer; }
-  .pf:hover { background:#22263a; }
-  .pf.drag { opacity:.4; }
-  .pf .grip { color:var(--dim); cursor:grab; }
-  .pf .nm { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .pf .cnt { color:var(--dim); font-size:11.5px; }
-  .pf .act { opacity:0; display:flex; gap:2px; }
-  .pf:hover .act { opacity:1; }
-  .pf .act button { background:none; border:none; color:var(--dim); padding:2px 5px; font-size:13px; }
-  .pf .act button:hover { color:var(--ink); }
-  .pf.pinned .nm::before { content:"📌 "; }
-  #pinbar { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
-  #pinbar button { border-radius:20px; padding:5px 12px; font-size:12.5px; }
-  #panel { display:none; margin-top:10px; background:#161824; border:1px solid var(--line);
-           border-radius:8px; padding:10px 14px; max-height:330px; overflow:auto; }
-  .grp { margin-bottom:12px; }
-  .grp h3 { margin:0 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.5px;
-            color:var(--accent); display:flex; gap:10px; align-items:center; }
-  .grp h3 .mini { font-weight:400; text-transform:none; letter-spacing:0; color:var(--dim); }
-  .grp h3 button { padding:2px 8px; font-size:11px; border-radius:5px; }
-  .sig { display:inline-flex; align-items:center; gap:5px; width:262px; padding:2px 0;
-         color:var(--dim); font-size:13px; }
-  .sig .md { font-size:11px; padding:1px 2px; background:#1b1e2c; color:var(--ink);
-             border:1px solid var(--line); border-radius:4px; }
-  .sig .md.diff { border-color:#ff9d5c; color:#ff9d5c; }
-  .sig .tg { width:44px; padding:1px 4px; font-size:11px; background:#1b1e2c;
-             border:1px solid var(--line); border-radius:4px; color:var(--ink); }
-  .sig .sw { width:46px; padding:1px 4px; font-size:11.5px; text-align:right;
-             background:#1b1e2c; border:1px solid var(--line); border-radius:4px; color:var(--ink); }
-  .sig .sw:focus { outline:1px solid var(--accent); }
-  .formula { color:var(--dim); font-size:11.5px; margin:2px 0 10px; }
-  .formula code { color:var(--accent); }
-  .sig input { margin:0; }
-  .sig b { color:var(--ink); font-weight:500; }
-  .sig i { font-style:normal; opacity:.65; font-size:11px; }
-  .wslider { width:90px; vertical-align:middle; }
+  :root{--bg:#101119;--panel:#181a24;--line:#272a38;--ink:#e8e9f0;--dim:#8b90a6;
+        --accent:#6d8cff;--green:#1db954;--warn:#ff9d5c}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;font:13.5px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+       background:var(--bg);color:var(--ink);display:flex;flex-direction:column;overflow:hidden}
+  button,select,input{font:inherit;color:var(--ink);background:#222534;border:1px solid var(--line);
+       border-radius:7px;padding:6px 10px}
+  button{cursor:pointer}button:hover:not(:disabled){border-color:var(--accent)}
+  button:disabled{opacity:.4;cursor:default}
+  .primary{background:var(--accent);color:#0b0d14;border-color:var(--accent);font-weight:600}
+  .green{background:var(--green);color:#04150b;border-color:var(--green);font-weight:600}
+  .ghost{background:none;border-color:transparent;color:var(--dim);padding:4px 7px}
+  .ghost:hover{color:var(--ink);border-color:var(--line)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .muted{color:var(--dim)}
+  /* ---------- header ---------- */
+  header{background:var(--panel);border-bottom:1px solid var(--line);padding:10px 16px;flex:0 0 auto}
+  #search{flex:1;min-width:220px;max-width:460px}
+  #ref{margin-top:8px;color:var(--dim);font-size:12.5px}
+  #ref b{color:var(--ink)}
+  .chip{border-radius:20px;padding:5px 13px;font-size:12.5px}
+  .chip.on{background:var(--accent);color:#0b0d14;border-color:var(--accent);font-weight:600}
+  #hits{position:absolute;z-index:30;margin-top:4px;background:#222534;border:1px solid var(--line);
+        border-radius:8px;max-height:280px;overflow:auto;min-width:420px;display:none;box-shadow:0 8px 24px #0008}
+  #hits div{padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:center}
+  #hits div:last-child{border-bottom:none}
+  #hits div:hover{background:#2b2f42}
+  #hits .no{color:var(--dim)}
+  #hits button{margin-left:auto;font-size:11.5px;padding:2px 9px}
+  /* ---------- panels ---------- */
+  .panel{display:none;background:#14161f;border-bottom:1px solid var(--line);
+         padding:10px 16px;max-height:38vh;overflow:auto;flex:0 0 auto}
+  .panel.open{display:block}
+  .panel h4{margin:0 0 8px;font-size:11.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--accent)}
+  .note{color:var(--dim);font-size:11.5px;margin:-4px 0 10px;max-width:900px}
+  .grp{margin-bottom:12px}
+  .grp-head{display:flex;gap:8px;align-items:center;margin-bottom:5px;flex-wrap:wrap}
+  .grp-head .name{font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--accent)}
+  .grp-head button{padding:2px 8px;font-size:11px;border-radius:5px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:2px 12px}
+  .sig{display:flex;align-items:center;gap:6px;padding:2px 0;color:var(--dim);min-width:0}
+  .sig .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-size:12.5px}
+  .sig .cov{font-size:10.5px;opacity:.6;flex:0 0 auto}
+  .sig input[type=number]{width:44px;padding:1px 4px;font-size:11px;text-align:right}
+  .sig select{padding:1px 3px;font-size:11px}
+  /* ---------- rules ---------- */
+  .rule{display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+  .rule select,.rule input{padding:4px 8px;font-size:12.5px}
+  .rule .val{min-width:160px}
+  /* ---------- selection bar ---------- */
+  #selbar{background:#1b2033;border-bottom:1px solid var(--line);padding:7px 16px;display:none;flex:0 0 auto}
+  #selbar.on{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  /* ---------- table ---------- */
+  .wrap{flex:1 1 auto;overflow:auto;min-height:0}
+  table{border-collapse:collapse;width:100%;table-layout:fixed}
+  th,td{padding:0 8px;height:34px;text-align:left;border-bottom:1px solid var(--line);
+        overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  th{position:sticky;top:0;z-index:5;background:var(--bg);color:var(--dim);font-size:10.5px;
+     text-transform:uppercase;letter-spacing:.5px;font-weight:600;height:30px}
+  tbody tr{cursor:grab}
+  tbody tr:hover{background:#181b28}
+  tr.sel{background:#1c2440}
+  tr.sel:hover{background:#212a4a}
+  tr.playing td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  /* Artist and title carry the meaning, so they get the room. The fixed columns
+     used to total 624px, which at a narrow window left them ~88px each and
+     turned every name into "NA…". */
+  .c-pick{width:32px}.c-act{width:96px}.c-num{width:38px;color:var(--dim)}
+  .c-art{width:26%}.c-tit{width:34%}
+  .c-match{width:70px}.c-why{width:170px;color:var(--dim);font-size:11.5px}
+  .c-bpm{width:50px;color:var(--dim)}.c-key{width:104px;color:var(--dim)}
+  /* On a narrow window drop the explanation rather than squeeze the names. */
+  @media (max-width:1100px){ .c-why{display:none} }
+  @media (max-width:860px){ .c-match{display:none} }
+  td.c-act{white-space:nowrap}
+  td.c-act button{padding:2px 6px;font-size:12px;border-radius:5px;margin-right:2px}
+  .bar{display:inline-block;width:62px;height:5px;background:#2a2d3a;border-radius:3px;vertical-align:middle}
+  .bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+  /* ---------- player ---------- */
+  footer{flex:0 0 auto;background:var(--panel);border-top:1px solid var(--line);padding:8px 16px}
+  .pl{display:flex;gap:12px;align-items:center}
+  #now{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #now small{color:var(--dim)}
+  #big{background:var(--accent);color:#0b0d14;border:none;border-radius:50%;width:34px;height:34px;
+       display:flex;align-items:center;justify-content:center;padding:0;flex:0 0 auto}
+  .times{display:flex;gap:10px;align-items:center;margin-top:6px;color:var(--dim);
+         font-variant-numeric:tabular-nums;font-size:11.5px}
+  input[type=range]{-webkit-appearance:none;height:5px;border-radius:3px;background:#2a2d3a;padding:0;border:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;
+       background:var(--accent);cursor:pointer}
+  #seek{flex:1}#vol{width:80px}
+  #toast{position:fixed;bottom:96px;left:50%;transform:translateX(-50%);background:#222534;
+         border:1px solid var(--accent);padding:9px 16px;border-radius:8px;display:none;z-index:80;max-width:70vw}
+  #toast a{color:var(--accent)}
+  #job{color:var(--dim);font-size:12px;margin-top:6px;display:none}
+  #job.on{display:block}
 </style>
 </head>
 <body>
+
 <header>
-  <h1>Nájdi podobné tracky</h1>
   <div class="row">
-    <input id="q" placeholder="Napíš interpreta alebo názov…" style="width:330px" autofocus>
-    <select id="limit"><option value="100" selected>100</option><option value="50">50</option>
-      <option value="200">200</option><option value="500">500</option></select>
+    <input id="search" placeholder="Hľadaj interpreta alebo názov…" autocomplete="off">
+    <select id="limit" title="Počet výsledkov">
+      <option>50</option><option selected>100</option><option>200</option><option>500</option>
+    </select>
     <label class="muted"><input type="checkbox" id="spotifyOnly" checked> len zo Spotify</label>
-    <span class="muted" id="harm" title="Mixed In Key / Camelot — filter, nie váha">Harmonicky:
-      <label><input type="checkbox" class="kr" value="exact"> rovnaká</label>
-      <label><input type="checkbox" class="kr" value="relative"> rel.</label>
-      <label><input type="checkbox" class="kr" value="step1"> ±1</label>
-      <label><input type="checkbox" class="kr" value="step2"> ±2</label>
-      <label><input type="checkbox" class="kr" value="semitone" title="posun o poltón = ±7 na kolese"> ±7 poltón</label>
-    </span>
-    <label class="muted" style="display:none"><input type="checkbox" id="sameKey"></label>
-    <label class="muted">BPM ±<input id="bpm" type="number" value="0" min="0" max="20" style="width:60px"> %</label>
-    <button id="make" class="spotify" disabled>Vytvor Spotify playlist</button>
-    <input id="plname" placeholder="Názov playlistu" style="width:220px">
-    <button id="tune">Čo porovnávať…</button>
-    <span id="cue" class="muted" title="Kam ide zvuk z tejto appky — vyber slúchadlá, Traktor hrá von cez reproduktory">
-      🎧 <select id="sink"><option value="">predvolený výstup</option></select>
-    </span>
-    <button id="profBtn">Moje profily</button>
-    <button id="saveProf">＋ Ulož ako profil</button>
+    <span class="muted">🎧<select id="sink" title="Kam ide zvuk z tejto appky"><option value="">predvolený</option></select></span>
+    <button id="btnCompare">Čo porovnávať</button>
+    <button id="btnShift">Čo posunúť</button>
+    <button id="btnProfiles">Profily</button>
+    <button id="btnSave" class="ghost">+ ulož profil</button>
   </div>
-  <div class="row" id="presets" style="margin-top:8px"></div>
-  <div class="row" style="display:none">
-  </div>
-  <div id="selbar">
-    <label class="muted"><input type="checkbox" id="selAll"> označiť všetko</label>
-    <span class="muted" id="selCount">0 označených</span>
-    <button id="toPlaylist">→ Traktor playlist (.m3u)</button>
-    <button id="revealSel">Ukáž v Finderi</button>
-    <button id="analyzeSelSim">Analyzuj označené</button>
-  </div>
-  <div id="job"></div>
-  <div id="pinbar"></div>
-  <div id="profiles"></div>
-  <div id="why-preset"></div>
-  <div id="panel"></div>
+  <div class="row" style="margin-top:8px" id="presets"></div>
+  <div id="ref" class="muted">Vyber track hore a nájdem najpodobnejšie.</div>
   <div id="hits"></div>
-  <div id="ref"></div>
+  <div id="job"></div>
 </header>
 
-<table><thead><tr>
-  <th class="pick"></th><th class="num">#</th><th>Interpret</th><th>Track</th><th>Zhoda</th>
-  <th>Prečo</th><th>BPM</th><th>Tónina</th><th></th>
-</tr></thead><tbody id="body"></tbody></table>
+<div class="panel" id="panelCompare">
+  <h4>Čo porovnávať</h4>
+  <div class="note">Skóre = pre každú kategóriu <b>váha kategórie × (signál×váha + signál×váha + …)</b>.
+     Váhy signálov sa sčítajú, až potom sa násobia váhou kategórie.</div>
+  <div id="cmpBody"></div>
+</div>
 
-<div id="player-bar">
-  <div class="top">
-    <button class="ctl" id="prev" title="Predchádzajúci">⏮</button>
+<div class="panel" id="panelShift">
+  <h4>Čo posunúť</h4>
+  <div class="note">Tu hovoríš, čo má byť <b>iné</b>. Ostatné zostáva podobné, takže set sa posúva
+     namiesto opakovania. <b>≠</b> chcem odlišné · <b>→</b> mier na hodnotu · a dole tvrdé pravidlá na tagy.</div>
+  <div id="rules"></div>
+  <button id="addRule" class="ghost">+ pridaj pravidlo na tag</button>
+  <div style="height:12px"></div>
+  <div id="shiftBody"></div>
+</div>
+
+<div class="panel" id="panelProfiles">
+  <h4>Moje profily</h4>
+  <div id="profiles"></div>
+</div>
+
+<div id="selbar">
+  <b id="selCount">0 označených</b>
+  <button id="btnPlaylist" class="green">→ Traktor playlist (.m3u)</button>
+  <button id="btnReveal">Ukáž vo Finderi</button>
+  <button id="btnAnalyze">Analyzuj označené</button>
+  <button id="btnClear" class="ghost">zruš výber</button>
+  <span class="muted">Ťahaním riadkov ich presunieš do Traktora · Shift+klik označí rozsah</span>
+</div>
+
+<div class="wrap">
+  <table>
+    <thead><tr>
+      <th class="c-pick"><input type="checkbox" id="selAll" title="označiť všetko"></th>
+      <th class="c-act"></th>
+      <th class="c-num">#</th>
+      <th class="c-art">Interpret</th>
+      <th class="c-tit">Track</th>
+      <th class="c-match">Zhoda</th>
+      <th class="c-why">Prečo</th>
+      <th class="c-bpm">BPM</th>
+      <th class="c-key">Tónina</th>
+    </tr></thead>
+    <tbody id="body"></tbody>
+  </table>
+</div>
+
+<footer>
+  <div class="pl">
+    <button class="ghost" id="prev" title="Predchádzajúci">⏮</button>
     <button id="big" title="Prehrať / pauza (medzerník)">▶</button>
-    <button class="ctl" id="next" title="Ďalší">⏭</button>
+    <button class="ghost" id="next" title="Ďalší">⏭</button>
     <div id="now"><small>nič sa nehrá</small></div>
     <span class="muted">🔊</span><input id="vol" type="range" min="0" max="1" step="0.01" value="1">
   </div>
   <div class="times">
     <span id="cur">0:00</span>
-    <input id="seek" type="range" min="0" max="1000" value="0" step="1">
+    <input id="seek" type="range" min="0" max="1000" value="0">
     <span id="dur">0:00</span>
-    <span id="status" class="muted" style="margin-left:10px"></span>
-    <span id="embed" style="margin-left:auto"></span>
+    <span id="status" class="muted" style="margin-left:8px"></span>
   </div>
-</div>
+</footer>
 
 <audio id="player"></audio>
 <div id="toast"></div>
-
-<script>
-const $ = id => document.getElementById(id);
-const P = $("player");
-const state = { rows: [], index: -1, refId: null, signals: [], presets: [], preset: 0, profiles: [], dragId: null, picked: new Set() };
-const esc = s => (s||"").replace(/[<>&]/g, c => ({"<":"&lt;",">":"&gt;","&":"&amp;"}[c]));
-const mmss = s => (!isFinite(s) || s < 0) ? "0:00"
-  : Math.floor(s/60) + ":" + String(Math.floor(s%60)).padStart(2,"0");
-const toast = (html, ms=8000) => { const t=$("toast"); t.innerHTML=html; t.style.display="block";
-  clearTimeout(t._t); t._t=setTimeout(()=>t.style.display="none", ms); };
-
-async function api(path, opts) {
-  const r = await fetch(path, opts);
-  const j = await r.json().catch(() => ({error:"server neodpovedal JSONom"}));
-  if (j.error) throw new Error(j.error);
-  return j;
-}
-
-async function pollReady() {
-  try {
-    const s = await api("/api/similar/status");
-    if (s.error) { $("status").textContent = "Chyba: " + s.error; return; }
-    if (s.ready) { $("status").textContent = `${s.tracks.toLocaleString()} zanalyzovaných`; return; }
-    $("status").textContent = "načítavam odtlačky… (~1 min, raz za spustenie)";
-  } catch { $("status").textContent = "server nedostupný"; }
-  setTimeout(pollReady, 2000);
-}
-
-let timer;
-$("q").oninput = () => { clearTimeout(timer); timer = setTimeout(doSearch, 250); };
-async function doSearch() {
-  const q = $("q").value.trim();
-  if (q.length < 2) { $("hits").style.display = "none"; return; }
-  const { results } = await api("/api/similar/search?q=" + encodeURIComponent(q));
-  $("hits").innerHTML = results.length ? results.map(r =>
-    `<div data-id="${r.spotify_id}" class="${r.analysed===false?'no':''}">${esc(r.artist)} — ${esc(r.title)}${
-      r.analysed===false?' · zatiaľ bez analýzy':''}${
-      r.analysed===false?`<button class="an" data-an="${r.spotify_id}">Analyzuj hneď</button>`:''}</div>`)
-      .join("") : '<div class="no">nič</div>';
-  $("hits").querySelectorAll("[data-an]").forEach(b => b.onclick = ev => {
-    ev.stopPropagation(); analyzeNow([b.dataset.an]); });
-  $("hits").style.display = "block";
-  $("hits").querySelectorAll("div[data-id]").forEach(el =>
-    el.onclick = () => pick(el.dataset.id, el.textContent.trim()));
-}
-
-async function pick(id, label) {
-  $("hits").style.display = "none";
-  $("q").value = label.replace(/ · zatiaľ bez analýzy$/, "");
-  state.refId = id;
-  $("ref").innerHTML = "hľadám podobné k <b>" + esc($("q").value) + "</b> …";
-  $("body").innerHTML = ""; $("make").disabled = true;
-  try {
-    const res = await api("/api/similar", { method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ id, limit:+$("limit").value,
-        spotify_only: $("spotifyOnly").checked, same_key: $("sameKey").checked,
-        bpm_window: +$("bpm").value || 0, key_rules: keyRules(),
-        enabled: enabledSignals(), group_weights: groupWeights(),
-        signal_weights: signalWeights(),
-    signal_modes: signalModes(), signal_modes: signalModes() }) });
-    state.rows = res.results; render();
-    const u = res.signals_used || {};
-    $("ref").innerHTML = `<b>${esc($("q").value)}</b> — ${res.results.length} najpodobnejších `
-      + `<span class="muted">(porovnané: ${Object.entries(u).map(([g,n])=>n+" "+g).join(", ")})</span>`;
-    $("plname").value = "Podobné na " + $("q").value;
-    $("make").disabled = !res.results.length;
-  } catch (e) { $("ref").innerHTML = '<span style="color:#ff8080">'+esc(e.message)+'</span>'; }
-}
-
-// ---- which signals to compare -------------------------------------------
-const GROUP_LABEL = { audio:"Zvuk (embeddingy)", tags:"Tagy", numbers:"Čísla", musical:"Hudobné" };
-const GROUP_NOTE = {
-  audio:"ako to naozaj znie", tags:"každý typ tagu zvlášť",
-  numbers:"hľadá najbližšiu hodnotu", musical:"tempo a tónina" };
-
-
-
-
-// ---- CUE: send this app's audio to the headphones -------------------------
-// Traktor keeps the main output; the browser plays into whichever device is
-// chosen here. setSinkId needs device LABELS, and labels only appear after the
-// user has granted audio permission once — hence the getUserMedia call.
-async function loadSinks() {
-  try {
-    await navigator.mediaDevices.getUserMedia({ audio: true })
-      .then(st => st.getTracks().forEach(t => t.stop())).catch(() => {});
-    const outs = (await navigator.mediaDevices.enumerateDevices())
-      .filter(d => d.kind === "audiooutput");
-    $("sink").innerHTML = '<option value="">predvolený výstup</option>' +
-      outs.map(d => `<option value="${d.deviceId}">${esc(d.label || "výstup")}</option>`).join("");
-    const saved = localStorage.getItem("cueSink");
-    if (saved && outs.some(d => d.deviceId === saved)) {
-      $("sink").value = saved; applySink(saved);
-    }
-  } catch { $("cue").title = "prehliadač nedovolil výber výstupu"; }
-}
-async function applySink(id) {
-  if (!P.setSinkId) return;
-  try { await P.setSinkId(id || "default"); } catch (e) { toast("Výstup sa nepodarilo prepnúť"); }
-}
-$("sink").onchange = () => { localStorage.setItem("cueSink", $("sink").value); applySink($("sink").value); };
-
-// ---- selection -------------------------------------------------------------
-function updateSel() {
-  $("selCount").textContent = `${state.picked.size} označených`;
-  const boxes = [...document.querySelectorAll(".rowsel")];
-  $("selAll").checked = boxes.length > 0 && boxes.every(b => b.checked);
-}
-$("selAll").onchange = () => {
-  document.querySelectorAll(".rowsel").forEach(b => {
-    b.checked = $("selAll").checked;
-    b.checked ? state.picked.add(b.dataset.id) : state.picked.delete(b.dataset.id);
-  });
-  updateSel();
-};
-const pickedIds = () => state.rows.filter(r => state.picked.has(r.spotify_id)).map(r => r.spotify_id);
-
-async function revealOne(id) {
-  try { await api("/api/traktor/reveal", { method:"POST",
-    headers:{"Content-Type":"application/json"}, body: JSON.stringify({ ids:[id] }) }); }
-  catch (e) { toast(e.message); }
-}
-$("revealSel").onclick = () => { const ids = pickedIds();
-  if (!ids.length) return toast("Najprv označ tracky"); revealOne(ids[0]); };
-
-$("toPlaylist").onclick = async () => {
-  const ids = pickedIds();
-  if (!ids.length) return toast("Najprv označ tracky");
-  try {
-    const res = await api("/api/traktor/playlist", { method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ ids, name: $("q").value.slice(0, 40) }) });
-    toast(`Playlist s ${res.count} trackmi je vo Finderi — chyť ho a pusti do Traktora`
-      + (res.skipped ? ` (${res.skipped} bez súboru)` : ""), 12000);
-  } catch (e) { toast(e.message); }
-};
-
-$("analyzeSelSim").onclick = () => {
-  const ids = pickedIds();
-  if (!ids.length) return toast("Najprv označ tracky");
-  analyzeNow(ids);
-};
-
-// ---- pivot: make THIS track the new reference ------------------------------
-function pivotTo(row) {
-  state.refId = row.spotify_id;
-  $("q").value = `${row.artist} — ${row.title}`;
-  state.picked.clear();
-  pick(row.spotify_id, $("q").value);
-}
-
-// ---- analyse on demand ------------------------------------------------------
-async function analyzeNow(ids) {
-  if (!ids.length) return;
-  $("job").classList.add("on");
-  $("job").innerHTML = `spúšťam analýzu ${ids.length} track(ov)…`;
-  try {
-    const job = await api("/api/analyze", { method:"POST",
-      headers:{"Content-Type":"application/json"}, body: JSON.stringify({ ids }) });
-    pollJob(job.id);
-  } catch (e) { $("job").innerHTML = '<b style="color:#ff8080">' + esc(e.message) + "</b>"; }
-}
-
-async function pollJob(id) {
-  try {
-    const j = await api("/api/analyze/status?job=" + encodeURIComponent(id));
-    const last = (j.lines || []).slice(-1)[0] || "";
-    const mins = ((Date.now()/1000 - j.started) / 60).toFixed(1);
-    if (j.state === "running") {
-      $("job").innerHTML = `<b>Analyzujem ${j.total} track(ov)</b> · ${mins} min · ${esc(last)}`;
-      return setTimeout(() => pollJob(id), 3000);
-    }
-    $("job").innerHTML = j.state === "done"
-      ? `<b>Hotovo</b> — ${j.total} track(ov) za ${mins} min. ${esc(last)}`
-      : `<b style="color:#ff8080">Nepodarilo sa</b> — ${esc(last)}`;
-    if (j.state === "done") loadSignals();     // the new tracks are comparable now
-  } catch (e) { $("job").innerHTML = "chyba pri sledovaní úlohy"; }
-}
-
-// ---- my profiles: saved preference sets, in folders --------------------------
-function currentSettings() {
-  return {
-    enabled: enabledSignals(),
-    group_weights: groupWeights(),
-    signal_weights: signalWeights(),
-    signal_modes: signalModes(),
-    filters: { bpm_window: +$("bpm").value || 0, same_key: $("sameKey").checked,
-               key_rules: keyRules(),
-               limit: +$("limit").value, spotify_only: $("spotifyOnly").checked },
-  };
-}
-
-function applySettings(s) {
-  const want = new Set(s.enabled || []);
-  $("panel").querySelectorAll("input[data-sig]").forEach(cb => cb.checked = want.has(cb.dataset.sig));
-  Object.entries(s.group_weights || {}).forEach(([g, w]) => {
-    const sl = $("panel").querySelector(`[data-w="${g}"]`);
-    if (sl) { sl.value = w; $("panel").querySelector(`[data-wv="${g}"]`).textContent = (+w).toFixed(1); }
-  });
-  Object.entries(s.signal_weights || {}).forEach(([id, w]) => {
-    const el = $("panel").querySelector(`[data-sw="${CSS.escape(id)}"]`);
-    if (el) el.value = w;
-  });
-  document.querySelectorAll("#panel [data-md]").forEach(sel => {
-    sel.value = "same"; sel.classList.remove("diff");
-    const tg = $("panel").querySelector(`[data-tg="${CSS.escape(sel.dataset.md)}"]`);
-    if (tg) tg.value = "";
-  });
-  Object.entries(s.signal_modes || {}).forEach(([id, spec]) => {
-    const sel = $("panel").querySelector(`[data-md="${CSS.escape(id)}"]`);
-    if (!sel) return;
-    sel.value = spec.mode; sel.classList.add("diff");
-    if (spec.mode === "target") {
-      const tg = $("panel").querySelector(`[data-tg="${CSS.escape(id)}"]`);
-      if (tg && spec.target != null) tg.value = spec.target;
-    }
-  });
-  const f = s.filters || {};
-  if (f.bpm_window != null) $("bpm").value = f.bpm_window;
-  if (f.same_key != null) $("sameKey").checked = !!f.same_key;
-  if (f.key_rules) { const want = new Set(f.key_rules);
-    document.querySelectorAll(".kr").forEach(c => c.checked = want.has(c.value)); }
-  if (f.limit) $("limit").value = f.limit;
-  if (f.spotify_only != null) $("spotifyOnly").checked = !!f.spotify_only;
-}
-
-async function loadProfiles() {
-  const { profiles } = await api("/api/profiles");
-  state.profiles = profiles;
-  renderProfiles();
-}
-
-function renderProfiles() {
-  const list = state.profiles || [];
-  // Pinned get their own always-visible strip — that is the "one click" ask.
-  $("pinbar").innerHTML = list.filter(p => p.pinned).map(p =>
-    `<button data-open="${p.id}" title="${esc(p.folder || "")}">📌 ${esc(p.name)}</button>`).join("");
-  $("pinbar").querySelectorAll("[data-open]").forEach(b =>
-    b.onclick = () => openProfile(b.dataset.open));
-
-  // Folders are a path string, so any depth renders by grouping on it.
-  const byFolder = {};
-  list.forEach(p => (byFolder[p.folder || "—"] = byFolder[p.folder || "—"] || []).push(p));
-  $("profiles").innerHTML = Object.keys(byFolder).sort().map(folder => `
-    <div class="pf-folder">
-      <span class="fname" data-folder="${esc(folder)}" title="Premenovať priečinok">📁 ${esc(folder)}</span>
-      <span class="muted">${byFolder[folder].length}</span>
-    </div>
-    ${byFolder[folder].map(p => `
-      <div class="pf ${p.pinned ? "pinned" : ""}" draggable="true" data-id="${p.id}">
-        <span class="grip">⋮⋮</span>
-        <span class="nm">${esc(p.name)}</span>
-        <span class="cnt">${(p.enabled || []).length}</span>
-        <span class="act">
-          <button data-pin="${p.id}" title="Pripnúť">📌</button>
-          <button data-edit="${p.id}" title="Premenovať / presunúť">✎</button>
-          <button data-update="${p.id}" title="Prepísať aktuálnym nastavením">⟳</button>
-          <button data-del="${p.id}" title="Zmazať">✕</button>
-        </span>
-      </div>`).join("")}`).join("") || '<span class="muted">Zatiaľ žiadne profily.</span>';
-
-  $("profiles").querySelectorAll(".pf").forEach(row => {
-    row.onclick = e => { if (!e.target.closest(".act,.grip")) openProfile(row.dataset.id); };
-    row.ondragstart = e => { state.dragId = row.dataset.id; row.classList.add("drag"); };
-    row.ondragend = () => row.classList.remove("drag");
-    row.ondragover = e => e.preventDefault();
-    row.ondrop = e => { e.preventDefault(); dropOn(row.dataset.id); };
-  });
-  $("profiles").querySelectorAll("[data-pin]").forEach(b => b.onclick = async () => {
-    const p = state.profiles.find(x => x.id === b.dataset.pin);
-    await api("/api/profiles/save", { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ ...p, pinned: !p.pinned }) });
-    loadProfiles();
-  });
-  $("profiles").querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
-    const p = state.profiles.find(x => x.id === b.dataset.del);
-    if (!confirm(`Zmazať profil "${p.name}"?`)) return;
-    await api("/api/profiles/delete", { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ id: b.dataset.del }) });
-    loadProfiles();
-  });
-  $("profiles").querySelectorAll("[data-edit]").forEach(b => b.onclick = async () => {
-    const p = state.profiles.find(x => x.id === b.dataset.edit);
-    const name = prompt("Názov profilu:", p.name); if (name === null) return;
-    const folder = prompt("Priečinok (lomítko = podpriečinok, prázdne = bez):", p.folder || "");
-    if (folder === null) return;
-    await api("/api/profiles/save", { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ ...p, name, folder }) });
-    loadProfiles();
-  });
-  $("profiles").querySelectorAll("[data-update]").forEach(b => b.onclick = async () => {
-    const p = state.profiles.find(x => x.id === b.dataset.update);
-    if (!confirm(`Prepísať "${p.name}" tým, čo je teraz nastavené?`)) return;
-    await api("/api/profiles/save", { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ ...p, ...currentSettings() }) });
-    loadProfiles();
-  });
-  $("profiles").querySelectorAll("[data-folder]").forEach(el => el.onclick = async () => {
-    const old = el.dataset.folder; if (old === "—") return;
-    const nw = prompt("Nový názov priečinka (premenuje aj podpriečinky):", old);
-    if (nw === null || nw === old) return;
-    await api("/api/profiles/rename-folder", { method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ old, new: nw }) });
-    loadProfiles();
-  });
-}
-
-async function dropOn(targetId) {
-  const ids = state.profiles.map(p => p.id);
-  const from = ids.indexOf(state.dragId), to = ids.indexOf(targetId);
-  if (from < 0 || to < 0 || from === to) return;
-  ids.splice(to, 0, ids.splice(from, 1)[0]);
-  await api("/api/profiles/reorder", { method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({ order: ids }) });
-  loadProfiles();
-}
-
-function openProfile(id) {
-  const p = (state.profiles || []).find(x => x.id === id);
-  if (!p) return;
-  applySettings(p);
-  $("presets").querySelectorAll("button").forEach(b => b.classList.remove("on"));
-  $("why-preset").innerHTML = `<b>${esc(p.name)}</b>${p.folder ? ' <span class="muted">· '
-    + esc(p.folder) + "</span>" : ""} — vlastný profil, ${(p.enabled || []).length} signálov`;
-  if (state.refId) pick(state.refId, $("q").value);
-}
-
-$("profBtn").onclick = () => $("profiles").classList.toggle("open");
-$("saveProf").onclick = async () => {
-  const name = prompt("Názov profilu:"); if (!name) return;
-  const folder = prompt("Priečinok (lomítko = podpriečinok, prázdne = bez):", "") || "";
-  await api("/api/profiles/save", { method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({ name, folder, ...currentSettings() }) });
-  $("profiles").classList.add("open");
-  loadProfiles();
-};
-
-// ---- presets: five measured selections ----------------------------------
-async function loadPresets() {
-  const { presets } = await api("/api/similar/presets");
-  state.presets = presets;
-  $("presets").innerHTML = '<span class="muted" style="margin-right:4px">Režim:</span>' +
-    presets.map((p, i) => `<button data-p="${i}" title="${esc(p.note)}">${esc(p.label)}</button>`).join("");
-  $("presets").querySelectorAll("button").forEach(b =>
-    b.onclick = () => applyPreset(+b.dataset.p));
-  applyPreset(0);
-}
-
-function applyPreset(i) {
-  const p = state.presets[i];
-  state.preset = i;
-  $("presets").querySelectorAll("button").forEach(b =>
-    b.classList.toggle("on", +b.dataset.p === i));
-  const want = new Set(p.enabled);
-  $("panel").querySelectorAll("input[data-sig]").forEach(cb =>
-    cb.checked = want.has(cb.dataset.sig));
-  Object.entries(p.group_weights || {}).forEach(([g, w]) => {
-    const sl = $("panel").querySelector(`[data-w="${g}"]`);
-    if (sl) { sl.value = w; $("panel").querySelector(`[data-wv="${g}"]`).textContent = (+w).toFixed(1); }
-  });
-  const f = p.filters || {};
-  $("bpm").value = f.bpm_window || 0;
-  $("sameKey").checked = !!f.same_key;
-  const kr = new Set(f.key_rules || (f.same_key ? ["exact"] : []));
-  document.querySelectorAll(".kr").forEach(c => c.checked = kr.has(c.value));
-  $("why-preset").innerHTML = `<b>${esc(p.label)}</b> — ${esc(p.note)}<br>${esc(p.why)}`;
-  if (state.refId) pick(state.refId, $("q").value);
-}
-
-async function loadSignals() {
-  const { signals } = await api("/api/similar/signals");
-  state.signals = signals;
-  const groups = {};
-  signals.forEach(s => (groups[s.group] = groups[s.group] || []).push(s));
-  $("panel").innerHTML = '<div class="formula">Skóre = pre každú kategóriu: '
-    + '<code>váha kategórie × (signál×váha + signál×váha + …)</code>. '
-    + 'Váhy signálov sa teda najprv sčítajú a až ten súčet sa násobí váhou kategórie. '
-    + '<b>=</b> drž rovnaké · <b>≠</b> chcem odlišné · <b>→</b> mier na hodnotu — '
-    + 'tak sa dá posúvať set: groove a tónina zostanú, energia sa zmení.</div>'
-    + Object.entries(groups).map(([g, list]) => `
-    <div class="grp" data-g="${g}">
-      <h3>${GROUP_LABEL[g]||g}
-        <span class="mini">${GROUP_NOTE[g]||""}</span>
-        <button data-all="${g}">všetko</button><button data-none="${g}">nič</button>
-        <span class="mini">váha</span>
-        <input class="wslider" type="range" min="0" max="2" step="0.1"
-               value="${g==='audio'?1:(g==='tags'?0.8:0.6)}" data-w="${g}">
-        <span class="mini" data-wv="${g}">${g==='audio'?'1.0':(g==='tags'?'0.8':'0.6')}</span>
-      </h3>
-      ${list.map(s => `<label class="sig" title="${esc(s.note||"")} · ${s.coverage.toLocaleString()} trackov">
-          <input type="checkbox" data-sig="${esc(s.id)}" ${s.default?"checked":""}>
-          <b>${esc(s.label)}</b> <i>${(s.coverage/1000).toFixed(0)}k</i>
-          <select class="md" data-md="${esc(s.id)}" title="rovnaké / odlišné${
-              s.group === "numbers" ? " / cieľová hodnota" : ""}">
-            <option value="same">=</option>
-            <option value="diff">≠</option>
-            ${s.group === "numbers" ? '<option value="target">→</option>' : ""}
-          </select>
-          ${s.group === "numbers" ? `<input class="tg" type="number" step="0.05"
-              data-tg="${esc(s.id)}" placeholder="cieľ" title="cieľová hodnota">` : ""}
-          <input class="sw" type="number" step="0.1" min="0" max="9"
-                 data-sw="${esc(s.id)}" value="${(s.weight ?? 1).toFixed(1)}"
-                 title="Váha tohto signálu"></label>`).join("")}
-    </div>`).join("");
-  $("panel").querySelectorAll("[data-all]").forEach(b => b.onclick = () =>
-    setGroup(b.dataset.all, true));
-  $("panel").querySelectorAll("[data-none]").forEach(b => b.onclick = () =>
-    setGroup(b.dataset.none, false));
-  // Asking for CONTRAST only bites if the signal carries weight: one of ~45
-  // signals at its default barely moves a ranking, so switching to ≠ or →
-  // raised nothing visible. Switching the mode now raises that signal's weight
-  // to a level where the request is actually felt; it stays editable.
-  $("panel").querySelectorAll("[data-md]").forEach(sel => sel.onchange = () => {
-    const box = $("panel").querySelector(`[data-sw="${CSS.escape(sel.dataset.md)}"]`);
-    if (!box) return;
-    if (sel.value !== "same" && +box.value < 5) box.value = "5.0";
-    if (sel.value === "same" && +box.value === 5) box.value = "1.0";
-  });
-  $("panel").querySelectorAll("[data-w]").forEach(sl => sl.oninput = () =>
-    $("panel").querySelector(`[data-wv="${sl.dataset.w}"]`).textContent = (+sl.value).toFixed(1));
-}
-function setGroup(g, on) {
-  $("panel").querySelectorAll(`.grp[data-g="${g}"] input[data-sig]`)
-    .forEach(cb => cb.checked = on);
-}
-const enabledSignals = () =>
-  [...$("panel").querySelectorAll("input[data-sig]:checked")].map(cb => cb.dataset.sig);
-const groupWeights = () => Object.fromEntries(
-  [...$("panel").querySelectorAll("[data-w]")].map(sl => [sl.dataset.w, +sl.value]));
-const keyRules = () => [...document.querySelectorAll(".kr:checked")].map(c => c.value);
-// mode per signal: "=" keep it alike, "≠" deliberately different, "→" aim at a value
-const signalModes = () => {
-  const out = {};
-  document.querySelectorAll("#panel [data-md]").forEach(sel => {
-    const id = sel.dataset.md, mode = sel.value;
-    if (mode === "same") return;
-    const tg = $("panel").querySelector(`[data-tg="${CSS.escape(id)}"]`);
-    out[id] = mode === "target" && tg && tg.value !== ""
-      ? { mode: "target", target: +tg.value } : { mode };
-    sel.classList.toggle("diff", mode !== "same");
-  });
-  return out;
-};
-const signalWeights = () => Object.fromEntries(
-  [...$("panel").querySelectorAll("[data-sw]")].map(el => [el.dataset.sw, +el.value || 0]));
-
-$("tune").onclick = () => {
-  const p = $("panel");
-  p.style.display = p.style.display === "block" ? "none" : "block";
-};
-// Re-run the search when the selection changes, so ticking a box shows its effect.
-document.querySelectorAll(".kr").forEach(c => c.onchange = () => {
-  if (state.refId) pick(state.refId, $("q").value); });
-$("panel").addEventListener("change", e => {
-  if ((e.target.dataset.sig || e.target.dataset.sw || e.target.dataset.w
-       || e.target.dataset.md || e.target.dataset.tg)
-      && state.refId) pick(state.refId, $("q").value);
-});
-
-function render() {
-  const max = state.rows.length ? state.rows[0].score : 1;
-  $("body").innerHTML = state.rows.map((r,i) => {
-    // `why` is the list of signals that scored this track highest — the engine
-    // returns names now, not a fixed object, so any newly added signal shows up
-    // here on its own.
-    // Drop the raw "key"/"bpm" signal names: the two lines below already say
-    // the same thing in words, and printing both reads as a duplicate.
-    // The two musical signals are already spelled out by the lines below, and
-    // their labels are Slovak ("Tónina", "BPM"), so the earlier english-only
-    // filter let them through and the cell read "tónina · … · Tónina".
-    const DUP = new Set(["key", "bpm", "Tónina", "BPM"]);
-    const bits = (r.why || []).filter(x => !DUP.has(x)).slice(0, 3);
-    if (r.key_match === 1) bits.unshift("tónina");
-    else if (r.key_match >= 0.6) bits.unshift("mixovateľná");
-    if (r.bpm_diff != null && r.bpm_diff <= 2) bits.unshift("BPM");
-    const why = [...new Set(bits)].slice(0, 4).join(" · ");
-    return `<tr data-i="${i}">
-      <td class="pick"><input type="checkbox" class="rowsel" data-id="${r.spotify_id}"
-          ${state.picked.has(r.spotify_id) ? "checked" : ""}></td>
-      <td class="num">${i+1}</td><td>${esc(r.artist)}</td><td>${esc(r.title)}</td>
-      <td><span class="bar"><i style="width:${Math.max(4,Math.round(r.score/max*100))}%"></i></span></td>
-      <td class="why">${why||"&nbsp;"}</td>
-      <td class="muted">${r.bpm ?? ""}</td>
-      <td class="muted">${esc(r.key||"")}${r.key_rel && r.key_rel !== "rovnaká"
-          ? ` <i style="opacity:.55">${esc(r.key_rel)}</i>` : ""}</td>
-      <td><span class="act2">
-        <button class="play" title="Prehrať (ide do vybraného výstupu)">${
-          r.has_file ? "▶" : (r.preview ? "▶ 30s" : "▶ Spotify")}</button>
-        <button class="pivot" title="Nájdi podobné na TENTO track">⇄</button>
-        <button class="rev" title="Ukáž v Finderi — odtiaľ ťahaj do decku">⇱</button>
-      </span></td></tr>`;
-  }).join("");
-  $("body").querySelectorAll("tr").forEach(tr => {
-    const i = +tr.dataset.i, row = state.rows[i];
-    tr.querySelector(".play").onclick = () => playIndex(i);
-    tr.querySelector(".pivot").onclick = () => pivotTo(row);
-    tr.querySelector(".rev").onclick = () => revealOne(row.spotify_id);
-    tr.querySelector(".rowsel").onchange = e => {
-      e.target.checked ? state.picked.add(row.spotify_id) : state.picked.delete(row.spotify_id);
-      updateSel();
-    };
-  });
-  updateSel();
-}
-
-function playIndex(i) {
-  if (i < 0 || i >= state.rows.length) return;
-  state.index = i;
-  const r = state.rows[i];
-  document.querySelectorAll("tr.playing").forEach(e => e.classList.remove("playing"));
-  const tr = $("body").querySelector(`tr[data-i="${i}"]`);
-  if (tr) { tr.classList.add("playing"); tr.scrollIntoView({block:"nearest"}); }
-  $("now").innerHTML = `${esc(r.artist)} — ${esc(r.title)}<br><small>${r.bpm??"?"} BPM · ${esc(r.key||"?")}</small>`;
-  // ONE CLICK, always. A local file is the whole track; failing that a 30-second
-  // preview still plays in OUR element, so it starts immediately and follows the
-  // CUE output device. The Spotify iframe is the last resort only: it needs a
-  // second click inside itself and ignores the chosen output entirely.
-  const src = r.has_file ? "/api/audio?id=" + encodeURIComponent(r.spotify_id)
-            : (r.preview ? "/api/preview?id=" + encodeURIComponent(r.spotify_id) : null);
-  if (src) {
-    $("embed").innerHTML = "";
-    P.src = src;
-    if ($("sink").value && P.setSinkId) P.setSinkId($("sink").value).catch(() => {});
-    P.play().then(() => $("big").textContent = "❚❚").catch(() => showEmbed(r.spotify_id));
-  } else showEmbed(r.spotify_id);
-}
-
-function showEmbed(id) {
-  P.pause(); $("big").textContent = "▶";
-  $("embed").innerHTML = `<iframe src="https://open.spotify.com/embed/track/${id}"
-      width="300" height="80" frameborder="0" allow="autoplay; encrypted-media"></iframe>`;
-}
-
-$("big").onclick = () => {
-  if (!P.src) { playIndex(0); return; }
-  if (P.paused) { P.play(); $("big").textContent = "❚❚"; }
-  else { P.pause(); $("big").textContent = "▶"; }
-};
-$("prev").onclick = () => playIndex(state.index - 1);
-$("next").onclick = () => playIndex(state.index + 1);
-P.onended = () => playIndex(state.index + 1);          // straight into the next one
-P.onpause = () => $("big").textContent = "▶";
-P.onplay  = () => $("big").textContent = "❚❚";
-
-// Seek bar. `seeking` stops the timeupdate handler fighting the user's drag.
-let seeking = false;
-P.ontimeupdate = () => {
-  if (seeking || !isFinite(P.duration)) return;
-  $("seek").value = Math.round(P.currentTime / P.duration * 1000);
-  $("cur").textContent = mmss(P.currentTime);
-};
-P.onloadedmetadata = () => { $("dur").textContent = mmss(P.duration); $("seek").value = 0; };
-$("seek").oninput = () => { seeking = true; $("cur").textContent = mmss($("seek").value/1000*P.duration); };
-$("seek").onchange = () => { if (isFinite(P.duration)) P.currentTime = $("seek").value/1000*P.duration;
-                             seeking = false; };
-$("vol").oninput = () => P.volume = +$("vol").value;
-
-document.onkeydown = e => {
-  if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;   // never steal typing
-  if (e.code === "Space") { e.preventDefault(); $("big").click(); }
-  else if (e.code === "ArrowRight") P.currentTime = Math.min(P.duration||0, P.currentTime + 10);
-  else if (e.code === "ArrowLeft")  P.currentTime = Math.max(0, P.currentTime - 10);
-  else if (e.code === "ArrowDown")  { e.preventDefault(); playIndex(state.index + 1); }
-  else if (e.code === "ArrowUp")    { e.preventDefault(); playIndex(state.index - 1); }
-};
-
-$("make").onclick = async () => {
-  $("make").disabled = true; $("status").textContent = "vytváram playlist…";
-  try {
-    const res = await api("/api/playlist", { method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ name: $("plname").value || "Similar tracks",
-        description: "Z lokálnej hudobnej databázy podľa audio podobnosti, tagov, rytmu a tóniny.",
-        ids: state.rows.map(r => r.spotify_id) }) });
-    $("status").textContent = `hotovo — ${res.added}`;
-    toast(`Playlist vytvorený (${res.added} trackov)${res.skipped?`, ${res.skipped} preskočených`:""} — `
-        + `<a href="${res.url}" target="_blank">otvoriť na Spotify</a>`, 15000);
-  } catch (e) { $("status").textContent=""; toast("Nepodarilo sa: " + esc(e.message), 10000); }
-  $("make").disabled = false;
-};
-pollReady();
-loadSinks();
-loadSignals().then(loadPresets).then(loadProfiles);
-</script>
+<script src="/similar.js"></script>
+<script src="/similar_panels.js"></script>
 </body>
 </html>

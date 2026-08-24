@@ -297,6 +297,14 @@ def sweep_orphans(active: dict | None = None) -> list[str]:
         name = str(pod.get("name") or "")
         if not name.startswith("music-db-"):
             continue  # never touch pods this project did not create
+        if name.startswith("music-db-express-"):
+            # An express pod belongs to analyze_now.py, not to this loop. It is
+            # still guarded — pod_reaper watches every music-db-* pod and judges
+            # by the live runner process — but THIS sweep only knows the shards
+            # it started itself, so it saw an on-demand pod as an orphan and
+            # deleted it seconds after analysis began. That is exactly why
+            # "analyse this track now" produced nothing, twice over.
+            continue
         tracked = states.get(pod_id)
         stale = False
         if tracked is None:

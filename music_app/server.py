@@ -71,6 +71,11 @@ class Handler(BaseHTTPRequestHandler):
         body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
         self.send_response(status)
         self.send_header("Content-Type", content_type)
+        # NEVER let the browser cache this app. Without it the owner kept seeing
+        # a stale page after every change — panels empty, presets missing — and
+        # it looked like the app had broken when the server was in fact serving
+        # the right thing to a browser that refused to ask for it.
+        self.send_header("Cache-Control", "no-store, must-revalidate")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -97,6 +102,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(db.stats())
             if url.path == "/api/pick":
                 return self._send({"paths": pick_paths(query.get("folders") == "1")})
+            if url.path in ("/similar.js", "/similar_panels.js"):
+                return self._send((HERE / url.path.lstrip("/")).read_bytes(),
+                                  content_type="application/javascript")
             if url.path in ("/similar", "/similar.html"):
                 return self._send((HERE / "similar.html").read_bytes(),
                                   content_type="text/html")
@@ -113,6 +121,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"profiles": profiles.list_profiles()})
             if url.path == "/api/similar/presets":
                 return self._send({"presets": similar_api.engine.presets()})
+            if url.path == "/api/similar/tag-values":
+                return self._send({"values": similar_api.engine.tag_values()})
             if url.path == "/api/similar/signals":
                 # Everything that CAN be compared, so the UI can draw a checkbox
                 # per signal instead of hardcoding a list that goes stale.
@@ -151,6 +161,8 @@ class Handler(BaseHTTPRequestHandler):
                     run_detached([str(ROOT / ".venv/bin/python"), "index_audio_files.py",
                                   "--roots", ":".join(paths)])
                 return self._send({"ok": True, "queued": len(paths)})
+            if url.path == "/api/traktor/paths":
+                return self._send(traktor_bridge.file_list(body.get("ids") or []))
             if url.path == "/api/traktor/reveal":
                 return self._send(traktor_bridge.reveal(body.get("ids") or []))
             if url.path == "/api/traktor/playlist":
@@ -179,7 +191,8 @@ class Handler(BaseHTTPRequestHandler):
                     enabled=body.get("enabled"),
                     group_weights=body.get("group_weights"),
                     signal_weights=body.get("signal_weights"),
-                    signal_modes=body.get("signal_modes")))
+                    signal_modes=body.get("signal_modes"),
+                    tag_rules=body.get("tag_rules")))
             if url.path == "/api/playlist":
                 return self._send(similar_api.create_playlist(
                     body.get("name") or "Similar tracks",

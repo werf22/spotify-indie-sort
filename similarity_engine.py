@@ -268,7 +268,8 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
             enabled: list[str] | None = None,
             group_weights: dict | None = None,
             signal_weights: dict | None = None,
-            signal_modes: dict | None = None) -> dict:
+            signal_modes: dict | None = None,
+            tag_rules: list | None = None) -> dict:
     if not _state["ready"]:
         warm()
     if _state["error"]:
@@ -353,6 +354,8 @@ def similar(ref: str, limit: int = 100, spotify_only: bool = True,
             continue
         if key_rules and not key_allowed(lib.key[row], lib.key[idx], key_rules):
             continue
+        if tag_rules and not passes_tag_rules(lib, idx, tag_rules):
+            continue
         info = db.execute("""SELECT t.title, t.artist_names,
                                 (SELECT path FROM audio_files f WHERE f.spotify_id=t.spotify_id
                                  AND f.path IS NOT NULL LIMIT 1) path,
@@ -405,6 +408,47 @@ def key_relation(ref_key, cand_key) -> str | None:
         return None
     return {1: "+1", 11: "-1", 2: "+2", 10: "-2",
             7: "+7 (poltón hore)", 5: "-7 (poltón dole)"}.get(delta)
+
+
+def tag_values(limit_per_type: int = 400) -> dict[str, list[str]]:
+    """Every tag VALUE the owner can build a rule on, per tag type.
+
+    The contrast panel needs real choices ("drum and bass", "afro house"), not a
+    free-text box that silently matches nothing when a word is spelled slightly
+    differently.
+    """
+    if not _state["ready"]:
+        warm()
+    lib = _state["lib"]
+    out = {}
+    for ttype, index in lib.tag_index.items():
+        values = sorted(index, key=lambda t: -len(index[t][0]))[:limit_per_type]
+        out[ttype] = values
+    return out
+
+
+def passes_tag_rules(lib, idx: int, rules: list[dict]) -> bool:
+    """Hard yes/no on tag VALUES — the "must contain / must not contain" filter.
+
+    Separate from the similarity score on purpose: "it has to be drum and bass"
+    is not a preference to be outweighed by a strong match elsewhere, it is a
+    condition. Scoring it would let a very similar house record outrank the
+    requirement and quietly ignore what was asked.
+    """
+    for rule in rules or []:
+        ttype = rule.get("type")
+        value = (rule.get("value") or "").strip().lower()
+        mode = rule.get("mode", "must")
+        if not ttype or not value:
+            continue
+        have = lib.tag_of.get(ttype, {}).get(lib.ids[idx]) or set()
+        # substring match, so "drum" finds "drum and bass" without exact spelling
+        hit = any(value in tag for tag in have)
+        if mode == "must" and not hit:
+            return False
+        if mode == "must_not" and hit:
+            return False
+    return True
 
 def song_key(title: str, artist: str) -> str:
     """Identity of a SONG, ignoring which mix it is — radio edit, extended and

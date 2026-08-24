@@ -89,3 +89,9 @@ def playlist(ids: list[str], name: str = "") -> dict:
     subprocess.run(["open", "-R", str(target)], check=False, timeout=30)
     return {"playlist": str(target), "count": len(found),
             "skipped": len(ids) - len(found)}
+
+
+def file_list(ids: list[str]) -> dict:
+    """Paths for a drag. The page needs them to build the drag payload."""
+    return {"files": [{"id": sid, "path": path, "name": Path(path).name}
+                      for sid, path, _ in paths_for(ids)]}
