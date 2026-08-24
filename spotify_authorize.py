@@ -117,14 +117,35 @@ def borrow_port(port: int):
     # and handing that to a shell would let any quoting in it be re-interpreted.
     argv = shlex.split(cmd)
 
+    # `ps` reports the RESOLVED interpreter, so a program started from a virtual
+    # environment shows up as the Homebrew/system python it links to. Launching
+    # that binary skips the virtualenv and `-m uvicorn` then fails instantly —
+    # which is exactly how this once claimed to restore an app it had killed.
+    # If the working directory has a venv, use its python instead.
+    if cwd and argv and os.path.basename(argv[0]).lower().startswith("python"):
+        venv = os.path.join(cwd, ".venv", "bin", "python")
+        if os.path.exists(venv):
+            argv[0] = venv
+
     def give_back():
         try:
             subprocess.Popen(argv, cwd=cwd,
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                              start_new_session=True)
-            print(f"Pôvodná appka na porte {port} je späť.")
         except Exception as exc:
             print(f"POZOR: nepodarilo sa ju vrátiť ({exc}). Spusti ju sám:\n  {cmd}")
+            return
+        # NEVER claim success without looking. The whole point of borrowing is
+        # that the other app is running again afterwards.
+        for _ in range(40):
+            time.sleep(0.25)
+            back = subprocess.run(["lsof", "-ti", f":{port}", "-sTCP:LISTEN"],
+                                  capture_output=True, text=True).stdout.split()
+            if back:
+                print(f"Pôvodná appka na porte {port} je späť.")
+                return
+        print(f"POZOR: appka na porte {port} sa NEVRÁTILA. Spusti ju sám:\n"
+              f"  cd {cwd or '?'} && {' '.join(argv)}")
     return give_back
 
 
@@ -152,16 +173,24 @@ def main() -> None:
         print(f"Otváram Spotify prihlásenie… ak sa okno neotvorí, choď na:\n  {url}\n")
         webbrowser.open(url)
         print(f"Čakám na návrat na {REDIRECT} …  (stačí kliknúť na Agree)")
-        for _ in range(600):                            # 5 minutes, then give up
+        # TWEAK: WAIT_MINUTES — how long to hold the port waiting for the click.
+        # Run this while you are actually at the keyboard; the borrowed app is
+        # down for exactly this long if you never click.
+        WAIT_MINUTES = 5
+        for _ in range(WAIT_MINUTES * 120):
             if _result:
                 break
             threading.Event().wait(0.5)
+        timed_out = not _result
         server.server_close()
     finally:
         give_back()          # the other app gets its port back no matter what
 
+    if timed_out:
+        raise SystemExit(f"Nikto neklikol do {WAIT_MINUTES} minút — nič sa nezmenilo. "
+                         "Spusti to znova, keď si pri počítači.")
     if "code" not in _result:
-        raise SystemExit(f"Nepodarilo sa: {_result.get('error', 'žiadna odpoveď')}. "
+        raise SystemExit(f"Nepodarilo sa: {_result.get('error', 'neznáma chyba')}. "
                          f"Je {REDIRECT} registrované pre túto Spotify aplikáciu?")
     if _result.get("state") != state:
         raise SystemExit("Bezpečnostná kontrola zlyhala (state nesedí) — skús znova.")
