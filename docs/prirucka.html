@@ -193,6 +193,7 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
     <li><a href="#vahy">Váhy</a></li>
     <li><a href="#rezimy">Šesť režimov</a></li>
     <li><a href="#mik">Mixed in Key a BPM</a></li>
+    <li><a href="#makra">Makrá</a></li>
     <li><a href="#posunut">Čo posunúť</a></li>
     <li><a href="#seedy">Viac trackov naraz</a></li>
     <li><a href="#profily">Profily</a></li>
@@ -511,6 +512,19 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
 
 <p>Vedľa neho sedí druhý prepínač rovnakého druhu: <strong>BPM ±</strong>. Pustí len tracky, ktoré sú do zadaného rozsahu od tempa <em>zvoleného</em> tracku. Je zámerne v absolútnych BPM, nie v percentách — tri percentá znamenajú pri 90 niečo úplne iné než pri 174. Tiež zostáva zapnutý naprieč profilmi.</p>
 
+<h2 id="makra"><span class="n">Ovládanie</span>Makrá</h2>
+
+<p>Nad pravidlami v oboch paneloch „Čo posunúť“ je pás <strong>makier</strong> — 53 hotových filtrov v štyroch skupinách: <strong>Nálada</strong>, <strong>Energia</strong>, <strong>Rytmus a tempo</strong>, <strong>Žáner</strong>. Jedno kliknutie a vo výsledku zostanú len tracky, ktoré tomu zodpovedajú.</p>
+
+<p>Makrá sa <strong>neskladajú samy medzi sebou — skladáš ich ty</strong>. Každé zapnuté makro je jedno tvrdé pravidlo a pravidlá platia naraz, takže „Veselé“ + „Vysoká energia“ + „Deep house“ znamená všetky tri súčasne. Preto sú rozdelené po skupinách: kombinovať sa majú <em>naprieč</em> nimi, nie vnútri.</p>
+
+<p>Pri každom makre je v bublinke počet trackov a podiel knižnice. To číslo je dôležitejšie, než sa zdá: makro, ktoré sedí na 90 % knižnice, nefiltruje nič.</p>
+
+<div class="note">
+<span class="lbl">Prečo makrá nestoja na <span class="mono">mood_candidate</span></span>
+<p>Bola by to lákavá voľba — má stopercentné pokrytie a krajšie slová (<span class="mono">uplifting</span>, <span class="mono">building</span>, <span class="mono">rebellious</span>). Lenže práve preto, že ho má <strong>každý</strong> track a hneď po viacero hodnôt, filter na ňom nezúži nič: makro „veselé“ postavené na <span class="mono">mood</span> aj <span class="mono">mood_candidate</span> sedelo na <strong>99,5 % knižnice</strong>. Makrá preto stoja na potvrdených tagoch, kde sú podiely 8–60 % a filter niečo znamená. <span class="mono">mood_candidate</span> zostáva zapnuteľný ako signál podobnosti, na čo je dobrý.</p>
+</div>
+
 <h2 id="posunut"><span class="n">Ovládanie</span>Panel „Čo posunúť“</h2>
 
 <p>Kým panel „Čo porovnávať“ hovorí, <em>čo má byť rovnaké</em>, tento hovorí, <em>čo sa má zmeniť</em>. To je celý rozdiel medzi hľadaním náhrady a stavaním setu.</p>
@@ -524,21 +538,10 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
 </ul>
 
 <div class="note">
-<span class="lbl">Pozor na dve rôzne BPM</span>
-<p>V sekcii <strong>Čísla</strong> nájdeš <span class="mono">bpm (iný zdroj!)</span>, <span class="mono">tempo (iný zdroj!)</span> a <span class="mono">bpm (Spotify)</span>. Sú to merania od iných poskytovateľov a <strong>s tempom, ktoré vidíš v tabuľke, sa nezhodujú pri 65 % knižnice</strong>. Ak na ne nastavíš cieľ, dostaneš tracky, ktoré ten stĺpec naozaj majú — ale v tabuľke pri nich uvidíš úplne iné číslo. <strong>Cieľ na tempo nastavuj vždy na <span class="mono">BPM</span> v sekcii Hudobné</strong>; to je to isté číslo, aké je v tabuľke.</p>
+<span class="lbl">Tempo</span>
+<p><strong>BPM je hneď prvé v paneli</strong>, v sekcii Hudobné, a je to to isté číslo, aké vidíš v tabuľke. Napíš cieľ a rozsah — napríklad 174 a ± 4 — a dostaneš <strong>len</strong> tracky v tom rozsahu. Ak rozsah nevyplníš, použije sa rozumný predvolený; cieľ je vždy podmienka, nikdy len náznak.</p>
+<p>Konkurenčné stĺpce <span class="mono">bpm</span>, <span class="mono">tempo</span> a <span class="mono">key</span> od iných poskytovateľov sa v tomto paneli <strong>vôbec neponúkajú</strong>. Nesúhlasili s tempom v tabuľke pri 65 % knižnice, takže cieľ na ne vracal tracky, ktoré filter spĺňali, ale v tabuľke pri nich svietilo iné číslo. Ako signál podobnosti zostávajú v paneli „Čo porovnávať“.</p>
 </div>
-
-<p>Nad tým sú <strong>tagové pravidlá</strong>, ktoré fungujú ako tvrdý filter, nie ako skóre: <span class="mono">Style</span> <em>musí obsahovať</em> <span class="mono">drum n bass</span>, alebo <span class="mono">mood</span> <em>nesmie obsahovať</em> <span class="mono">sad</span>. Čo pravidlom neprejde, do výsledku sa vôbec nedostane.</p>
-
-<div class="lede">
-<p>Takto sa robí harmónia v hudbe: niečo podržíš a niečo zmeníš. Podrž <span class="mono">rhythm</span> a tóninu, prepni <span class="mono">energy</span> na cieľovú hodnotu 0,85 a nastav <span class="mono">mood</span> na „odlišné“ — dostaneš track, ktorý sedí do mixu, ale set posunie dopredu.</p>
-</div>
-
-<h3>Čo posunúť (META)</h3>
-
-<p>Existuje aj druhá kópia tohto panelu, označená <strong>META</strong> a modrým pruhom. Robí presne to isté, s jedným rozdielom: <strong>prežije zmenu profilu aj reštart appky</strong>. Kde hovoria obidva, META prebije profil; tvrdé pravidlá na tagy sa <em>pripočítajú</em> k profilovým, nenahradia ich.</p>
-
-<p>Patrí tam to, čo platí pre celý večer — „Style musí obsahovať drum n bass“, „BPM 174 ± 4“ — a profily potom prepínaš pod tým. Uložený profil META nikdy neobsahuje, aj keby si ho ukladal so zapnutým META panelom.</p>
 
 <h2 id="seedy"><span class="n">Ovládanie</span>Viac trackov naraz</h2>
 
@@ -605,6 +608,9 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
 <tr><td>Musí to byť drum'n'bass</td><td>Tagové pravidlo: Style musí obsahovať</td></tr>
 <tr><td>Platí to na celý večer</td><td>Dať to do panelu META, nie do profilu</td></tr>
 <tr><td>Chcem presne 174 BPM</td><td>META → Hudobné → BPM → → 174, ± 4</td></tr>
+<tr><td>Len veselé a energické</td><td>Makrá: Veselé + Vysoká energia</td></tr>
+<tr><td>Len broken beat</td><td>Makro: Broken beat</td></tr>
+<tr><td>Euforické veci na záver</td><td>Makrá: Euforické + Vysoká energia</td></tr>
 <tr><td>Chcem len mixovateľné tempo</td><td>Prepínač BPM ± hore</td></tr>
 </tbody>
 </table>

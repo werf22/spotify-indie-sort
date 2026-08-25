@@ -134,19 +134,70 @@ function readShift(scope) {
 }
 const signalModes = () => ({ ...readShift(""), ...readShift("Meta") });
 
+/* MACROS — a whole mood, energy, rhythm or genre in one click.
+ *
+ * A macro is just a saved hard rule, kept apart from the hand-written ones so
+ * it can be a toggle instead of a row. Two macros are two rules and rules AND
+ * together, so picking "Veselé" and "Vysoká energia" gives cheerful AND
+ * high-energy — combining them is the owner's job, which is why the macros
+ * themselves are never combined for him.
+ *
+ * Each scope has its own set: the profile panel's macros belong to the profile,
+ * the META panel's outlive it. */
+state.macros = { "": new Set(), Meta: new Set() };
+
+function macroRules(scope) {
+  const on = state.macros[scope] || new Set();
+  return (state.macroList || []).flatMap(g => g.items)
+    .filter(m => on.has(m.id))
+    .map(m => ({ type: m.type, mode: "must", value: m.value }));
+}
+
+function renderMacros(scope) {
+  const box = document.getElementById("macros" + scope);
+  if (!box || !state.macroList) return;
+  const on = state.macros[scope];
+  box.innerHTML = state.macroList.map(g => `
+    <div class="mgrp">
+      <span class="mname">${esc(g.group)}</span>
+      ${g.items.map(m => `<button class="chip mac${on.has(m.id) ? " on" : ""}"
+          data-mac="${esc(m.id)}"
+          title="${esc(m.label)} — ${m.count.toLocaleString("sk")} trackov (${m.pct} % knižnice)&#10;${esc(m.type)} = ${esc(m.value)}"
+        >${esc(m.label)}</button>`).join("")}
+    </div>`).join("");
+  box.querySelectorAll("[data-mac]").forEach(b => b.onclick = () => {
+    const id = b.dataset.mac;
+    on.has(id) ? on.delete(id) : on.add(id);
+    renderMacros(scope);
+    if (scope) { saveMetaShift(); paintMetaBadge(); }
+    rerun();
+  });
+}
+
+async function loadMacros() {
+  try {
+    const { macros } = await api("/api/similar/macros");
+    state.macroList = macros;
+    renderMacros(""); renderMacros("Meta");
+  } catch { /* the panel simply shows no macros */ }
+}
+
 const readRules = scope => [...document.querySelectorAll(`#rules${scope} .rule`)].map(r => ({
   type: r.querySelector("[data-rt]").value,
   mode: r.querySelector("[data-rm]").value,
   value: r.querySelector("[data-rv]").value.trim(),
 })).filter(r => r.value);
-// Both sets of hard rules apply — META adds to the profile's, never replaces.
-const tagRules = () => [...readRules(""), ...readRules("Meta")];
+// Both sets of hard rules apply — META adds to the profile's, never replaces —
+// and the macros of each scope are rules just like the hand-written ones.
+const tagRules = () => [...readRules(""), ...macroRules(""),
+                        ...readRules("Meta"), ...macroRules("Meta")];
 
 /* META survives profile changes, so it lives in the browser, not in a profile. */
 function saveMetaShift() {
   try {
     localStorage.setItem("metaShift", JSON.stringify(
-      { modes: readShift("Meta"), rules: readRules("Meta") }));
+      { modes: readShift("Meta"), rules: readRules("Meta"),
+        macros: [...state.macros.Meta] }));
   } catch {}
 }
 function restoreMetaShift() {
@@ -164,12 +215,15 @@ function restoreMetaShift() {
     if (tl) tl.value = spec.tol ?? "";
   });
   (saved.rules || []).forEach(r => addRule(r, "Meta"));
+  state.macros.Meta = new Set(saved.macros || []);
+  renderMacros("Meta");
   paintMetaBadge();
 }
 
 /* Say out loud how many META rules are live, so an override is never invisible. */
 function paintMetaBadge() {
-  const n = Object.keys(readShift("Meta")).length + readRules("Meta").length;
+  const n = Object.keys(readShift("Meta")).length + readRules("Meta").length
+          + state.macros.Meta.size;
   const el = document.getElementById("metaCount");
   if (el) el.textContent = n ? `${n} aktívnych` : "nič";
   const btn = document.getElementById("btnShiftMeta");

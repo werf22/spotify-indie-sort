@@ -202,3 +202,43 @@ the command to the venv python and verifies the port is listening again.
 an authorization code into the chat. It was not used — the PKCE verifier from
 that run was already gone, making the code unusable — but the standing rule is
 that credentials never enter the transcript.
+
+
+## 2026-08-25 — D-077 · a named BPM is now a demand, and 53 macros for mood/energy/genre
+
+**The BPM target was right in the engine and wrong in the panel.** Through HTTP
+it already filtered correctly; the failure was how it was offered. Two causes,
+both removed:
+- The BPM that works — the musical one, the same number the results table
+  prints — sat at the BOTTOM of a 76-row panel, while the trap
+  (`bpm (iný zdroj!)`, a different provider disagreeing with the table on 65 %
+  of the library) sat higher up in the numbers. The musical group is now FIRST
+  in the shift panel, and `num:bpm`, `num:tempo`, `num:track.bpm`, `num:key`
+  and `num:key_int` are excluded from that panel entirely. They remain in
+  "Čo porovnávať" as ordinary similarity signals.
+- A target without a tolerance fell back to a soft preference. It now applies a
+  sensible default (3 BPM, or std/4 for other numbers) and filters regardless.
+  Naming a value is a demand.
+
+Verified through the UI: target 90 returned 100 of 100 results inside 87-93.
+
+**Macros.** 53 one-click filters in four groups — Nálada (16), Energia (7),
+Rytmus a tempo (8), Žáner (22) — served from `/api/similar/macros` and shown as
+chips above the rules in BOTH shift panels. Each is one hard rule, and rules
+AND together, so the owner stacks them across groups himself; they are never
+combined for him. Each chip reports how many tracks it matches and what share
+of the library that is.
+
+`passes_tag_rules` now accepts alternatives on both sides, separated by "|" —
+several tag types and several values in one rule — which is what lets a mood be
+expressed at all.
+
+**The macros deliberately avoid `mood_candidate`,** despite its 100 % coverage
+and better vocabulary: every track carries it with several values, so a macro
+built on it filters nothing. Measured — "happy" across mood+mood_candidate hit
+99.5 % of the library. Built on the confirmed tags the shares are 8-60 %, which
+is a filter. Verified: Broken beat, Broken beat + Vysoká energia, and Veselé +
+Deep house each returned 20 results with zero rule violations.
+
+**Also:** Spotify permissions were granted successfully in the meantime; see
+D-076 for what that does and does not make possible.

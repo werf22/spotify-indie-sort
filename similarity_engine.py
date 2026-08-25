@@ -402,11 +402,12 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
         spec = spec or {}
         if spec.get("mode") != "target":
             continue
-        tol = spec.get("tol")
-        if tol in (None, "", 0) or spec.get("target") in (None, ""):
+        if spec.get("target") in (None, ""):
             continue
+        tol = spec.get("tol")
         if sid == "bpm":
             raw, present = lib.bpm, np.isfinite(lib.bpm)
+            default_tol = 3.0
         elif sid.startswith("num:"):
             name = sid[4:]
             values, present = lib.numbers.get(name), lib.number_present.get(name)
@@ -414,8 +415,14 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
                 continue
             mean, std = lib.number_stats.get(name, (0.0, 1.0))
             raw = values * (std or 1.0) + mean       # back to real units
+            default_tol = (std or 1.0) / 4.0
         else:
             continue
+        # NAMING A VALUE IS A DEMAND, NOT A HINT. If no tolerance came with it,
+        # a sensible one is used rather than falling back to a soft preference —
+        # a preference is worth a fraction of one embedding and simply loses.
+        if tol in (None, "", 0):
+            tol = default_tol
         with np.errstate(invalid="ignore"):
             ok = present & (np.abs(raw - float(spec["target"])) <= abs(float(tol)))
         number_gates.append(ok)
@@ -593,6 +600,129 @@ def tag_values(limit_per_type: int = 400) -> dict[str, list[str]]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# MACROS — one click for a whole mood, energy or genre.
+#
+# A macro is nothing more than a saved tag rule, but the wording is the work:
+# a mood is never one word. "Cheerful" lives in `mood` as happy and in
+# `mood_candidate` as uplifting, so every macro names SEVERAL tag types and
+# SEVERAL values, and matches when any pairing hits (see passes_tag_rules).
+#
+# Macros are NOT combined with each other here on purpose — they are meant to be
+# stacked by hand. Two macros are two rules, and rules AND together, so picking
+# "Veselé" and "Vysoká energia" gives cheerful AND high-energy.
+#
+# WHY `mood_candidate` IS NOT USED HERE, even though it has the widest coverage
+# and the more evocative words: EVERY track carries it, several values each, so
+# a macro built on it matches almost the whole library. Measured — "happy" from
+# mood+mood_candidate hit 99.5 % of records and filtered nothing. The macros
+# therefore stand on the CONFIRMED tags, where the shares are 8-60 % and the
+# filter actually means something. mood_candidate remains available as a
+# similarity signal, which is what it is good at.
+#
+# HOW TO TWEAK: add an entry below. `value` is matched as a SUBSTRING, so avoid
+# words that are prefixes of something else — "electro" would match every
+# "electronic" record, which is why there is no such macro. Then check the share
+# it reports: above roughly 60 % it is not really a filter.
+MACROS = [
+ {"group": "Nálada", "items": [
+  {"id": "m_happy",   "label": "Veselé",          "type": "mood", "value": "happy|joyful"},
+  {"id": "m_uplift",  "label": "Euforické",       "type": "mood", "value": "uplifting|euphoric"},
+  {"id": "m_energ",   "label": "Energické",       "type": "mood", "value": "energetic"},
+  {"id": "m_party",   "label": "Párty",           "type": "mood", "value": "party"},
+  {"id": "m_summer",  "label": "Letné",           "type": "mood", "value": "summer"},
+  {"id": "m_deep",    "label": "Hlboké",          "type": "mood", "value": "deep"},
+  {"id": "m_dreamy",  "label": "Snové",           "type": "mood", "value": "dreamy"},
+  {"id": "m_calm",    "label": "Pokojné",         "type": "mood", "value": "calm|relaxed|relaxing|meditative"},
+  {"id": "m_love",    "label": "Romantické",      "type": "mood", "value": "love|intimate"},
+  {"id": "m_dark",    "label": "Temné",           "type": "mood", "value": "dark"},
+  {"id": "m_tense",   "label": "Napäté",          "type": "mood", "value": "tense"},
+  {"id": "m_melan",   "label": "Melancholické",   "type": "mood", "value": "melancholic|sad"},
+  {"id": "m_somber",  "label": "Zádumčivé",       "type": "mood", "value": "somber|contemplative"},
+  {"id": "m_aggro",   "label": "Agresívne",       "type": "mood", "value": "aggressive"},
+  {"id": "m_tbright", "label": "Svetlý zvuk",     "type": "timbre", "value": "bright"},
+  {"id": "m_tdark",   "label": "Tmavý zvuk",      "type": "timbre", "value": "dark"},
+ ]},
+ {"group": "Energia", "items": [
+  {"id": "e_high",    "label": "Vysoká energia",  "type": "energy_level", "value": "high-energy"},
+  {"id": "e_mid",     "label": "Stredná energia", "type": "energy_level", "value": "mid-energy"},
+  {"id": "e_low",     "label": "Nízka energia",   "type": "energy_level", "value": "low-energy"},
+  {"id": "e_dance",   "label": "Veľmi tanečné",   "type": "danceability_level", "value": "very-danceable"},
+  {"id": "e_nodance", "label": "Netanečné",       "type": "danceability_level", "value": "not-danceable"},
+  {"id": "e_pos",     "label": "Pozitívne",       "type": "valence_level", "value": "uplifting"},
+  {"id": "e_heavy",   "label": "Ťažké",           "type": "valence_level", "value": "melancholic"},
+ ]},
+ {"group": "Rytmus a tempo", "items": [
+  {"id": "r_four",   "label": "Rovný kop",       "type": "rhythm",     "value": "four-on-the-floor"},
+  {"id": "r_broken", "label": "Broken beat",     "type": "rhythm",     "value": "broken-beat"},
+  {"id": "r_mixed",  "label": "Zmiešaný rytmus", "type": "rhythm",     "value": "mixed-rhythm"},
+  {"id": "r_none",   "label": "Bez beatu",       "type": "rhythm",     "value": "beatless"},
+  {"id": "t_club",   "label": "Klubové tempo",   "type": "tempo_band", "value": "club tempo"},
+  {"id": "t_fast",   "label": "Rýchle",          "type": "tempo_band", "value": "fast"},
+  {"id": "t_mid",    "label": "Midtempo",        "type": "tempo_band", "value": "midtempo"},
+  {"id": "t_slow",   "label": "Pomalé",          "type": "tempo_band", "value": "slow"},
+ ]},
+ {"group": "Žáner", "items": [
+  {"id": "g_house",  "label": "House (všetko)",  "type": "genre|subgenre|style", "value": "house"},
+  {"id": "g_deep",   "label": "Deep house",      "type": "genre|subgenre|style", "value": "deep house"},
+  {"id": "g_tech",   "label": "Tech house",      "type": "genre|subgenre|style", "value": "tech house"},
+  {"id": "g_techno", "label": "Techno",          "type": "genre|subgenre|style", "value": "techno"},
+  {"id": "g_melodic","label": "Melodic / progressive", "type": "genre|subgenre|style", "value": "melodic house|melodic techno|progressive"},
+  {"id": "g_minimal","label": "Minimal",         "type": "genre|subgenre|style", "value": "minimal"},
+  {"id": "g_afro",   "label": "Afro / tribal",   "type": "genre|subgenre|style", "value": "afro|tribal"},
+  {"id": "g_organic","label": "Organic / downtempo", "type": "genre|subgenre|style", "value": "organic house|downtempo"},
+  {"id": "g_dnb",    "label": "Drum'n'bass",     "type": "genre|subgenre|style", "value": "drum n bass|drum and bass|jungle"},
+  {"id": "g_breaks", "label": "Breaks / UK bass","type": "genre|subgenre|style", "value": "breakbeat|uk garage|grime|dubstep"},
+  {"id": "g_trance", "label": "Trance",          "type": "genre|subgenre|style", "value": "trance"},
+  {"id": "g_ambient","label": "Ambient",         "type": "genre|subgenre|style", "value": "ambient"},
+  {"id": "g_disco",  "label": "Disco / funk / soul", "type": "genre|subgenre|style", "value": "disco|funk|soul"},
+  {"id": "g_hiphop", "label": "Hip hop / rap / trap", "type": "genre|subgenre|style", "value": "hip hop|hip-hop|rap|trap"},
+  {"id": "g_latin",  "label": "Latin",           "type": "genre|subgenre|style", "value": "latin"},
+  {"id": "g_reggae", "label": "Reggae / dub",    "type": "genre|subgenre|style", "value": "reggae|dub "},
+  {"id": "g_pop",    "label": "Pop",             "type": "genre|subgenre|style", "value": "pop"},
+  {"id": "g_rock",   "label": "Rock / alternative", "type": "genre|subgenre|style", "value": "rock|alternative|indie"},
+  {"id": "g_jazz",   "label": "Jazz",            "type": "genre|subgenre|style", "value": "jazz"},
+  {"id": "g_class",  "label": "Klasika",         "type": "genre|subgenre|style", "value": "classical"},
+  {"id": "g_folk",   "label": "Folk / world",    "type": "genre|subgenre|style", "value": "folk|world"},
+  {"id": "g_exp",    "label": "Experimentálne",  "type": "genre|subgenre|style", "value": "experimental"},
+ ]},
+]
+
+_macro_cache: dict = {}
+
+
+def macros() -> list[dict]:
+    """The macro list, each with how many tracks it actually matches.
+
+    The count is the honest part: a macro nobody can use because three records
+    carry the tag should say so rather than look like an option.
+    """
+    if not _state["ready"]:
+        warm()
+    if _macro_cache:
+        return _macro_cache["out"]
+    lib = _state["lib"]
+    out = []
+    for group in MACROS:
+        items = []
+        for m in group["items"]:
+            rows = set()
+            for ttype in m["type"].split("|"):
+                index = lib.tag_index.get(ttype.strip())
+                if not index:
+                    continue
+                for value in m["value"].split("|"):
+                    value = value.strip()
+                    for tag, (idxs, _w) in index.items():
+                        if value in tag:
+                            rows.update(idxs.tolist())
+            items.append({**m, "count": len(rows),
+                          "pct": round(100.0 * len(rows) / max(1, len(lib.ids)), 1)})
+        out.append({"group": group["group"], "items": items})
+    _macro_cache["out"] = out
+    return out
+
+
 def passes_tag_rules(lib, idx: int, rules: list[dict]) -> bool:
     """Hard yes/no on tag VALUES — the "must contain / must not contain" filter.
 
@@ -601,15 +731,25 @@ def passes_tag_rules(lib, idx: int, rules: list[dict]) -> bool:
     condition. Scoring it would let a very similar house record outrank the
     requirement and quietly ignore what was asked.
     """
+    sid = lib.ids[idx]
     for rule in rules or []:
-        ttype = rule.get("type")
+        ttype = (rule.get("type") or "").strip()
         value = (rule.get("value") or "").strip().lower()
         mode = rule.get("mode", "must")
         if not ttype or not value:
             continue
-        have = lib.tag_of.get(ttype, {}).get(lib.ids[idx]) or set()
+        # BOTH SIDES ACCEPT ALTERNATIVES, separated by "|". A mood is rarely one
+        # word — "cheerful" lives in `mood` as happy and in `mood_candidate` as
+        # uplifting — so a single rule can name several tag types and several
+        # values, and matches when ANY pairing hits. Separate rules still AND
+        # together, which is what lets two macros be combined.
+        types = [t.strip() for t in ttype.split("|") if t.strip()]
+        values = [v.strip() for v in value.split("|") if v.strip()]
+        have: set[str] = set()
+        for t in types:
+            have |= (lib.tag_of.get(t, {}).get(sid) or set())
         # substring match, so "drum" finds "drum and bass" without exact spelling
-        hit = any(value in tag for tag in have)
+        hit = any(v in tag for tag in have for v in values)
         if mode == "must" and not hit:
             return False
         if mode == "must_not" and hit:

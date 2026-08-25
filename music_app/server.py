@@ -127,6 +127,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"profiles": profiles.list_profiles()})
             if url.path == "/api/similar/presets":
                 return self._send({"presets": similar_api.engine.presets()})
+            if url.path == "/api/similar/macros":
+                return self._send({"macros": similar_api.engine.macros()})
             if url.path == "/api/similar/tag-values":
                 return self._send({"values": similar_api.engine.tag_values()})
             if url.path == "/api/similar/signals":

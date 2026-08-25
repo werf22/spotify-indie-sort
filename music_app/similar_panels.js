@@ -63,9 +63,20 @@ function setGroup(scope, g, on) {
 function renderShift(signals, scope = "") {
   // BPM belongs here (it is targetable and it is the number the table shows);
   // the key does not, because the harmonic checkboxes above already own it.
-  const shiftable = signals.filter(s => s.group !== "musical" || s.id === "bpm");
+  //
+  // The provider tempo/key columns are EXCLUDED from this panel entirely. They
+  // disagree with what the table prints on most of the library, so aiming at
+  // them returns tracks that look wrong even though the filter was right. They
+  // stay available in "Čo porovnávať" as ordinary similarity signals.
+  const RIVAL = new Set(["num:bpm", "num:tempo", "num:track.bpm", "num:key", "num:key_int"]);
+  const shiftable = signals.filter(s =>
+    !RIVAL.has(s.id) && (s.group !== "musical" || s.id === "bpm"));
   const groups = {};
   shiftable.forEach(s => (groups[s.group] = groups[s.group] || []).push(s));
+  // Tempo first: it is the one people reach for, and burying it under seventy
+  // rows is why it looked broken.
+  const ordered = Object.entries(groups).sort(
+    ([a], [b]) => (a === "musical" ? -1 : b === "musical" ? 1 : 0));
   const canTarget = g => g === "numbers" || g === "musical";
   const body = $("shiftBody" + scope);
   body.innerHTML = (scope ? "" : `
@@ -77,10 +88,10 @@ function renderShift(signals, scope = "") {
            ["semitone","±7 (poltón)"]].map(([v, l]) =>
           `<label class="muted"><input type="checkbox" class="kr" value="${v}"> ${l}</label>`).join("")}
       </div>
-    </div>`) + Object.entries(groups).map(([g, list]) => `
+    </div>`) + ordered.map(([g, list]) => `
     <div class="grp">
       <div class="grp-head"><span class="name">${esc(GROUP_LABEL[g] || g)}</span>
-        <span class="muted">= rovnaké · ≠ odlišné${canTarget(g) ? " · → mier na hodnotu (± je tvrdý filter)" : ""}</span></div>
+        <span class="muted">= rovnaké · ≠ odlišné${canTarget(g) ? " · → mier na hodnotu — vyhodí LEN tracky v rozsahu ±" : ""}</span></div>
       <div class="grid">
         ${list.map(s => `<label class="sig" title="${esc(s.note || "")}">
             <span class="nm">${esc(s.label)}</span>
@@ -205,6 +216,8 @@ function applyPreset(i, run = true) {
   document.querySelectorAll("#shiftBody [data-md]").forEach(sel => sel.value = "same");
   document.querySelectorAll("#shiftBody [data-tg]").forEach(t => t.value = "");
   $("rules").innerHTML = "";
+  state.macros[""].clear();
+  renderMacros("");
   const f = p.filters || {};
   const kr = new Set(f.same_key ? ["exact"] : []);
   document.querySelectorAll("#shiftBody .kr").forEach(c => c.checked = kr.has(c.value));
@@ -220,6 +233,7 @@ function currentSettings() {
   return { enabled: enabledSignals(), group_weights: groupWeights(),
            signal_weights: signalWeights(), signal_modes: readShift(""),
            filters: { key_rules: ownKeyRules.slice(), tag_rules: readRules(""),
+                      macros: [...state.macros[""]],
                       limit: +$("limit").value, spotify_only: $("spotifyOnly").checked } };
 }
 function applySettings(s) {
@@ -251,6 +265,8 @@ function applySettings(s) {
   document.querySelectorAll("#shiftBody .kr").forEach(c => c.checked = kr.has(c.value));
   $("rules").innerHTML = "";
   (f.tag_rules || []).forEach(r => addRule(r));
+  state.macros[""] = new Set(f.macros || []);
+  renderMacros("");
   if (f.limit) $("limit").value = f.limit;
   if (f.spotify_only != null) $("spotifyOnly").checked = !!f.spotify_only;
 }
@@ -396,6 +412,7 @@ window.signalsReady = (async function boot() {
   renderCompare(signals);
   renderShift(signals);
   renderShift(signals, "Meta");
+  await loadMacros();
   restoreMetaShift();
   paintMik();
   await loadPresets();
