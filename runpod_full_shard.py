@@ -487,6 +487,15 @@ def push_bundle(ssh: list[str], target: str, bundle: Path, remote: str) -> None:
     if sent > size:                       # stale/corrupt remnant: start over
         rp.run(ssh + [target, f"rm -f {remote}"], timeout=120)
         sent = 0
+    # SNAP THE RESUME POINT DOWN TO A WHOLE MEBIBYTE. `dd bs=1M seek=N` can only
+    # start on a 1 MiB boundary, but the payload was read from the exact byte
+    # `sent`. Whenever a chunk died part-way the pod was left holding a
+    # non-aligned number of bytes, and the next write landed at the boundary
+    # BELOW that - shifting everything after it. The bundle then failed its
+    # checksum on arrival and the whole 1.4 GB was re-sent (seen live 25 Aug:
+    # "bundle checksum mismatch (pod 592ba8ceaf65 vs local 014dbd53bf6d)").
+    # Re-sending the partial mebibyte is free: dd overwrites it in place.
+    sent -= sent % (1 << 20)
     if sent:
         print(f"resuming upload at {sent/1e6:.0f} MB of {size/1e6:.0f} MB", flush=True)
 
@@ -532,9 +541,11 @@ def push_bundle(ssh: list[str], target: str, bundle: Path, remote: str) -> None:
             print(f"chunk at {sent/1e6:.0f} MB failed ({detail[-160:]}); retrying", flush=True)
             time.sleep(10 * stalls)
             sent = _remote_bytes(ssh, target, remote)   # trust the pod, not us
+            sent -= sent % (1 << 20)      # ...but only on a whole-mebibyte boundary
             continue
         stalls = 0
         sent = _remote_bytes(ssh, target, remote)
+        sent -= sent % (1 << 20)          # keep every seek on a dd bs=1M boundary
         moved = (sent - started_bytes) / 1e6
         elapsed = time.monotonic() - started_at
         if moved >= SPEED_CHECK_AFTER_MB and elapsed > 0:
