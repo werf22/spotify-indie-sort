@@ -10,7 +10,6 @@ or modifying Spotify playlists.
 Measured 25 Aug: 1.72 MB/s. Each shard ships a ~1.4 GB bundle, and a runner takes
 a pod only once it holds the single upload slot, so pods are never left idle
 paying for a queue. Remaining work ≈ 6,005 tracks ≈ 34 shards ≈ 50 GB,
-which is about 7 hours of pure upload. Adding pods or GPU types CANNOT beat this;
 which is about 8 hours of pure upload. Adding pods or GPU types CANNOT beat this;
 
 Two supply fixes went in anyway, both real:
