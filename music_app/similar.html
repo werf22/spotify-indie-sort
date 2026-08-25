@@ -138,6 +138,9 @@
   .metatag{font-size:9.5px;letter-spacing:.12em;background:var(--accent);color:#0b0d14;
       padding:2px 6px;border-radius:4px;vertical-align:middle;margin-left:6px}
   #btnShiftMeta.lit{border-color:var(--accent);color:var(--accent)}
+  /* The panel row reads as tabs: the open one is filled, the rest are quiet. */
+  .tabs{border-bottom:1px solid var(--line);padding-bottom:8px}
+  .tabs button.on{background:var(--accent);border-color:var(--accent);color:#0b0d14;font-weight:600}
   #btnReset:hover{border-color:#e07a6a;color:#e07a6a}
   /* The track's place in the FULL similarity ranking, shown only when a filter
      has skipped past things — so a narrowed result reads as narrowed. */
@@ -202,13 +205,21 @@
     <label class="muted mik" title="Nad všetkými profilmi: pustí len tracky do zadaného rozsahu BPM od zvoleného tracku"><input type="checkbox" id="bpmOn"> <b>BPM</b> ±<input type="text" inputmode="decimal" id="bpmTol" value="3" style="width:46px" title="Desatinná čiarka aj bodka fungujú."></label>
     <span class="muted">🎧<select id="sink" title="Kam ide zvuk z tejto appky"><option value="">predvolený</option></select></span>
     <button id="btnAddSeed" class="ghost" title="Ďalší klik na výsledok hľadania pridá track k seedom (alebo ⌘/Shift-klik)">＋ pridať track</button>
+  </div>
+
+  <!-- The panels get their own row, directly under the search, and only one of
+       them is ever open — the owner asked for exactly this, so that what is on
+       screen at any moment is one thing to read rather than four. -->
+  <div class="row tabs" style="margin-top:8px">
     <button id="btnCompare">Čo porovnávať</button>
     <button id="btnShift">Čo posunúť</button>
     <button id="btnShiftMeta">Čo posunúť (META)</button>
     <button id="btnProfiles">Profily</button>
+    <span style="flex:1"></span>
     <button id="btnSave" class="ghost">+ ulož profil</button>
     <button id="btnReset" class="ghost" title="Vyčistí všetko nad profilom: META panel, Mixed in Key a BPM okno. Profil a jeho vlastné nastavenie zostávajú.">↺ Reset</button>
   </div>
+
   <div class="row" style="margin-top:8px" id="presets"></div>
   <div class="row" id="pins" style="margin-top:6px"></div>
   <div class="row" id="seeds" style="margin-top:6px"></div>

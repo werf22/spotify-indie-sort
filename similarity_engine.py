@@ -431,7 +431,7 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
                 continue
             index = lib.tag_index.get(ttype) or {}
             shared = np.zeros(n, dtype=bool)
-            for tag, (idxs, _w) in index.items():
+            for tag, (idxs, _w, _a) in index.items():
                 if tag in mine:
                     shared[idxs] = True
             diff_gates.append(~shared)
@@ -719,91 +719,9 @@ def tag_values(limit_per_type: int = 400) -> dict[str, list[str]]:
 # words that are prefixes of something else — "electro" would match every
 # "electronic" record, which is why there is no such macro. Then check the share
 # it reports: above roughly 60 % it is not really a filter.
-MACROS = [
- {"group": "Nálada", "items": [
-  {"id": "m_happy",   "label": "Veselé",           "type": "mood", "value": "happy|joyful|cheerful|good natured"},
-  {"id": "m_play",    "label": "Hravé",            "type": "mood|mood_candidate", "value": "funny|quirky|playful|carefree|humorous"},
-  {"id": "m_uplift",  "label": "Euforické",        "type": "mood", "value": "euphoric|uplifting"},
-  {"id": "m_hope",    "label": "Nádej",            "type": "mood|mood_candidate", "value": "hopeful|positive|triumphant|empowering"},
-  {"id": "m_motiv",   "label": "Motivačné",        "type": "mood", "value": "motivational|inspiring"},
-  {"id": "m_energ",   "label": "Energické",        "type": "mood", "value": "energetic"},
-  {"id": "m_drive",   "label": "Ženúce dopredu",   "type": "mood|mood_candidate", "value": "propulsive|upbeat|rousing|driving|pulsing|rolling"},
-  {"id": "m_party",   "label": "Párty",            "type": "mood", "value": "party"},
-  {"id": "m_sexy",    "label": "Sexy / zmyselné",  "type": "mood|mood_candidate", "value": "sensual|sexy|passionate"},
-  {"id": "m_love",    "label": "Romantické",       "type": "mood", "value": "love|romantic"},
-  {"id": "m_tender",  "label": "Nežné",            "type": "mood|mood_candidate", "value": "tender|gentle|soft"},
-  {"id": "m_summer",  "label": "Letné",            "type": "mood", "value": "summer|sunny|sunrise"},
-  {"id": "m_chill",   "label": "Chill",            "type": "mood|mood_candidate", "value": "chill|mellow|smooth|cool"},
-  {"id": "m_relax",   "label": "Uvoľnené",         "type": "mood", "value": "relax"},
-  {"id": "m_peace",   "label": "Mierumilovné",     "type": "mood", "value": "peace|serene|calm"},
-  {"id": "m_medit",   "label": "Meditatívne",      "type": "mood|mood_candidate", "value": "meditative|mindful|spiritual|ritual|sacred"},
-  {"id": "m_deep",    "label": "Hlboké",           "type": "mood", "value": "deep"},
-  {"id": "m_dreamy",  "label": "Snové",            "type": "mood", "value": "dreamy|dream|ethereal"},
-  {"id": "m_cosmic",  "label": "Kozmické",         "type": "mood|mood_candidate", "value": "space|cosmic|celestial|soundscape|atmospheric"},
-  {"id": "m_hypno",   "label": "Hypnotické",       "type": "mood|mood_candidate", "value": "hypnotic"},
-  {"id": "m_psy",     "label": "Psychedelické",    "type": "mood|mood_candidate", "value": "psychedelic|trippy|mystical|weird"},
-  {"id": "m_melan",   "label": "Melancholické",    "type": "mood", "value": "melanchol|wistful|bittersweet"},
-  {"id": "m_sad",     "label": "Smutné",           "type": "mood|mood_candidate", "value": "sad|poignant|troubled|grieving"},
-  {"id": "m_somber",  "label": "Zádumčivé",        "type": "mood|mood_candidate", "value": "contemplative|reflective|philosophical|somber"},
-  {"id": "m_dark",    "label": "Temné",            "type": "mood", "value": "dark|ominous|creepy|haunting|nocturnal"},
-  {"id": "m_tense",   "label": "Napäté",           "type": "mood|mood_candidate", "value": "tense|anxious|unsettling|urgent|threatening"},
-  {"id": "m_aggro",   "label": "Agresívne",        "type": "mood|mood_candidate", "value": "aggressive|angry|confrontational|gritty"},
-  {"id": "m_heavy",   "label": "Ťaživé",           "type": "mood|mood_candidate", "value": "heavy|intense|primal"},
-  {"id": "m_epic",    "label": "Dramatické / epické", "type": "mood|mood_candidate", "value": "epic|dramatic|drama|powerful"},
-  {"id": "m_cinema",  "label": "Kinematické",      "type": "mood", "value": "cinematic|film|movie|trailer"},
-  {"id": "m_action",  "label": "Akčné / športové", "type": "mood|mood_candidate", "value": "action|sport|adventur"},
-  {"id": "m_emo",     "label": "Emotívne",         "type": "mood|mood_candidate", "value": "emotional|cathartic|beautiful"},
-  {"id": "m_retro",   "label": "Retro / nostalgické", "type": "mood", "value": "retro|nostalgic"},
-  {"id": "m_neutral", "label": "Neutrálne / podkres", "type": "mood", "value": "neutral|background|corporate|advertising"},
-  {"id": "m_xmas",    "label": "Vianočné",         "type": "mood|mood_candidate", "value": "christmas|holiday"},
-  {"id": "m_tbright", "label": "Svetlý zvuk",      "type": "timbre", "value": "bright"},
-  {"id": "m_tdark",   "label": "Tmavý zvuk",       "type": "timbre", "value": "dark"},
- ]},
- {"group": "Energia", "items": [
-  {"id": "e_high",    "label": "Vysoká energia",  "type": "energy_level", "value": "high-energy"},
-  {"id": "e_mid",     "label": "Stredná energia", "type": "energy_level", "value": "mid-energy"},
-  {"id": "e_low",     "label": "Nízka energia",   "type": "energy_level", "value": "low-energy"},
-  {"id": "e_dance",   "label": "Veľmi tanečné",   "type": "danceability_level", "value": "very-danceable"},
-  {"id": "e_nodance", "label": "Netanečné",       "type": "danceability_level", "value": "not-danceable"},
-  {"id": "e_pos",     "label": "Pozitívne",       "type": "valence_level", "value": "uplifting"},
-  {"id": "e_heavy",   "label": "Ťažké",           "type": "valence_level", "value": "melancholic"},
- ]},
- {"group": "Rytmus a tempo", "items": [
-  {"id": "r_four",   "label": "Rovný kop",       "type": "rhythm",     "value": "four-on-the-floor"},
-  {"id": "r_broken", "label": "Broken beat",     "type": "rhythm",     "value": "broken-beat"},
-  {"id": "r_mixed",  "label": "Zmiešaný rytmus", "type": "rhythm",     "value": "mixed-rhythm"},
-  {"id": "r_none",   "label": "Bez beatu",       "type": "rhythm",     "value": "beatless"},
-  {"id": "t_club",   "label": "Klubové tempo",   "type": "tempo_band", "value": "club tempo"},
-  {"id": "t_fast",   "label": "Rýchle",          "type": "tempo_band", "value": "fast"},
-  {"id": "t_mid",    "label": "Midtempo",        "type": "tempo_band", "value": "midtempo"},
-  {"id": "t_slow",   "label": "Pomalé",          "type": "tempo_band", "value": "slow"},
- ]},
- {"group": "Žáner", "items": [
-  {"id": "g_house",  "label": "House (všetko)",  "type": "genre|subgenre|style", "value": "house"},
-  {"id": "g_deep",   "label": "Deep house",      "type": "genre|subgenre|style", "value": "deep house"},
-  {"id": "g_tech",   "label": "Tech house",      "type": "genre|subgenre|style", "value": "tech house"},
-  {"id": "g_techno", "label": "Techno",          "type": "genre|subgenre|style", "value": "techno"},
-  {"id": "g_melodic","label": "Melodic / progressive", "type": "genre|subgenre|style", "value": "melodic house|melodic techno|progressive"},
-  {"id": "g_minimal","label": "Minimal",         "type": "genre|subgenre|style", "value": "minimal"},
-  {"id": "g_afro",   "label": "Afro / tribal",   "type": "genre|subgenre|style", "value": "afro|tribal"},
-  {"id": "g_organic","label": "Organic / downtempo", "type": "genre|subgenre|style", "value": "organic house|downtempo"},
-  {"id": "g_dnb",    "label": "Drum'n'bass",     "type": "genre|subgenre|style", "value": "drum n bass|drum and bass|jungle"},
-  {"id": "g_breaks", "label": "Breaks / UK bass","type": "genre|subgenre|style", "value": "breakbeat|uk garage|grime|dubstep"},
-  {"id": "g_trance", "label": "Trance",          "type": "genre|subgenre|style", "value": "trance"},
-  {"id": "g_ambient","label": "Ambient",         "type": "genre|subgenre|style", "value": "ambient"},
-  {"id": "g_disco",  "label": "Disco / funk / soul", "type": "genre|subgenre|style", "value": "disco|funk|soul"},
-  {"id": "g_hiphop", "label": "Hip hop / rap / trap", "type": "genre|subgenre|style", "value": "hip hop|hip-hop|rap|trap"},
-  {"id": "g_latin",  "label": "Latin",           "type": "genre|subgenre|style", "value": "latin"},
-  {"id": "g_reggae", "label": "Reggae / dub",    "type": "genre|subgenre|style", "value": "reggae|dub "},
-  {"id": "g_pop",    "label": "Pop",             "type": "genre|subgenre|style", "value": "pop"},
-  {"id": "g_rock",   "label": "Rock / alternative", "type": "genre|subgenre|style", "value": "rock|alternative|indie"},
-  {"id": "g_jazz",   "label": "Jazz",            "type": "genre|subgenre|style", "value": "jazz"},
-  {"id": "g_class",  "label": "Klasika",         "type": "genre|subgenre|style", "value": "classical"},
-  {"id": "g_folk",   "label": "Folk / world",    "type": "genre|subgenre|style", "value": "folk|world"},
-  {"id": "g_exp",    "label": "Experimentálne",  "type": "genre|subgenre|style", "value": "experimental"},
- ]},
-]
+from similarity_macros import MACROS, MACRO_MIN_CONF, GROUP_MIN_CONF
 
+# Counting every macro walks the whole tag index, so it is done once per warm.
 _macro_cache: dict = {}
 
 
@@ -822,17 +740,28 @@ def macros() -> list[dict]:
     for group in MACROS:
         items = []
         for m in group["items"]:
-            rows = set()
+            # Counted the SAME way the filter matches — exactly. Counting
+            # loosely and filtering strictly would put a number on the chip that
+            # the result could never reach.
+            want = {v.strip() for v in m["value"].split("|") if v.strip()}
+            conf = float(m.get("min_conf",
+                                GROUP_MIN_CONF.get(group["group"], MACRO_MIN_CONF)))
+            rows, present = set(), set()
             for ttype in m["type"].split("|"):
                 index = lib.tag_index.get(ttype.strip())
                 if not index:
                     continue
-                for value in m["value"].split("|"):
-                    value = value.strip()
-                    for tag, (idxs, _w) in index.items():
-                        if value in tag:
-                            rows.update(idxs.tolist())
-            items.append({**m, "count": len(rows),
+                for tag, (idxs, weights, artist) in index.items():
+                    if tag in want:
+                        present.add(tag)
+                        keep = (weights >= conf) & ~artist
+                        rows.update(idxs[keep].tolist())
+            items.append({**m, "match": "exact", "track_only": True,
+                          "min_conf": conf,
+                          "count": len(rows),
+                          # Which of the listed values actually exist. A value
+                          # that matches nothing is a typo waiting to be found.
+                          "dead": sorted(want - present),
                           "pct": round(100.0 * len(rows) / max(1, len(lib.ids)), 1)})
         out.append({"group": group["group"], "items": items})
     _macro_cache["out"] = out
@@ -854,11 +783,35 @@ def tag_rule_mask(lib, rules: list[dict], n: int) -> np.ndarray:
             continue
         types = [t.strip() for t in ttype.split("|") if t.strip()]
         values = [v.strip() for v in value.split("|") if v.strip()]
+        # EXACT means the tag must BE one of these, not merely contain one.
+        # Substring matching both missed and over-matched: it never found the
+        # 1,206 tracks tagged plain `dnb` while asking for "drum n bass", and it
+        # pulled `liquid funk` — drum'n'bass — into a disco/funk filter. Macros
+        # always ask for exact; a rule typed by hand stays forgiving.
+        exact = rule.get("match") == "exact"
+        want = set(values)
+        # A MINIMUM CONFIDENCE, and it is what makes a genre filter mean
+        # anything. A track carries a MEDIAN OF 26 genre tags from a dozen
+        # sources, most of them artist-level guesses at 0.15 — so "has the tag
+        # ambient" was true of almost every electronic record. Measured at 0.8:
+        # ambient's beat presence falls 0.569 -> 0.461 and its four-on-the-floor
+        # share 36 % -> 23 %; drum'n'bass's median tempo rises 158 -> 176 BPM.
+        # TWEAK: macros pass 0.8 (similarity_macros.py); a hand-typed rule
+        # passes nothing and stays permissive.
+        min_conf = float(rule.get("min_conf") or 0)
+        # Ignore tags that describe the artist rather than this recording.
+        track_only = bool(rule.get("track_only"))
         hit = np.zeros(n, dtype=bool)
         for t in types:
-            for tag, (rows, _w) in (lib.tag_index.get(t) or {}).items():
-                if any(v in tag for v in values):
-                    hit[rows] = True
+            for tag, (rows, weights, artist) in (lib.tag_index.get(t) or {}).items():
+                if not ((tag in want) if exact else any(v in tag for v in values)):
+                    continue
+                keep = np.ones(len(rows), dtype=bool)
+                if min_conf:
+                    keep &= weights >= min_conf
+                if track_only:
+                    keep &= ~artist
+                hit[rows[keep]] = True
         mask &= hit if rule.get("mode", "must") == "must" else ~hit
     return mask
 
@@ -888,8 +841,15 @@ def passes_tag_rules(lib, idx: int, rules: list[dict]) -> bool:
         have: set[str] = set()
         for t in types:
             have |= (lib.tag_of.get(t, {}).get(sid) or set())
-        # substring match, so "drum" finds "drum and bass" without exact spelling
-        hit = any(v in tag for tag in have for v in values)
+        # Same rule as tag_rule_mask: exact for macros, forgiving for a rule
+        # typed by hand, where "drum" finding "drum and bass" is a convenience.
+        if rule.get("match") == "exact":
+            # NOTE: `tag_of` carries no confidence, so this per-track twin
+            # ignores min_conf. It is only used for one-off checks; every real
+            # query goes through tag_rule_mask above, which honours it.
+            hit = bool(have & set(values))
+        else:
+            hit = any(v in tag for tag in have for v in values)
         if mode == "must" and not hit:
             return False
         if mode == "must_not" and hit:
@@ -1066,7 +1026,7 @@ def explain(sid: str) -> dict:
 
     if item["group"] == "tags":
         index = lib.tag_index.get(key) or {}
-        top = sorted(((tag, len(rows)) for tag, (rows, _w) in index.items()),
+        top = sorted(((tag, len(rows)) for tag, (rows, *_r) in index.items()),
                      key=lambda kv: -kv[1])[:18]
         out["values"] = [{"value": t, "count": c} for t, c in top]
         out["distinct"] = len(index)

@@ -93,7 +93,9 @@ class Library:
         self.ids: list[str] = []
         self.pos: dict[str, int] = {}
         self.models: dict[str, dict] = {}
-        self.tag_index: dict[str, dict] = {}     # tag_type -> {tag: (rows, weights)}
+        # tag_type -> {tag: (rows, weights, artist_level)} — the third array marks
+        # entries that describe the ARTIST rather than this track.
+        self.tag_index: dict[str, dict] = {}
         self.tag_sum: dict[str, np.ndarray] = {} # tag_type -> per-track weight total
         self.tag_of: dict[str, dict] = {}        # tag_type -> {track: set(tags)}
         self.numbers: dict[str, np.ndarray] = {} # attribute -> standardised values
@@ -143,21 +145,31 @@ class Library:
         buckets: dict[str, dict] = {}
         sums: dict[str, np.ndarray] = {}
         of: dict[str, dict] = {}
-        for sid, ttype, tag, conf in db.execute(
-                "SELECT spotify_id, tag_type, tag, confidence FROM tags WHERE tag IS NOT NULL"):
+        # WHO SAID SO MATTERS AS MUCH AS HOW SURE THEY WERE. `last.fm:artist` is
+        # the single largest source of genre tags (449k rows) and it describes
+        # the ARTIST, not the track — so a drum'n'bass producer's 120 BPM house
+        # remix carries "drum and bass" at confidence 1.0. Measured: dropping
+        # artist-level sources lifts the drum'n'bass filter from 60 % to 73 % of
+        # tracks actually in dnb tempo. The flag rides along with each entry so
+        # a filter can ask for track-level evidence only.
+        for sid, ttype, tag, conf, source in db.execute(
+                "SELECT spotify_id, tag_type, tag, confidence, source FROM tags "
+                "WHERE tag IS NOT NULL"):
             i = self.pos.get(sid)
             if i is None or not ttype:
                 continue
             weight = float(conf) if isinstance(conf, (int, float)) and conf else 0.6
             key = str(tag).strip().lower()
-            buckets.setdefault(ttype, {}).setdefault(key, []).append((i, weight))
+            artist_level = "artist" in (source or "")
+            buckets.setdefault(ttype, {}).setdefault(key, []).append((i, weight, artist_level))
             arr = sums.setdefault(ttype, np.zeros(n, dtype=np.float32))
             arr[i] += weight
             of.setdefault(ttype, {}).setdefault(sid, set()).add(key)
         for ttype, tags in buckets.items():
             self.tag_index[ttype] = {
-                tag: (np.array([r for r, _ in v], dtype=np.int32),
-                      np.array([w for _, w in v], dtype=np.float32))
+                tag: (np.array([r for r, _, _ in v], dtype=np.int32),
+                      np.array([w for _, w, _ in v], dtype=np.float32),
+                      np.array([a for _, _, a in v], dtype=bool))
                 for tag, v in tags.items()}
             self.tag_sum[ttype] = sums[ttype]
             self.tag_of[ttype] = of[ttype]

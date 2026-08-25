@@ -426,3 +426,55 @@ compare panel's checkboxes, per-signal weights and group sliders all re-query
 through a delegated `change` listener; "všetko"/"nič" call `rerun()` directly;
 the selection-bar actions are hidden rather than inert when nothing is picked;
 `prev`/`big`/`next`/`seek` drive whichever backend is playing.
+
+
+## 2026-08-25 — D-086 · macros made strict: exact values, a confidence floor, and no artist tags
+
+"Zaklikol som Drum n Bass a nevyhodilo mi ani jeden drum n bass." Three separate
+causes, each measured before and after.
+
+**1. Substring matching, which did both wrong things at once.** A macro asking
+for "drum n bass" never found the 1,206 tracks tagged plain `dnb`, nor
+`drum & bass`, nor `jungle/drum'n'bass` — while the disco/funk macro pulled in
+`liquid funk`, which is drum'n'bass, because "funk" is inside it. Every macro is
+now an EXACT list of values read out of the library, in `similarity_macros.py`.
+The resolver also reports `dead` — listed values that match nothing — which
+immediately found eight typos (club, beach, easy listening, devotional, mantra,
+gothic, ominous, oldies).
+
+**2. No confidence floor.** A track carries a MEDIAN OF 26 genre tags from a
+dozen sources, most of them artist-level guesses at 0.15, so "has the tag
+ambient" was true of nearly every electronic record. Thresholds are per group,
+because the scales differ: genre 0.8, mood 0.5, rhythm 0.6, energy 0.5. Measured
+at 0.8, ambient's beat presence falls 0.569 → 0.461 and its four-on-the-floor
+share 36 % → 23 %. A single global 0.8 was tried first and wrecked the moods —
+Temné 19,122 → 68 — which is why the thresholds are per group.
+
+**3. Artist-level tags, the biggest cause.** `last.fm:artist` is the LARGEST
+source of genre tags (449k rows) and `spotify:artist-genre` adds 162k. They
+describe the ARTIST: a drum'n'bass producer's 120 BPM house remix carried
+"drum and bass" at confidence 1.0. `tag_index` now carries a third array marking
+artist-level entries and macros exclude them. Measured on drum'n'bass: 60 % of
+the pool in dnb tempo → 73 %.
+
+**Verified:** all 77 macros, 0 violations — every returned track carries a
+listed value above the threshold from a track-level source. The drum'n'bass pool
+is 2,154 tracks, median 176 BPM, 1,351 of them at 175-185. With a drum'n'bass
+seed the macro returns 95 % in dnb tempo.
+
+**Understood limit, not a bug:** with a 125 BPM house seed the same macro shows
+the house-tempo corner of the dnb pool first, because the ranking still answers
+"most similar to THIS track". The filter narrows; it does not re-rank. Pick a
+seed in the genre, or set a tempo target.
+
+**Also:** `breakcore` (median 120 BPM, 11 % in dnb tempo) and `halftime` (88 BPM)
+were measured as impostors in the drum'n'bass list and moved out; breakcore now
+sits with the breakbeats.
+
+## 2026-08-25 — D-087 · the panels became tabs on their own row
+
+The four panel buttons moved out of the crowded search row into a second row of
+their own, directly under it, and behave as tabs: opening one closes the others,
+clicking the open one closes it, and the choice is remembered. This reverses the
+"all open, independent" behaviour from earlier today at the owner's request —
+four long panels stacked above the results left nothing to orient by.

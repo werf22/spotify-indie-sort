@@ -26,25 +26,23 @@ async function api(path, opts) {
 }
 
 /* ---------------- panels ---------------- */
-/* All three panels are visible by default and independent of each other — the
- * owner wants to see what is being compared and what is being shifted without
- * opening anything first. The buttons only fold a panel away; whatever is
- * folded is remembered, so the screen looks the same after a reload.
- * TWEAK: to start with a panel folded, add its id to the array below. */
+/* ONE PANEL AT A TIME. They used to be independent and all open, which meant
+ * four long panels stacked above the results and nothing to orient by. The
+ * owner asked for tabs: opening one closes the others, clicking the open one
+ * closes it. Which one was last open is remembered.
+ * TWEAK: set "openPanel" in localStorage to "" to start with everything shut. */
 const panels = { btnCompare: "panelCompare", btnShift: "panelShift",
                  btnShiftMeta: "panelShiftMeta", btnProfiles: "panelProfiles" };
-const shutPanels = () => new Set(JSON.parse(localStorage.getItem("shutPanels") || "[]"));
 function paintPanels() {
-  const shut = shutPanels();
+  const open = localStorage.getItem("openPanel");
   Object.entries(panels).forEach(([btn, id]) => {
-    $(id).classList.toggle("open", !shut.has(id));
-    $(btn).classList.toggle("on", !shut.has(id));
+    $(id).classList.toggle("open", id === open);
+    $(btn).classList.toggle("on", id === open);
   });
 }
 Object.entries(panels).forEach(([btn, id]) => $(btn).onclick = () => {
-  const shut = shutPanels();
-  shut.has(id) ? shut.delete(id) : shut.add(id);
-  localStorage.setItem("shutPanels", JSON.stringify([...shut]));
+  const open = localStorage.getItem("openPanel");
+  localStorage.setItem("openPanel", open === id ? "" : id);
   paintPanels();
 });
 paintPanels();
@@ -179,7 +177,14 @@ function macroRules(scope) {
   const on = state.macros[scope] || new Set();
   return (state.macroList || []).flatMap(g => g.items)
     .filter(m => on.has(m.id))
-    .map(m => ({ type: m.type, mode: "must", value: m.value }));
+    // CARRY THE STRICTNESS. Without `match` and `min_conf` the engine fell back
+    // to substring matching with no confidence floor, so a macro filtered far
+    // more loosely than its own chip promised — Drum'n'bass said 3,094 tracks
+    // and the query let 3,808 through, most of them 120 BPM house carrying a
+    // stray low-confidence dnb tag.
+    .map(m => ({ type: m.type, mode: "must", value: m.value,
+                 match: m.match || "exact", min_conf: m.min_conf,
+                 track_only: m.track_only !== false }));
 }
 
 function renderMacros(scope) {

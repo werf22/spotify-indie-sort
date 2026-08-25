@@ -406,8 +406,7 @@ $("btnSave").onclick = async () => {
     body: JSON.stringify({ name, folder, ...currentSettings() }) });
   // Unfold the profiles panel if it happened to be folded away, so the
   // freshly saved profile is visible where it landed.
-  const shut = shutPanels(); shut.delete("panelProfiles");
-  localStorage.setItem("shutPanels", JSON.stringify([...shut])); paintPanels();
+  localStorage.setItem("openPanel", "panelProfiles"); paintPanels();
   loadProfiles();
 };
 
