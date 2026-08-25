@@ -944,7 +944,22 @@ def main() -> None:
         if slot:                       # analysis does not need the uplink
             release_upload_slot(slot)
             slot = None
-        drive(command, shard_rel, results)
+        try:
+            drive(command, shard_rel, results)
+        except RuntimeError as exc:
+            # A REMOTE "FAIL" IS NOT A DEAD SHARD. The pod raises its fail marker
+            # when ANY track fails, so a run that finished 198 of 200 arrives here
+            # as an exception - and the exception used to skip the completeness
+            # check below, which is the ONLY place quarantine.json is written.
+            # Without that file the orchestrator kept seeing the shard as
+            # incomplete and re-bought a pod for it forever: on 25 Aug results
+            # were downloaded at 19:28, 20:24 and 20:33 while the last import was
+            # at 15:42, and two undecodable tracks held 198 good ones hostage.
+            # Falling through lets analysable() retire the proven-dead pairs and
+            # the shard finish. A run that truly produced nothing still fails, at
+            # the `required <= successful` check below.
+            print(f"vzdialená analýza hlási chybu, pokračujem k vyhodnoteniu: "
+                  f"{str(exc)[:160]}", flush=True)
         rp.save_state(status="results_downloaded", result_rows=len(successful(results)))
     finally:
         if slot:
