@@ -396,3 +396,33 @@ sign of that signal's contribution, worth 0.15 × one tag against audio's
 - **When there is nothing to be different from** — the seed has no `style` tag,
   say — the app now says so in the header instead of silently changing nothing.
   Verified: „style ≠" nemá čo vylúčiť …
+
+
+## 2026-08-25 — D-085 · a sweep for every inert or lying control
+
+The owner asked for the whole app to be audited for the class of bug that had
+already bitten three times, rather than another one-off fix. Every control in
+`similar.html` was enumerated and checked against its handler and against what
+`runSeeds()` actually reads.
+
+**Found genuinely inert, now fixed**
+- `limit` (50/100/200/500) had **no handler at all**. It is read when a query is
+  built, so changing it only took effect the next time something else triggered
+  a search. Verified: setting 50 now returns 50 rows immediately.
+- `spotifyOnly` ("len zo Spotify") — the same, no handler. Verified through the
+  API that the flag does change the answer: `spotify_only=false` puts 23
+  local-only tracks into 300 results, `true` puts none.
+- The volume slider set `P.volume` only, so while a Spotify track was playing it
+  did nothing. It now also calls `sp.player.setVolume()`.
+- A tag rule with an empty value is dropped before the query is sent, but the
+  row looked exactly like a working filter. Unfinished rows are now dimmed and
+  labelled "nedokončené".
+- **An empty result explained nothing** — a filter nothing satisfies looked
+  identical to a broken app. The table now says "Nič neprešlo cez filtre",
+  lists the active conditions by name, and points at ↺ Reset.
+
+**Checked and found correct** (worth recording so it is not re-audited): the
+compare panel's checkboxes, per-signal weights and group sliders all re-query
+through a delegated `change` listener; "všetko"/"nič" call `rerun()` directly;
+the selection-bar actions are hidden rather than inert when nothing is picked;
+`prev`/`big`/`next`/`seek` drive whichever backend is playing.

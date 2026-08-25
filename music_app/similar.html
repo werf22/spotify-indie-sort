@@ -152,6 +152,14 @@
       border:1px solid var(--line);background:transparent;color:var(--dim);cursor:pointer}
   .sig .info:hover{border-color:var(--accent);color:var(--accent)}
   [data-tl].idle{opacity:.3;pointer-events:none}
+  /* An unfinished rule is dropped before the query is sent — it must not look
+     like a working filter sitting there. */
+  td.empty{padding:34px 18px;text-align:center;color:var(--dim);line-height:1.7;font-size:13px}
+  td.empty b{color:var(--ink);font-size:14.5px}
+  .rule.incomplete{opacity:.55}
+  .rule.incomplete [data-rv]{border-color:#e0a33e}
+  .rule.incomplete::after{content:"nedokončené";font-size:10px;color:#e0a33e;
+      letter-spacing:.08em;text-transform:uppercase;align-self:center}
 
   /* The explainer popover. One element, moved to whichever ⓘ was clicked. */
   #infoPop{position:fixed;z-index:60;width:340px;max-height:70vh;overflow-y:auto;

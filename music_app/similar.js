@@ -311,6 +311,12 @@ function paintBpm() {
   localStorage.setItem("bpmOn", on ? "1" : "0");
   localStorage.setItem("bpmTol", $("bpmTol").value);
 }
+/* Both of these are read when a query is built, so without a handler they only
+ * took effect the next time something else triggered a search — which reads as
+ * a dead control. */
+$("limit").onchange = () => rerun();
+$("spotifyOnly").onchange = () => rerun();
+
 $("bpmOn").checked = localStorage.getItem("bpmOn") === "1";
 $("bpmTol").value = localStorage.getItem("bpmTol") || "3";
 $("bpmOn").onchange = () => { paintBpm(); rerun(); };
@@ -468,6 +474,27 @@ const rerun = () => { if (state.seeds.length) runSeeds(); };
 
 /* ---------------- results table ---------------- */
 function render() {
+  // AN EMPTY TABLE MUST EXPLAIN ITSELF. A filter that nothing satisfies looked
+  // identical to a broken app: a blank list and no reason given.
+  if (!state.rows.length) {
+    const constraints = [
+      ...Object.entries(signalModes()).map(([id, m]) =>
+        `${id.replace(/^(tag:|num:)/, "")} ${({ diff: "≠", target: "→", gt: ">", gte: "≥", lt: "<", lte: "≤" })[m.mode] || m.mode}`
+        + (m.target != null ? ` ${m.target}` : "")),
+      ...tagRules().map(r => `${r.type} ${r.mode === "must" ? "musí" : "nesmie"} obsahovať „${r.value}“`),
+      ...(mikOn() ? ["Mixed in Key"] : []),
+      ...(bpmTol() ? [`BPM ± ${bpmTol()}`] : []),
+    ];
+    $("body").innerHTML = `<tr><td colspan="9" class="empty">`
+      + `<b>Nič neprešlo cez filtre.</b><br>`
+      + (constraints.length
+          ? `Aktívne podmienky: ${esc(constraints.join(" · "))}.<br>`
+            + `Uvoľni niektorú — alebo skús ↺ Reset, ktorý zruší všetko nad profilom.`
+          : `Zvolený track zrejme nemá dosť dát na porovnanie.`)
+      + `</td></tr>`;
+    updateSel();
+    return;
+  }
   // Scale against the best score the query could reach WITHOUT any filter, not
   // against the best of what survived one. Measuring against the survivor made
   // every filtered result look like a perfect match, which is exactly why
@@ -874,7 +901,13 @@ P.ontimeupdate = () => {
 P.onloadedmetadata = () => { if (backend === "audio") paintTransport(); };
 $("seek").oninput = () => { seeking = true; $("cur").textContent = mmss($("seek").value / 1000 * T.duration); };
 $("seek").onchange = () => { const to = $("seek").value / 1000 * T.duration; seeking = false; T.seekTo(to); };
-$("vol").oninput = () => P.volume = +$("vol").value;
+/* The slider used to set the volume of OUR audio element only, so while a
+ * Spotify track was playing it did nothing at all. */
+$("vol").oninput = () => {
+  const v = +$("vol").value;
+  P.volume = v;
+  if (sp.mode === "sdk" && sp.player) { try { sp.player.setVolume(v); } catch {} }
+};
 document.onkeydown = e => {
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
   if (e.code === "Space") { e.preventDefault(); $("big").click(); }

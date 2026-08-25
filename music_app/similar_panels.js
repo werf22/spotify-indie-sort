@@ -173,6 +173,7 @@ function addRule(preset, scope = "") {
     <input class="val" data-rv list="tagvals" placeholder="napr. drum and bass">
     <button class="ghost" data-rx>✕</button>`;
   $("rules" + (scope || "")).appendChild(div);
+  div.classList.toggle("incomplete", !(preset && preset.value));
   if (preset) {
     div.querySelector("[data-rt]").value = preset.type || types[0];
     div.querySelector("[data-rm]").value = preset.mode || "must";
@@ -183,12 +184,17 @@ function addRule(preset, scope = "") {
     document.getElementById("tagvals").innerHTML =
       vals.slice(0, 300).map(v => `<option value="${esc(v)}">`).join("");
   };
-  const changed = () => { if (scope) { saveMetaShift(); paintMetaBadge(); } rerun(); };
+  /* A rule with an empty value is dropped before the query is sent, so an
+   * unfinished row must not look like a working filter. */
+  const markDone = () => div.classList.toggle("incomplete",
+      !div.querySelector("[data-rv]").value.trim());
+  const changed = () => { markDone(); if (scope) { saveMetaShift(); paintMetaBadge(); } rerun(); };
   div.querySelector("[data-rt]").onchange = () => { refreshList(); changed(); };
   div.querySelector("[data-rt]").onfocus = refreshList;
   div.querySelector("[data-rv]").onfocus = refreshList;
   div.querySelector("[data-rm]").onchange = changed;
   div.querySelector("[data-rv]").onchange = changed;
+  div.querySelector("[data-rv]").oninput = markDone;
   div.querySelector("[data-rx]").onclick = () => { div.remove(); changed(); };
 }
 $("addRule").onclick = () => addRule();
