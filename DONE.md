@@ -293,3 +293,30 @@ Verified in the UI: "0,2" with tolerance "0,15" is sent as
 `{target: 0.2, tol: 0.15}` and the header reports 18 769 tracks past the
 filter. Engine side, every returned track is inside the window — 0/15 outside
 at ±0.15, ±0.0583 and at target 1.0.
+
+
+## 2026-08-25 — D-081 · the valence target was already fixed; the window was stale
+
+The owner reported the comma fix had not helped. Verified inside the RUNNING
+APP rather than in a browser, with a probe that fired the same events a
+person's typing fires:
+
+    PROBE prvky: select=true cieľ=true tol=true typ=text tolPredv=0.0583
+    PROBE po napísaní 0,2 → box drží: "0,2" · dec()=0.2 ·
+        signalModes={"num:valence":{"mode":"target","target":0.2,"tol":0.0583}}
+    PROBE pred: What Time Is It? · riadkov=100
+    PROBE po: Special - Extended · zmenilo sa=true ·
+        hlavička=… z 2 111, ktoré prešli filtrom
+
+So the feature works; the open window was running the pre-fix code, as the
+owner himself suspected.
+
+**This has now cost two rounds, so the question is made answerable at a
+glance:** `/api/similar/status` reports `build`, the newest mtime of
+similar.js / similar_panels.js / similar.html, and the page puts it in the
+tooltip of the track count in the footer. Hovering it says when the loaded code
+was written and that ⌘R fetches the newest.
+
+**Note for future sessions:** after ANY change to the page code, restart or ⌘R
+the app before asking the owner to re-test. A stale WKWebView looks exactly
+like a broken feature.
