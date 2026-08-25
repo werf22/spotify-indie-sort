@@ -192,7 +192,7 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
     <li class="grp">Ovládanie</li>
     <li><a href="#vahy">Váhy</a></li>
     <li><a href="#rezimy">Šesť režimov</a></li>
-    <li><a href="#mik">Mixed in Key</a></li>
+    <li><a href="#mik">Mixed in Key a BPM</a></li>
     <li><a href="#posunut">Čo posunúť</a></li>
     <li><a href="#seedy">Viac trackov naraz</a></li>
     <li><a href="#profily">Profily</a></li>
@@ -489,7 +489,7 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
 <p>Spojenie dvoch predošlých, a spojenie zámerne nerovnomerné. Bežia obidva modely naraz — CLAP nesie náladu, MAEST žáner — a tagy sú oboje: <span class="mono">mood</span> spolu s <span class="mono">genre</span>, <span class="mono">subgenre</span> a <span class="mono">style</span>. <strong>Label je von</strong>, hoci má najvyšší recall: vydavateľstvo je znak scény, nie nálady, a stiahlo by ťa späť ku katalógu jednej firmy namiesto k tomu pocitu. Toto je typicky režim na stred setu.</p>
 </div>
 
-<h2 id="mik"><span class="n">Ovládanie</span>Prepínač Mixed in Key</h2>
+<h2 id="mik"><span class="n">Ovládanie</span>Dva prepínače nad profilmi</h2>
 
 <p>Sedí hore vedľa „len zo Spotify“ a je to <strong>vrstva nad profilmi</strong>. Kým je zapnutý, vynúti štyri mixovateľné vzťahy tóniny bez ohľadu na to, aký profil máš načítaný:</p>
 
@@ -507,6 +507,10 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
 <p>Vzťah <strong>relatívna</strong> (dur ↔ mol na tom istom čísle, napríklad 8A ↔ 8B) v tejto štvorici zámerne nie je, lebo si ho medzi tie štyri neuviedol. V bežnej praxi Mixed In Key je to pritom jeden z najpoužívanejších prechodov — ak ho tam chceš, je to jedno políčko v paneli, alebo ti doplním piate pravidlo do prepínača.</p>
 </div>
 
+<h3>BPM ±</h3>
+
+<p>Vedľa neho sedí druhý prepínač rovnakého druhu: <strong>BPM ±</strong>. Pustí len tracky, ktoré sú do zadaného rozsahu od tempa <em>zvoleného</em> tracku. Je zámerne v absolútnych BPM, nie v percentách — tri percentá znamenajú pri 90 niečo úplne iné než pri 174. Tiež zostáva zapnutý naprieč profilmi.</p>
+
 <h2 id="posunut"><span class="n">Ovládanie</span>Panel „Čo posunúť“</h2>
 
 <p>Kým panel „Čo porovnávať“ hovorí, <em>čo má byť rovnaké</em>, tento hovorí, <em>čo sa má zmeniť</em>. To je celý rozdiel medzi hľadaním náhrady a stavaním setu.</p>
@@ -516,14 +520,25 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
 <ul class="plain">
 <li><strong>rovnaké</strong> — normálne správanie, odmeňuje podobnosť.</li>
 <li><strong>odlišné</strong> — obráti znamienko. Signál odteraz odmeňuje <em>kontrast</em>. Tu vzniká vývoj setu: podrž groove a tóninu, ale vypýtaj si inú energiu.</li>
-<li><strong>cieľová hodnota</strong> — len pri číslach. Namieri signál na konkrétnu hodnotu, ktorú napíšeš v skutočných jednotkách („energy 0,8“), nie na hodnotu zvoleného tracku.</li>
+<li><strong>cieľová hodnota</strong> — namieri signál na konkrétnu hodnotu, ktorú napíšeš v skutočných jednotkách („energy 0,8“, „BPM 174“), nie na hodnotu zvoleného tracku. Vedľa nej je okienko <strong>±</strong>, a to je dôležité: <strong>s ním je cieľ tvrdý filter</strong> — čo je mimo rozsahu, sa vôbec neobjaví. Bez neho je to len jemná preferencia, ktorá sa v celkovom skóre stratí.</li>
 </ul>
+
+<div class="note">
+<span class="lbl">Pozor na dve rôzne BPM</span>
+<p>V sekcii <strong>Čísla</strong> nájdeš <span class="mono">bpm (iný zdroj!)</span>, <span class="mono">tempo (iný zdroj!)</span> a <span class="mono">bpm (Spotify)</span>. Sú to merania od iných poskytovateľov a <strong>s tempom, ktoré vidíš v tabuľke, sa nezhodujú pri 65 % knižnice</strong>. Ak na ne nastavíš cieľ, dostaneš tracky, ktoré ten stĺpec naozaj majú — ale v tabuľke pri nich uvidíš úplne iné číslo. <strong>Cieľ na tempo nastavuj vždy na <span class="mono">BPM</span> v sekcii Hudobné</strong>; to je to isté číslo, aké je v tabuľke.</p>
+</div>
 
 <p>Nad tým sú <strong>tagové pravidlá</strong>, ktoré fungujú ako tvrdý filter, nie ako skóre: <span class="mono">Style</span> <em>musí obsahovať</em> <span class="mono">drum n bass</span>, alebo <span class="mono">mood</span> <em>nesmie obsahovať</em> <span class="mono">sad</span>. Čo pravidlom neprejde, do výsledku sa vôbec nedostane.</p>
 
 <div class="lede">
 <p>Takto sa robí harmónia v hudbe: niečo podržíš a niečo zmeníš. Podrž <span class="mono">rhythm</span> a tóninu, prepni <span class="mono">energy</span> na cieľovú hodnotu 0,85 a nastav <span class="mono">mood</span> na „odlišné“ — dostaneš track, ktorý sedí do mixu, ale set posunie dopredu.</p>
 </div>
+
+<h3>Čo posunúť (META)</h3>
+
+<p>Existuje aj druhá kópia tohto panelu, označená <strong>META</strong> a modrým pruhom. Robí presne to isté, s jedným rozdielom: <strong>prežije zmenu profilu aj reštart appky</strong>. Kde hovoria obidva, META prebije profil; tvrdé pravidlá na tagy sa <em>pripočítajú</em> k profilovým, nenahradia ich.</p>
+
+<p>Patrí tam to, čo platí pre celý večer — „Style musí obsahovať drum n bass“, „BPM 174 ± 4“ — a profily potom prepínaš pod tým. Uložený profil META nikdy neobsahuje, aj keby si ho ukladal so zapnutým META panelom.</p>
 
 <h2 id="seedy"><span class="n">Ovládanie</span>Viac trackov naraz</h2>
 
@@ -546,10 +561,16 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
 <ul class="plain">
 <li><strong>Lokálny súbor</strong> — celá skladba z disku. Ide do zvoleného CUE výstupu.</li>
 <li><strong>30-sekundová ukážka</strong> — keď súbor nemáme, ale existuje ukážka. Tiež ide do CUE.</li>
-<li><strong>Spotify</strong> — keď nie je ani jedno. Celá skladba, ak je udelené povolenie <span class="mono">streaming</span>; inak 30-sekundová ukážka z vloženého prehrávača.</li>
+<li><strong>Spotify</strong> — keď nie je ani jedno. Celá skladba cez Spotify Web Playback SDK (vyžaduje Premium a povolenie <span class="mono">streaming</span>), inak 30-sekundová ukážka z vloženého prehrávača. Ovláda sa tou istou lištou ako všetko ostatné.</li>
 </ul>
 
-<p><strong>CUE</strong> je výber výstupného zariadenia hore pri ikone slúchadiel. Zvuk appky ide do zvoleného zariadenia, takže si vieš vypočuť ďalší track v slúchadlách, kým z reprákov hrá niečo iné. Funguje pre lokálne súbory aj ukážky. Pri Spotify to závisí od toho, ktorou cestou hrá: cez plné prehrávanie áno, cez vložený prehrávač nie — vtedy zvuk vzniká vnútri Spotify rámu a smerovať sa nedá.</p>
+<p><strong>CUE</strong> je výber výstupného zariadenia hore pri ikone slúchadiel. Zvuk appky ide do zvoleného zariadenia, takže si vieš vypočuť ďalší track v slúchadlách, kým z reprákov hrá niečo iné. <strong>Funguje pre lokálne súbory a pre 30-sekundové ukážky</strong> — teda pre drvivú väčšinu knižnice.</p>
+
+<div class="note">
+<span class="lbl">Čo cez CUE nejde</span>
+<p><strong>Tracky, ktoré hrajú cez Spotify, do slúchadiel poslať nevieme</strong> — a je poctivé povedať presne prečo, lebo to vyzeralo riešiteľne. Spotify prehráva zvuk vo svojom vlastnom ráme na inej doméne, nie v audio prvku, ktorý by patril tejto stránke (overené v bežiacej appke: jediný náš prvok je vlastný prehrávač, Spotify má <span class="mono">sdk.scdn.co/embedded</span>). Výber výstupu sa dá nastaviť len prvku, ktorý stránka vlastní. Zvnútra appky sa to obísť nedá.</p>
+<p>Jediná cesta je systémový nástroj na smerovanie zvuku jednotlivých aplikácií — na macOS napríklad Loopback alebo Audio Hijack — ktorým by si zvuk celej appky poslal do slúchadiel. To je platený softvér tretej strany a zásah do systému, takže je to tvoje rozhodnutie.</p>
+</div>
 
 <p>Mediálne klávesy na klávesnici (⏮ ⏯ ⏭) ovládajú appku. Kým beží Spotify desktop, klávesu prehrať/pauza si berie on; medzerník v appke funguje vždy.</p>
 
@@ -582,6 +603,9 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
 <tr><td>Viem presne, akú vec chcem</td><td>Viac seedov naraz</td></tr>
 <tr><td>Staviam vývoj setu</td><td>„Čo posunúť“: podrž rhythm, zmeň energy</td></tr>
 <tr><td>Musí to byť drum'n'bass</td><td>Tagové pravidlo: Style musí obsahovať</td></tr>
+<tr><td>Platí to na celý večer</td><td>Dať to do panelu META, nie do profilu</td></tr>
+<tr><td>Chcem presne 174 BPM</td><td>META → Hudobné → BPM → → 174, ± 4</td></tr>
+<tr><td>Chcem len mixovateľné tempo</td><td>Prepínač BPM ± hore</td></tr>
 </tbody>
 </table>
 </div>

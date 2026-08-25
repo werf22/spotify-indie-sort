@@ -161,3 +161,44 @@ routing need the `streaming` permission. Add `http://127.0.0.1:8899/callback`
 to the app's Redirect URIs at developer.spotify.com/dashboard, then run
 `python3 spotify_authorize.py` once. The account is Premium, which the SDK
 requires, and every other permission is already granted.
+
+
+## 2026-08-25 — D-076 · Spotify plays whole tracks; CUE for them is impossible, and why
+
+**Done**
+- `spotify_authorize.py` ran successfully: the token now carries `streaming`
+  alongside all fifteen previous permissions. The account is Premium.
+- The project was switched to the Spotify app that dj-set-spotify and
+  spotify-tidal-sync already share, whose redirect URI is registered — so no
+  dashboard change was needed. `.env` and `data/token.json` were backed up
+  first, and `.gitignore` now covers `.env.bak-*` (it did not, and `git add -A`
+  would have committed the client secret; the classifier caught it).
+- Verified in the RUNNING APP, not in a browser: the Web Playback SDK reports
+  `ready=true`, registers a Spotify Connect device, and the Spotify API lists
+  it. Full-track playback works, driven by the app's own transport.
+
+**CUE for Spotify tracks: NOT POSSIBLE, and this is settled.** The earlier plan
+assumed the SDK would create an `<audio>` element in our page, which
+`setSinkId` could then point at the headphones. It does not. The probe in the
+app reported `audio=[player] iframes=[https://sdk.scdn.co/embedded/index.html]`
+— the only media element belonging to this document is our own player, and
+Spotify's sound is produced inside a cross-origin frame. `setSinkId` only
+applies to elements the document owns, so there is no route from inside the
+app. The only remaining path is a system-level per-app audio router (Loopback,
+Audio Hijack). Local files and the 30-second previews still follow the CUE
+device, because those play through our own element.
+
+Code comments, the player bar (`SPOTIFY · celá skladba · nejde do slúchadiel`),
+the Spotify device name and `docs/prirucka.html` were all corrected to say this
+instead of the earlier claim. `routeSpotifyToCue()` is kept as an explained
+no-op so nobody re-adds it.
+
+**Also fixed:** the port-borrow in `spotify_authorize.py` had stopped
+dj-set-spotify and reported success while leaving it dead (`ps` reports the
+resolved interpreter, so relaunching skipped the virtualenv). It now rewrites
+the command to the venv python and verifies the port is listening again.
+
+**Note for future sessions:** the owner pasted an OAuth callback URL containing
+an authorization code into the chat. It was not used — the PKCE verifier from
+that run was already gone, making the code unusable — but the standing rule is
+that credentials never enter the transcript.

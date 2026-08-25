@@ -680,16 +680,23 @@ document.onkeydown = e => {
  * Two ways to play a track we have neither on disk nor as a 30-second preview,
  * and the app always tries the good one first:
  *
- *  1. WEB PLAYBACK SDK — the whole track, played by an audio element that lives
- *     in THIS page. Because the element is ours, the app's own seek bar scrubs
- *     it and — the part that matters live — setSinkId can send it to the CUE
- *     headphones like everything else. Needs Spotify Premium and the
- *     `streaming` permission (run spotify_authorize.py once to grant it).
+ *  1. WEB PLAYBACK SDK — the WHOLE track, and the app's own transport drives
+ *     it: the long seek bar scrubs it, the buttons control it. Needs Spotify
+ *     Premium and the `streaming` permission (spotify_authorize.py grants it).
  *
- *  2. EMBED — Spotify's own little player, driven through the iFrame API. Only
- *     a 30-second preview, and it CANNOT be routed to the headphones, because
- *     the sound is produced inside Spotify's own frame. Used only when the SDK
- *     is unavailable.
+ *  2. EMBED — Spotify's own little player through the iFrame API, 30 seconds
+ *     only. Used when the SDK is unavailable.
+ *
+ * NEITHER CAN GO TO THE CUE HEADPHONES, and it is worth being exact about why,
+ * because it looked achievable and is not. The SDK does NOT put an <audio>
+ * element in this page — verified in the running app, which reported
+ * `audio=[player] iframes=[https://sdk.scdn.co/embedded/index.html]`. The sound
+ * is produced inside a cross-origin frame belonging to Spotify, and setSinkId
+ * only ever applies to a media element this document owns. There is no way
+ * around that from inside the app; per-app output routing on macOS needs a
+ * system tool such as Loopback or Audio Hijack. Local files and the 30-second
+ * previews DO follow the CUE device, because those play through our own
+ * element.
  *
  * Docs: developer.spotify.com/documentation/web-playback-sdk (SDK, seek takes
  * MILLISECONDS) and .../embeds/references/iframe-api (embed, seek takes
@@ -727,7 +734,7 @@ async function sdkReady() {
   if (!sp.streaming) return false;              // permission not granted yet
   const Spotify = await loadSdk();
   const player = new Spotify.Player({
-    name: "Similar Tracks (CUE)",
+    name: "Similar Tracks",
     getOAuthToken: cb => spotifyAuth().then(cb).catch(() => {}),
     volume: +$("vol").value,
   });
@@ -755,20 +762,10 @@ async function sdkReady() {
   return ok;
 }
 
-/* THE CUE TRICK. The SDK builds its own <audio> element inside this document,
- * so it can be found and pointed at the headphones exactly like our own player.
- * Re-applied on every state change because the SDK replaces the element when it
- * changes track. */
-async function routeSpotifyToCue() {
-  const want = $("sink").value;
-  if (!want) return;
-  for (const el of document.querySelectorAll("audio, video")) {
-    if (el === P || !el.setSinkId) continue;
-    try {
-      if (el.sinkId !== want) { await el.setSinkId(want); sp.cued = true; }
-    } catch (e) { if (!sp.cued) nlog("CUE pre Spotify zlyhalo: " + e.message); }
-  }
-}
+/* Kept deliberately as a no-op with an explanation, so nobody re-adds it: the
+ * SDK's audio is inside Spotify's own cross-origin frame and cannot be pointed
+ * at another output device from here. Our own player is handled by applySink(). */
+function routeSpotifyToCue() { /* not possible — see the note above */ }
 
 /* ---- 2. the fallback: 30 seconds, Spotify's own frame, no CUE ---- */
 async function embedFallback(r) {
@@ -824,7 +821,8 @@ async function showEmbed(r) {
         body: JSON.stringify({ id: r.spotify_id, device_id: sp.device }) });
       if (res.error) throw new Error(res.error);
       $("now").innerHTML = `${esc(r.artist)} — ${esc(r.title)}<br>`
-        + `<small>SPOTIFY · celá skladba${$("sink").value ? " · do slúchadiel" : ""}</small>`;
+        + `<small>SPOTIFY · celá skladba`
+        + `${$("sink").value ? " · <b>nejde do slúchadiel</b>" : ""}</small>`;
       startSpotifyTicker();
       return;
     }
