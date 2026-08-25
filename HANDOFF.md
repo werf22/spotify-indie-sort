@@ -6,6 +6,32 @@ or modifying Spotify playlists.
 
 **STATUS 2026-08-25 12:0x — analysis running unattended; funded to finish.**
 
+**26 Aug 00:30 — THE PIPELINE WAS STUCK FOR EIGHT HOURS; THREE BUGS, ALL FIXED.**
+Analysis ran and results downloaded the whole time, but nothing reached the
+database: last import 15:42, results.jsonl rewritten at 19:28, 20:24, 20:33.
+Now 62,254 of 66,703 complete and imports are flowing again.
+
+1. **A remote "fail" threw away 198 good tracks.** The pod raises its fail marker
+   when ANY track fails, and that exception skipped the completeness check - the
+   only place quarantine.json is written. With no quarantine file the
+   orchestrator saw the shard as incomplete and bought another pod for it,
+   forever. Two undecodable tracks held 198 finished ones hostage. The runner now
+   falls through to the check; a run that produced nothing still fails at
+   `required <= successful`. Ten shards have written quarantine.json since.
+2. **Resuming an upload corrupted the bundle.** `dd bs=1M seek=N` only starts on
+   a mebibyte boundary but the payload was read from the exact byte the pod held,
+   so any chunk that died part-way shifted everything after it by up to 1 MiB.
+   The bundle then failed its checksum and all ~1.4 GB was re-sent (17 mismatches
+   in this run). Every resume point is now snapped down to a whole mebibyte.
+3. **The chunk timeout fired during the dependency install.** Failures clustered
+   at 10-25 MB - the install window - while anything past it ran clean to the
+   end. CHUNK_TIMEOUT 90 -> 240 s.
+
+Diagnosing this needed a logging fix first: messages were truncated from the LEFT
+at 70 chars and every ssh failure starts with the same 70 chars of command line,
+so an hour of failures looked identical. The tail is logged now, with the ssh
+return code (255 = transport died, anything else = dd's exit status).
+
 **THE BINDING CONSTRAINT IS THE HOME UPLINK — not money, not GPUs.**
 Measured 25 Aug: 1.72 MB/s. Each shard ships a ~1.4 GB bundle, and a runner takes
 a pod only once it holds the single upload slot, so pods are never left idle
