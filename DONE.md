@@ -348,3 +348,26 @@ dropdown — the same gesture the owner described:
 was correct every time — first the display, then the decimal comma, then this.
 A control that is visible and editable but conditionally inert is the common
 thread. Do not ship one.
+
+
+## 2026-08-25 — D-083 · an ⓘ explainer on every signal, and comparison operators
+
+- `similarity_help.py` (new): hand-written prose for every signal — what it
+  measures and how to use it — keyed by signal id. Only the prose lives there;
+  coverage, value lists and number ranges are read from the library at request
+  time by `explain()`, so the help cannot drift from the data. Anything without
+  an entry falls back to a description built from the data itself.
+- `/api/similar/explain?id=…` and an ⓘ button on every row of both panels
+  (77 in Čo porovnávať, 71 in each shift panel). For a tag it shows the top 18
+  values with counts and how many distinct ones exist; for a number the real
+  min/median/max, the 5/25/75/95 percentiles, suggested values for
+  low/mid/high/extreme, and the default ± tolerance.
+- Comparison operators on numbers and BPM: `>` `≥` `<` `≤` beside `→`. They are
+  hard filters; the ranking stays similarity-based, which is what makes
+  "energy > 0,8" still sort sensibly. Verified 0 violations on gt/lt/gte.
+- The ± box greys out under the comparison operators, where it has no meaning.
+
+**Bug caught in testing:** the auto-switch that turns a typed number into a
+target was overwriting a DELIBERATELY chosen operator — picking ">" and then
+typing flipped it back to "→". It now only fills in a mode when none was
+chosen. Verified: picking ">" and typing 0,9 stays `{mode:"gt", target:0.9}`.

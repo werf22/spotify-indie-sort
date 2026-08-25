@@ -191,6 +191,7 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
     <li><a href="#cisla">Čísla</a></li>
     <li><a href="#tempo">Tempo a tónina</a></li>
     <li class="grp">Ovládanie</li>
+    <li><a href="#ikonka">Ikonka i</a></li>
     <li><a href="#vahy">Váhy</a></li>
     <li><a href="#rezimy">Šesť režimov</a></li>
     <li><a href="#mik">Mixed in Key a BPM</a></li>
@@ -451,6 +452,12 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
 <li><strong>Tónina</strong> — cez prepínač „Mixed in Key“ alebo cez jednotlivé pravidlá v paneli „Čo posunúť“.</li>
 </ul>
 
+<h2 id="ikonka"><span class="n">Ovládanie</span>Ikonka <em>i</em> pri každom signáli</h2>
+
+<p>Pri každom jednom signáli v oboch paneloch je malé koliesko <strong>i</strong>. Kliknutím sa otvorí vysvetlivka: <strong>čo daný signál meria</strong>, <strong>ako ho použiť</strong>, aké má pokrytie — a hlavne <strong>aké hodnoty tam vôbec sú</strong>. Pri tagoch uvidíš najčastejšie hodnoty aj s počtami, pri číslach skutočný rozsah, medián, kvartily a rovno aj návrhy, čo zadať pre nízke, stredné, vysoké a extrémne nastavenie.</p>
+
+<p>Texty aj čísla sú živé: popisy sú písané ručne, ale pokrytie, zoznamy hodnôt a rozsahy sa čítajú priamo z databázy, takže vysvetlivka nikdy nemôže popisovať niečo, čo v dátach nie je.</p>
+
 <h2 id="vahy"><span class="n">Ovládanie</span>Váhy — dve úrovne</h2>
 
 <p>Skóre sa počíta takto:</p>
@@ -547,6 +554,7 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
 <ul class="plain">
 <li><strong>rovnaké</strong> — normálne správanie, odmeňuje podobnosť.</li>
 <li><strong>odlišné</strong> — obráti znamienko. Signál odteraz odmeňuje <em>kontrast</em>. Tu vzniká vývoj setu: podrž groove a tóninu, ale vypýtaj si inú energiu.</li>
+<li><strong>väčšie / menšie (&gt; ≥ &lt; ≤)</strong> — jednostranná hranica. „energy &gt; 0,8“ pustí len tracky nad tou hodnotou; poradie naďalej určuje podobnosť. Tolerancia sa tu neuplatňuje a políčko ± preto zošedne.</li>
 <li><strong>cieľová hodnota</strong> — namieri signál na konkrétnu hodnotu, ktorú napíšeš v skutočných jednotkách („energy 0,8“, „BPM 174“), nie na hodnotu zvoleného tracku. Vedľa nej je okienko <strong>±</strong>, a to je dôležité: <strong>s ním je cieľ tvrdý filter</strong> — čo je mimo rozsahu, sa vôbec neobjaví. Bez neho je to len jemná preferencia, ktorá sa v celkovom skóre stratí.</li>
 </ul>
 
