@@ -371,3 +371,28 @@ thread. Do not ship one.
 target was overwriting a DELIBERATELY chosen operator — picking ">" and then
 typing flipped it back to "→". It now only fills in a mode when none was
 chosen. Verified: picking ">" and typing 0,9 stays `{mode:"gt", target:0.9}`.
+
+
+## 2026-08-25 — D-084 · "≠" was inert on tags and numbers, the same trap a third time
+
+Setting a tag to "≠" in either shift panel changed nothing. Measured before
+touching anything: with `genre ≠` on iLee — Lila, **20 of 20 results still
+shared a genre with the seed** and 16 of them were the very same tracks.
+
+The cause is the one this project keeps rediscovering: "≠" only flipped the
+sign of that signal's contribution, worth 0.15 × one tag against audio's
+1.0 × three embeddings. It could not win, so it looked broken.
+
+- "≠" on a TAG is now a hard filter — anything sharing a value with the seed is
+  excluded. Verified: `genre ≠` leaves 6,696 tracks with 0/20 sharing a genre;
+  `mood ≠` leaves 10,645, also 0/20.
+- "≠" on a NUMBER excludes everything within ± of the seed's value, the ± box
+  staying live for it. Verified: seed energy 0.581, `≠ ±0.15` returned
+  0.789-1.0 with 0/15 inside the forbidden band.
+- Embeddings keep the sign flip: a continuous distance has nothing to exclude,
+  and there the flip is visible anyway because audio carries the most weight.
+- The ranking is untouched, so the result is "a different genre, but otherwise
+  as close as possible" — what set-building actually needs.
+- **When there is nothing to be different from** — the seed has no `style` tag,
+  say — the app now says so in the header instead of silently changing nothing.
+  Verified: „style ≠" nemá čo vylúčiť …

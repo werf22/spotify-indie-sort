@@ -138,7 +138,13 @@ function readShift(scope) {
     const tg = root.querySelector(`[data-tg="${CSS.escape(id)}"]`);
     const tl = root.querySelector(`[data-tl="${CSS.escape(id)}"]`);
     const target = tg ? dec(tg.value) : null;
-    if (sel.value === "diff") { out[id] = { mode: "diff" }; return; }
+    if (sel.value === "diff") {
+      out[id] = { mode: "diff" };
+      // For a number, ± says how far away still counts as "different".
+      const tol = tl ? dec(tl.value) : null;
+      if (tol !== null) out[id].tol = Math.abs(tol);
+      return;
+    }
     // A typed number wins: something in the target box IS a demand, whatever
     // the dropdown says. If no operator was chosen, "→" is what was meant.
     if (target !== null) {
@@ -451,7 +457,9 @@ async function runSeeds() {
       + (narrowed ? `<span class="muted"> z <b>${res.pool.toLocaleString("sk")}</b>, `
                   + `ktoré prešli filtrom${esc(closeness)}</span>` : "")
       + `<span class="muted"> · porovnané: ${esc(used)}</span>`
-      + (common ? `<div class="muted" style="margin-top:3px">spoločné: ${esc(common)}</div>` : "");
+      + (common ? `<div class="muted" style="margin-top:3px">spoločné: ${esc(common)}</div>` : "")
+      + ((res.notes || []).length
+          ? `<div style="margin-top:3px;color:#e0a33e">${res.notes.map(esc).join(" · ")}</div>` : "");
     if ((res.seeds_missing || []).length)
       toast(`${res.seeds_missing.length} track(ov) nemá analýzu — vynechané`);
   } catch (e) { $("ref").innerHTML = `<span style="color:#ff8080">${esc(e.message)}</span>`; }

@@ -400,6 +400,66 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
     # FILTERS ON A NUMBER: aim at a value (→), or demand more/less than one
     # (> <). All three are hard — they decide what may appear at all, while the
     # ranking stays whatever the enabled signals say.
+    # "≠" IS A DEMAND, NOT A NUDGE. Flipping one signal's sign was worth
+    # 0.15 x one tag against audio's 1.0 x three embeddings, so asking for a
+    # different genre changed nothing at all — measured: 20 of 20 results still
+    # shared a genre with the seed, 16 of them the very same tracks. On a TAG it
+    # now excludes anything sharing a value with the seed; on a NUMBER anything
+    # within the tolerance of the seed's value. The ranking stays similarity —
+    # "a different genre, but otherwise as close as possible", which is what
+    # building a set actually needs.
+    #
+    # Embeddings keep the sign flip: a continuous distance has nothing to
+    # exclude, and there the flip is visible anyway because audio carries the
+    # heaviest weight.
+    diff_gates: list[np.ndarray] = []
+    notes: list[str] = []
+    for sid, spec in modes.items():
+        if (spec or {}).get("mode") != "diff":
+            continue
+        if sid.startswith("tag:"):
+            ttype = sid[4:]
+            per_track = lib.tag_of.get(ttype) or {}
+            mine: set = set()
+            for sd in seeds:
+                mine |= (per_track.get(sd) or set())
+            if not mine:
+                # Nothing to be different FROM. Silence here reads as a broken
+                # filter, so the app is told why it changed nothing.
+                notes.append(f"„{ttype} ≠“ nemá čo vylúčiť — zvolený track nemá "
+                             f"žiadnu hodnotu typu {ttype}.")
+                continue
+            index = lib.tag_index.get(ttype) or {}
+            shared = np.zeros(n, dtype=bool)
+            for tag, (idxs, _w) in index.items():
+                if tag in mine:
+                    shared[idxs] = True
+            diff_gates.append(~shared)
+        elif sid == "bpm" or sid.startswith("num:"):
+            if sid == "bpm":
+                raw, present = lib.bpm, np.isfinite(lib.bpm)
+                mine_vals = [lib.bpm[r] for r in rows]
+                dtol = float(spec.get("tol") or 3.0)
+            else:
+                name = sid[4:]
+                values, present = lib.numbers.get(name), lib.number_present.get(name)
+                if values is None:
+                    continue
+                mean, std = lib.number_stats.get(name, (0.0, 1.0))
+                raw = values * (std or 1.0) + mean
+                mine_vals = [raw[r] for r in rows if present[r]]
+                dtol = float(spec.get("tol") or (std or 1.0) / 4.0)
+                if not mine_vals:
+                    notes.append(f"„{name} ≠“ nemá čo vylúčiť — zvolený track "
+                                 f"nemá hodnotu {name}.")
+                    continue
+            near = np.zeros(n, dtype=bool)
+            for v in mine_vals:
+                if np.isfinite(v):
+                    with np.errstate(invalid="ignore"):
+                        near |= np.abs(raw - v) <= abs(dtol)
+            diff_gates.append(present & ~near)
+
     number_gates: list[np.ndarray] = []
     for sid, spec in modes.items():
         spec = spec or {}
@@ -521,6 +581,8 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
         allowed &= tag_rule_mask(lib, tag_rules, n)
     for ok in number_gates:
         allowed &= ok
+    for ok in diff_gates:
+        allowed &= ok
     if bpm_window:
         allowed &= ~(np.isfinite(bpm_rel) & (bpm_rel * 100 > bpm_window))
     if bpm_tol:
@@ -596,6 +658,7 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
     db.close()
     return {"results": out, "signals_used": used, "seeds": seeds,
             "ceiling": round(ceiling, 3), "pool": pool, "library": n,
+            "notes": notes,
             "seeds_missing": missing, "agreement": agreement,
             "common": common_ground(lib, seeds)}
 

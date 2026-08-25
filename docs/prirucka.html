@@ -553,7 +553,7 @@ footer{border-top:1px solid var(--line); margin-top:60px; padding-top:22px; colo
 
 <ul class="plain">
 <li><strong>rovnaké</strong> — normálne správanie, odmeňuje podobnosť.</li>
-<li><strong>odlišné</strong> — obráti znamienko. Signál odteraz odmeňuje <em>kontrast</em>. Tu vzniká vývoj setu: podrž groove a tóninu, ale vypýtaj si inú energiu.</li>
+<li><strong>odlišné (≠)</strong> — tvrdý filter na kontrast. Pri tagu vyhodí všetko, čo zdieľa hodnotu so zvoleným trackom: „genre ≠“ znamená <em>iný žáner</em>, bodka. Pri čísle vyhodí všetko v okolí ± od hodnoty seedu, takže „energy ≠ ± 0,15“ znamená <em>citeľne iná energia</em>. Poradie naďalej určuje podobnosť — dostaneš teda „iný žáner, ale inak čo najbližšie“, čo je presne to, čo stavba setu potrebuje. Ak zvolený track hodnotu daného typu vôbec nemá, appka to napíše namiesto toho, aby sa tvárila, že filtruje.</li>
 <li><strong>väčšie / menšie (&gt; ≥ &lt; ≤)</strong> — jednostranná hranica. „energy &gt; 0,8“ pustí len tracky nad tou hodnotou; poradie naďalej určuje podobnosť. Tolerancia sa tu neuplatňuje a políčko ± preto zošedne.</li>
 <li><strong>cieľová hodnota</strong> — namieri signál na konkrétnu hodnotu, ktorú napíšeš v skutočných jednotkách („energy 0,8“, „BPM 174“), nie na hodnotu zvoleného tracku. Vedľa nej je okienko <strong>±</strong>, a to je dôležité: <strong>s ním je cieľ tvrdý filter</strong> — čo je mimo rozsahu, sa vôbec neobjaví. Bez neho je to len jemná preferencia, ktorá sa v celkovom skóre stratí.</li>
 </ul>

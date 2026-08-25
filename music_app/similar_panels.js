@@ -69,8 +69,10 @@ function paintActive(body) {
     if (row) row.classList.toggle("live", sel.value !== "same");
     // The ± box belongs to "→" alone. Greying it out under > and < stops it
     // from looking like it is doing something when it is not.
+    // The ± box is meaningful for "→" (a window around a value) and for "≠"
+    // (how far away counts as different). Under > and < it does nothing.
     const tl = row && row.querySelector("[data-tl]");
-    if (tl) tl.classList.toggle("idle", sel.value !== "target");
+    if (tl) tl.classList.toggle("idle", !["target", "diff"].includes(sel.value));
   });
 }
 
