@@ -266,7 +266,21 @@ UPLOAD_SLOTS = 1  # ONE upload at a time, deliberately.
 
 UPLOAD_ATTEMPTS = 3  # whole-transfer retries; each one RESUMES (see push_bundle)
 CHUNK_BYTES = 4 * 1024 * 1024    # SMALLER THAN THE OBSERVED STALL POINT.
-CHUNK_TIMEOUT = 90               # a stalled chunk must die FAST.
+CHUNK_TIMEOUT = 240              # a stalled chunk must die fast - but not so
+                                 # fast that it kills a healthy one. RAISED
+                                 # 90 -> 240 s on 25 Aug: the dependency install
+                                 # runs on the pod WHILE the bundle uploads
+                                 # (deliberate, D-045), and it starves the sshd
+                                 # enough that early chunks blew the 90 s limit.
+                                 # The signature was unmistakable: failures
+                                 # clustered at 10-25 MB - the install window -
+                                 # while a bundle that got past it ran to
+                                 # 1314/1314 MB clean. Two hours produced no
+                                 # finished shard because every runner died in
+                                 # that window and started over on a new pod.
+                                 # At 4 MB per chunk and 1.72 MB/s a healthy
+                                 # chunk takes ~2 s, so 240 s still only fires
+                                 # on something genuinely wedged.
 # Measured 23 Aug, second pass: 212 TimeoutExpired and every attempt moved only
 # 4-7 MB before the transfer froze — so a 32 MB chunk could never finish and
 # each one burned the full timeout for a few megabytes. The chunk is now smaller
