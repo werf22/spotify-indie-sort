@@ -187,6 +187,18 @@ def excluded_paths() -> set[str]:
     return {str(path.resolve()) for path in defaults + configured}
 
 
+APPLEDOUBLE_MAGIC = b"\x00\x05\x16\x07"
+
+
+def is_appledouble(path: Path) -> bool:
+    """True when the file is a macOS metadata sidecar rather than audio."""
+    try:
+        with open(path, "rb") as handle:
+            return handle.read(4).startswith(APPLEDOUBLE_MAGIC)
+    except OSError:
+        return False
+
+
 def iter_audio(roots: list[Path]):
     seen = set()
     excluded = excluded_paths()
@@ -201,6 +213,15 @@ def iter_audio(roots: list[Path]):
             for name in filenames:
                 path = directory_path / name
                 if path.suffix.lower() not in AUDIO_EXTENSIONS:
+                    continue
+                # Skip macOS AppleDouble sidecars. Copying music to an exFAT
+                # disk (the T7) writes a "._name.mp3" beside every "name.mp3"
+                # holding Finder metadata, not audio. 59,652 of them had been
+                # indexed as music and 1,552 were matched to tracks, so those
+                # tracks pointed at a 4 KB stub. The name alone is not proof -
+                # 169 real songs legitimately start with "._" - so the first
+                # four bytes decide. TWEAK: drop this block to index them again.
+                if name.startswith("._") and is_appledouble(path):
                     continue
                 resolved = str(path.resolve())
                 if resolved not in seen:
