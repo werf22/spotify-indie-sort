@@ -320,3 +320,31 @@ was written and that ⌘R fetches the newest.
 **Note for future sessions:** after ANY change to the page code, restart or ⌘R
 the app before asking the owner to re-test. A stale WKWebView looks exactly
 like a broken feature.
+
+
+## 2026-08-25 — D-082 · a value typed into "Cieľ" was ignored unless the dropdown said "→"
+
+The owner kept getting the unfiltered result — "What Time Is It?" first, every
+time — no matter what he typed into "Cieľ" in the Čísla section. The cause was
+a design failure, not a broken filter: `readShift` began with
+`if (sel.value === "same") return;`, so a number typed while the dropdown
+beside it still read "=" was thrown away in silence. The box was editable and
+had no effect, which is the worst possible combination.
+
+Reproduced in the running app with a probe that ONLY typed, never touching the
+dropdown — the same gesture the owner described:
+
+    PROBE2 pred="What Time Is It?" rozbaľovačka="same"
+    PROBE2 po="Rosa" rozbaľovačka="target" zmenilo=true riadokSvieti=true
+           hlavička="… z 595, ktoré prešli filtrom"
+
+- Typing a number into a target box now switches that row to "→" by itself, and
+  `readShift` treats a typed number as a target whatever the dropdown says
+  (unless it is explicitly "≠").
+- Any row that is actually constraining the result is highlighted (`.sig.live`),
+  so a setting that does nothing can no longer look like one that works.
+
+**Lesson:** three rounds were spent on "the filter is broken" while the filter
+was correct every time — first the display, then the decimal comma, then this.
+A control that is visible and editable but conditionally inert is the common
+thread. Do not ship one.

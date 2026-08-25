@@ -60,6 +60,15 @@ function setGroup(scope, g, on) {
  * real constraint: with it, anything outside target ± tolerance cannot appear
  * at all. Without it a target was only a scoring nudge worth a fraction of one
  * embedding, which is why asking for BPM 90 used to return 125 BPM tracks. */
+/* Light up every row that is actually constraining the result. Without this a
+ * setting that quietly does nothing looks the same as one that works. */
+function paintActive(body) {
+  body.querySelectorAll("[data-md]").forEach(sel => {
+    const row = sel.closest(".sig");
+    if (row) row.classList.toggle("live", sel.value !== "same");
+  });
+}
+
 function renderShift(signals, scope = "") {
   // BPM belongs here (it is targetable and it is the number the table shows);
   // the key does not, because the harmonic checkboxes above already own it.
@@ -110,14 +119,30 @@ function renderShift(signals, scope = "") {
     </div>`).join("");
   const touched = e => e.target.dataset.md || e.target.dataset.tg
                     || e.target.dataset.tl || e.target.classList.contains("kr");
+
+  /* TYPING A NUMBER INTO "Cieľ" MEANS "aim at this". It used to be ignored
+   * unless the dropdown beside it had first been switched to "→", so a value
+   * typed while it still said "=" simply did nothing — which is exactly what
+   * "nič sa nedeje" was. The mode is now switched automatically. */
+  const syncMode = e => {
+    const id = e.target.dataset.tg || e.target.dataset.tl;
+    if (!id) return;
+    const sel = body.querySelector(`[data-md="${CSS.escape(id)}"]`);
+    if (!sel) return;
+    const typed = (body.querySelector(`[data-tg="${CSS.escape(id)}"]`) || {}).value;
+    if (String(typed ?? "").trim() !== "" && sel.value !== "target") sel.value = "target";
+  };
   const react = () => {
+    paintActive(body);
     if (scope) { saveMetaShift(); paintMetaBadge(); }
     rerun();
   };
-  body.addEventListener("change", e => { if (touched(e)) react(); });
+  paintActive(body);
+  body.addEventListener("change", e => { if (touched(e)) { syncMode(e); react(); } });
   let typing;
   body.addEventListener("input", e => {
     if (!touched(e)) return;
+    syncMode(e);
     clearTimeout(typing);
     typing = setTimeout(react, 600);      // let the number be finished first
   });

@@ -142,6 +142,11 @@
   /* The track's place in the FULL similarity ranking, shown only when a filter
      has skipped past things — so a narrowed result reads as narrowed. */
   .rk{display:block;font-size:9.5px;color:var(--dim);line-height:1.1;margin-top:1px}
+  /* A row that is actually constraining the result says so. Without this a
+     setting that quietly does nothing looks identical to one that works. */
+  .sig.live{background:rgba(90,140,255,.14);border-radius:6px;
+      box-shadow:inset 2px 0 0 var(--accent)}
+  .sig.live .nm{color:var(--accent)}
   .mik b{color:var(--dim)}
   .mik.on{border-color:var(--accent);background:rgba(90,140,255,.12)}
   .mik.on b{color:var(--accent)}

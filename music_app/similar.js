@@ -130,20 +130,22 @@ function readShift(scope) {
   const root = document.getElementById("shiftBody" + scope);
   if (!root) return out;
   root.querySelectorAll("[data-md]").forEach(sel => {
-    if (sel.value === "same") return;
     const id = sel.dataset.md;
     const tg = root.querySelector(`[data-tg="${CSS.escape(id)}"]`);
     const tl = root.querySelector(`[data-tl="${CSS.escape(id)}"]`);
     const target = tg ? dec(tg.value) : null;
-    if (sel.value === "target" && target !== null) {
+    // A typed number wins: if something is in the target box, that is a target,
+    // whatever the dropdown happens to say.
+    if (target !== null && sel.value !== "diff") {
       out[id] = { mode: "target", target };
       // A tolerance turns the target into a hard filter. Left empty, the engine
       // applies a sensible default rather than decaying into a preference.
       const tol = tl ? dec(tl.value) : null;
       if (tol !== null) out[id].tol = Math.abs(tol);
-    } else if (sel.value !== "target") {
-      out[id] = { mode: sel.value };
+    } else if (sel.value === "diff") {
+      out[id] = { mode: "diff" };
     }
+    // "=" with an empty target box says nothing at all, which is the default.
   });
   return out;
 }
