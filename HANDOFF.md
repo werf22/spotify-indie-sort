@@ -4,14 +4,50 @@ This is the canonical cold-start document for the next AI agent. Read it before
 changing code, restarting services, creating cloud resources, calling a paid API,
 or modifying Spotify playlists.
 
-**STATUS 2026-08-24 — analysis running; the similarity app is now a NATIVE macOS app.**
+**STATUS 2026-08-25 04:5x — analysis running overnight; file index cleaned.**
 
-**THE APP IS NO LONGER A WEB PAGE.** `Similar Tracks.app` (built from
-`native/SimilarTracksApp.swift` by `native/build.sh`, git-ignored) is an AppKit
-window hosting the existing HTML UI in a WKWebView. It starts its own engine and
-owns the drag. Rebuild after ANY change to the Swift file; the HTML/JS/Python
-need no rebuild, just ⌘R in the app. Diagnostics land in `native/app.log`
-(page + drag events) and `native/engine.log` (the engine's stdout).
+**DO THIS NOW — check three things, in this order.**
+
+1. **Disk.** It hit 100 % during the night (465 MiB left) and a database backup
+   `cp` died half-written; deleting that truncated file was what freed 47 GiB.
+   `df -h .` must show comfortable headroom. `data/music.db` alone is 62 GB, so a
+   plain `cp` backup CANNOT fit — use `VACUUM INTO` or back up single tables.
+   `gc_analysis_workspace.py` reports 0 reclaimable: the 41 GB in
+   `data/cloud_full/clips` is pending work, not garbage.
+
+2. **Analysis.** Orchestrator runs under launchd
+   (`com.jakub.music-db-cloud-production`), log `data/cloud_production.log`.
+   Progress is keyed by **spotify_id, NOT by `path`** — `audio_analysis_artifacts.path`
+   is empty for 141k rows because shard manifests carry no `source_path`.
+   Counting distinct `path` makes a healthy run look completely stalled; that
+   mistake was made and corrected on 25 Aug.
+   Now: **59,465 tracks complete on all four stages** of 66,837 that have a
+   file. Remaining ≈ 7,372.
+
+3. **A slow uplink is not a slow pod.** Three pods in a row measured
+   0.34-0.39 MB/s against the 0.40 floor and were each discarded for "a faster
+   one", so the shard made no progress while still paying create/terminate
+   cycles. `runpod_full_shard.py` now counts consecutive speed rejections in a
+   shared file and, after `SPEED_REJECTS_BEFORE_ACCEPT` (2), rides the pod it
+   has. A rate at or above the floor clears the counter.
+
+**FILE INDEX — cleaned 25 Aug, do not re-index without the sidecar guard.**
+Copying the library onto the exFAT T7 made macOS write a 4 KB AppleDouble
+`._name.mp3` beside every real file. 59,652 of those were indexed as music and
+1,552 were matched to tracks, so those tracks pointed at a metadata stub.
+`purge_applebdouble_files.py` removed them by CONTENT (first four bytes), never
+by filename — 169 real songs legitimately start with `._`. Removed rows are
+recoverable from `audio_files_backup_20260825034323`.
+`index_audio_files.py` now skips AppleDouble on every future scan.
+
+**MATCHING CEILING — 16,903 tracks have no file, and no matching can change that.**
+66,837 of 83,740 tracks have a file. A full re-scan of ~/Music, ~/Downloads,
+~/Documents, ~/Desktop and every T7 music folder added 972 files and matched 441.
+`match_unmatched_by_duration.py` then took the leftovers: of 92 unique
+"artist title" name matches only **9** had a duration within 5 s — the other 83
+were different versions and would have been the WRONG file on the right track.
+The remaining ~1.5k unmatched files are ambient/meditation recordings, videos and
+untagged Spotify-downloader files that are not in the library at all.
 
 **DO THIS NOW — money is the binding constraint.** The RunPod balance is
 **$5.89** and the remaining 11,566 tracks cost about **$15.96** at the
