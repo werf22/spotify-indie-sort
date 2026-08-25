@@ -35,11 +35,25 @@ RESULTS = PILOT / "runpod-results.jsonl"
 # the next candidate is tried. Ordered cheapest-capable first. RTX 3090
 # community stock is frequently "Low", which is what starves throughput, so
 # the list keeps several sub-ceiling alternatives.
+# Cards the runner is willing to rent, best first. WIDENED 25 Aug: the old list
+# held four names and three of them were routinely out of stock, so shards sat
+# logging "no bounded GPU available" while the account had funds and work was
+# waiting. Everything here is community cloud under MAX_HOURLY_USD and was
+# confirmed available by `runpodctl get cloud -c` on 25 Aug.
+# The four analysis stages run CONCURRENTLY on one card, so anything below about
+# 12 GB of VRAM is left out on purpose - a cheap card that OOMs costs more than
+# a dear one that finishes. vCPU counts are the advertised figures; the real
+# cgroup quota still gets checked after creation (MIN_VCPU).
+# TWEAK: add a name only after checking BOTH its VRAM and its price here.
 GPU_CANDIDATES = (
-    "NVIDIA GeForce RTX 3090",
-    "NVIDIA RTX A5000",
-    "NVIDIA RTX A4000",
-    "NVIDIA GeForce RTX 4090",
+    "NVIDIA GeForce RTX 3090",        # 24 GB VRAM,  8 vCPU, $0.22 - proven
+    "NVIDIA RTX A4000",               # 16 GB VRAM, 16 vCPU, $0.17
+    "NVIDIA GeForce RTX 3080 Ti",     # 12 GB VRAM, 12 vCPU, $0.18
+    "NVIDIA RTX A4500",               # 20 GB VRAM,  8 vCPU, $0.19
+    "NVIDIA RTX 4000 SFF Ada Generation",  # 20 GB VRAM, 8 vCPU, $0.18
+    "Tesla V100-SXM2-16GB",           # 16 GB VRAM, 10 vCPU, $0.23
+    "NVIDIA GeForce RTX 4090",        # 24 GB VRAM, 32 vCPU, $0.34
+    "NVIDIA RTX A5000",               # 24 GB VRAM - often out of stock
 )
 MAX_HOURLY_USD = 0.40
 
