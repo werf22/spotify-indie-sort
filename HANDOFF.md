@@ -74,19 +74,19 @@ were different versions and would have been the WRONG file on the right track.
 The remaining ~1.5k unmatched files are ambient/meditation recordings, videos and
 untagged Spotify-downloader files that are not in the library at all.
 
-**DO THIS NOW — money is the binding constraint.** The RunPod balance is
-**$5.89** and the remaining 11,566 tracks cost about **$15.96** at the
-measured $0.00138/track. That buys roughly 4,276 of them — about
-37 % of what is left. The run parks itself cleanly below
-$1.00 (`MIN_BALANCE`, D-012), so nothing will be left billing; it will simply
-stop with ~7,290 tracks unanalysed until the owner tops up.
-Tell the owner the number — do not silently let it stall.
+**DO THIS NOW — nothing. It is running and the money now covers it.**
+Analysis is at **62,056 of ~68,061** with **6,005 left in the pool**, running
+unattended under launchd. The RunPod balance is **$7.99** and the last 24 hours
+cost **$4.99 for 6,789 tracks — $0.00074/track**, roughly half the historical
+average of $0.00129 ($79.71 over 363 pod-hours, 1,195 shards). At the recent
+rate the remaining 6,005 tracks cost about **$4.40**, so for the first time the
+run is funded to completion. At the historical average it would be $7.72 —
+still inside the balance, but only just. Watch it rather than assume it.
 
-**Analysis state:** 55,267 of 66,833 tracks complete (82.7 %).
-Ledger to date: $75.25 over 344 pod-hours, 1159 shards.
-Read progress with `cloud_production_orchestrator.completed_count()` — NOT by
-counting `audio_analysis_artifacts`, which is pruned once payloads are folded
-into features and therefore reads far too low (20.6k vs the real 54.7k).
+**Health checked 25 Aug:** nothing stuck (0 jobs in `processing` older than two
+hours), 56 GiB free, T7 mounted, one pod at $0.22/h with no orphans. The 15,668
+rows marked `blocked_missing` all point at `~/Music` paths that no longer exist
+— ordinary drift from moved or deleted files, not a fault.
 
 **Supervision:** launchd keeps `com.jakub.music-db-cloud-production` alive; the
 clip prep agent and the workspace GC run beside it. `cloud_pod_guard.py` is the
