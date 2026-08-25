@@ -489,7 +489,14 @@ def push_bundle(ssh: list[str], target: str, bundle: Path, remote: str) -> None:
                 proc = subprocess.run(ssh + [target, command], input=payload,
                                       capture_output=True, timeout=CHUNK_TIMEOUT)
             if proc.returncode:
-                raise RuntimeError((proc.stderr or b"")[-300:].decode("utf-8", "replace"))
+                # ALWAYS carry the return code. ssh can fail with an empty
+                # stderr, which produced an hour of "chunk failed ()" lines that
+                # said nothing (25 Aug). The code alone separates the two very
+                # different failures: 255 is ssh's own transport error (the link
+                # or the session died), anything else is dd's exit status on the
+                # pod (disk full, path gone).
+                why = (proc.stderr or b"")[-300:].decode("utf-8", "replace").strip()
+                raise RuntimeError(f"ssh rc={proc.returncode} {why or '(no stderr)'}")
         except Exception as exc:
             stalls += 1
             # STOP retrying a pod that no longer exists. A terminated pod refuses
@@ -503,7 +510,12 @@ def push_bundle(ssh: list[str], target: str, bundle: Path, remote: str) -> None:
                 raise RuntimeError("pod disappeared mid-upload; abandoning this shard")
             if stalls > CHUNK_RETRIES:
                 raise RuntimeError(f"upload stuck at {sent/1e6:.0f}/{size/1e6:.0f} MB: {exc}")
-            print(f"chunk at {sent/1e6:.0f} MB failed ({str(exc)[:70]}); retrying", flush=True)
+            # Log the END of the message, not the start: every ssh failure begins
+            # with the same 70 characters of command line, so truncating from the
+            # left hid the actual reason (25 Aug: an hour of "chunk failed" lines
+            # that were indistinguishable from each other).
+            detail = " ".join(str(exc).split())
+            print(f"chunk at {sent/1e6:.0f} MB failed ({detail[-160:]}); retrying", flush=True)
             time.sleep(10 * stalls)
             sent = _remote_bytes(ssh, target, remote)   # trust the pod, not us
             continue
