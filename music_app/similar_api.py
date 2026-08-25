@@ -225,3 +225,14 @@ def spotify_play(track_id: str, device_id: str, position_ms: int = 0) -> dict:
         return {"ok": True}
     # 404 here means the device vanished; 403 usually means not Premium.
     return {"error": f"Spotify: {resp.status_code} {resp.text[:120]}"}
+
+
+def build_stamp() -> float:
+    """When the page's code was last changed. Shown in the app so "am I running
+    the latest version?" is a glance, not a guess — that question cost two
+    rounds of debugging once."""
+    from pathlib import Path as _P
+    here = _P(__file__).resolve().parent
+    return max((f.stat().st_mtime for f in
+                (here / "similar.js", here / "similar_panels.js", here / "similar.html")
+                if f.exists()), default=0.0)

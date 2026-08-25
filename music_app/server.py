@@ -115,7 +115,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send((HERE / "similar.html").read_bytes(),
                                   content_type="text/html")
             if url.path == "/api/similar/status":
-                return self._send(similar_api.engine.status())
+                return self._send({**similar_api.engine.status(),
+                                   "build": similar_api.build_stamp()})
             if url.path == "/api/similar/search":
                 return self._send({"results": similar_api.engine.search(
                     query.get("q", ""), limit=int(query.get("limit", 25)))})

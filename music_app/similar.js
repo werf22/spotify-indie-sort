@@ -57,6 +57,10 @@ async function pollReady() {
     if (s.error) return $("status").textContent = "Chyba: " + s.error;
     if (s.ready) {
       $("status").textContent = `${s.tracks.toLocaleString()} zanalyzovaných`;
+      // Which version of the app code this window is running. If this is older
+      // than a change we just made, the window needs ⌘R (or a restart).
+      if (s.build) $("status").title = `Kód appky z ${new Date(s.build * 1000)
+        .toLocaleString("sk")} · ⌘R načíta najnovší`;
       if (!restored) { restored = true; restoreSeeds(); }   // once the engine can answer
       // Keep asking, slowly. It refreshes the count as tracks finish analysing,
       // and it is what tells the engine the app is still open so it does not
