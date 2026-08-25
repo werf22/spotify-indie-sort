@@ -4,14 +4,14 @@ This is the canonical cold-start document for the next AI agent. Read it before
 changing code, restarting services, creating cloud resources, calling a paid API,
 or modifying Spotify playlists.
 
-**STATUS 2026-08-25 04:5x — analysis running overnight; file index cleaned.**
+**STATUS 2026-08-25 12:0x — analysis running unattended; funded to finish.**
 
 **THE BINDING CONSTRAINT IS THE HOME UPLINK — not money, not GPUs.**
 Measured 25 Aug: 1.72 MB/s. Each shard ships a ~1.4 GB bundle, and a runner takes
 a pod only once it holds the single upload slot, so pods are never left idle
-paying for a queue. Remaining work ≈ 5,042 tracks ≈ 28 shards ≈ 42 GB,
+paying for a queue. Remaining work ≈ 6,005 tracks ≈ 34 shards ≈ 50 GB,
 which is about 7 hours of pure upload. Adding pods or GPU types CANNOT beat this;
-only fewer bytes could, and the owner has ruled out lowering audio quality.
+which is about 8 hours of pure upload. Adding pods or GPU types CANNOT beat this;
 
 Two supply fixes went in anyway, both real:
 - GPU pool widened from 4 cards to 8 (`runpod_pilot.GPU_CANDIDATES`), all
@@ -20,7 +20,11 @@ Two supply fixes went in anyway, both real:
   card, and an OOM costs more than a dearer card that finishes.
 - A slow uplink is no longer misread as a slow pod (see below).
 
-**STATUS: 61,661 of 66,703 tracks complete on all four stages.**
+**STATUS: 62,056 tracks complete on all four stages, 6,005 still in the pool.**
+Earlier numbers in this file (61,661 / 59,465 / "remaining 5,042") were written
+at different hours of the same night — this line is the current one. Read it
+from `cloud_production_orchestrator.completed_count()` and `pending_pool()`,
+never by counting `audio_analysis_artifacts`.
 
 **DO THIS NOW — check three things, in this order.**
 
@@ -37,8 +41,8 @@ Two supply fixes went in anyway, both real:
    is empty for 141k rows because shard manifests carry no `source_path`.
    Counting distinct `path` makes a healthy run look completely stalled; that
    mistake was made and corrected on 25 Aug.
-   Now: **59,465 tracks complete on all four stages** of 66,837 that have a
-   file. Remaining ≈ 7,372.
+   Now: see the STATUS line above — that is the one kept current.
+
 
 3. **A slow uplink is not a slow pod.** Three pods in a row measured
    0.34-0.39 MB/s against the 0.40 floor and were each discarded for "a faster
@@ -46,6 +50,19 @@ Two supply fixes went in anyway, both real:
    cycles. `runpod_full_shard.py` now counts consecutive speed rejections in a
    shared file and, after `SPEED_REJECTS_BEFORE_ACCEPT` (2), rides the pod it
    has. A rate at or above the floor clears the counter.
+
+4. **Money — no longer the constraint.** The balance is **$7.99** and the last
+   24 hours cost **$4.99 for 6,789 tracks — $0.00074/track**, about half the
+   historical average of $0.00129 ($79.71 over 363 pod-hours, 1,195 shards). The
+   remaining 6,005 tracks cost roughly **$4.40**, so the run is funded to finish
+   for the first time. At the historical average it would be $7.72 — inside the
+   balance, but only just. Watch it rather than assume it.
+
+**Health checked 25 Aug midday:** nothing stuck (0 jobs in `processing` older
+than two hours), 56 GiB free, T7 mounted, one pod at $0.22/h, no orphans. The
+15,668 rows marked `blocked_missing` all point at `~/Music` paths that no longer
+exist — ordinary drift from moved or deleted files, not a fault.
+
 
 **FILE INDEX — cleaned 25 Aug, do not re-index without the sidecar guard.**
 Copying the library onto the exFAT T7 made macOS write a 4 KB AppleDouble
@@ -73,20 +90,6 @@ Of 281 files on disk but not indexed, 279 are in ~/Library (mail, iCloud caches)
 were different versions and would have been the WRONG file on the right track.
 The remaining ~1.5k unmatched files are ambient/meditation recordings, videos and
 untagged Spotify-downloader files that are not in the library at all.
-
-**DO THIS NOW — nothing. It is running and the money now covers it.**
-Analysis is at **62,056 of ~68,061** with **6,005 left in the pool**, running
-unattended under launchd. The RunPod balance is **$7.99** and the last 24 hours
-cost **$4.99 for 6,789 tracks — $0.00074/track**, roughly half the historical
-average of $0.00129 ($79.71 over 363 pod-hours, 1,195 shards). At the recent
-rate the remaining 6,005 tracks cost about **$4.40**, so for the first time the
-run is funded to completion. At the historical average it would be $7.72 —
-still inside the balance, but only just. Watch it rather than assume it.
-
-**Health checked 25 Aug:** nothing stuck (0 jobs in `processing` older than two
-hours), 56 GiB free, T7 mounted, one pod at $0.22/h with no orphans. The 15,668
-rows marked `blocked_missing` all point at `~/Music` paths that no longer exist
-— ordinary drift from moved or deleted files, not a fault.
 
 **Supervision:** launchd keeps `com.jakub.music-db-cloud-production` alive; the
 clip prep agent and the workspace GC run beside it. `cloud_pod_guard.py` is the
