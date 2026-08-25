@@ -242,3 +242,33 @@ Deep house each returned 20 results with zero rule violations.
 
 **Also:** Spotify permissions were granted successfully in the meantime; see
 D-076 for what that does and does not make possible.
+
+
+## 2026-08-25 — D-079 · filters never threw the ranking away; the match bar was lying
+
+The owner reported that applying a macro or a number target made the app
+"forget" the similarity to the seed. **It never did** — proved on real data
+before changing anything: with only Essentia and MAEST enabled and the Sexy
+macro on, the returned tracks were EXACTLY the highest-scoring of the 553
+tracks carrying that mood, sitting at overall ranks 342, 2345, 3559 in the full
+ranking. `valence` targeting was checked the same way: target 1.0 ± 0.05
+returned tracks with 0.950-0.972.
+
+**What was actually wrong was the display.** The ZHODA bar was scaled to the
+best score IN THE CURRENT RESULT, so a heavily filtered set showed a full bar
+exactly like an unfiltered one — there was no way to see that the survivors sat
+far down the ranking. That is what "it forgot the similarity" was.
+
+- `similarity_engine.py`: every hard filter is now one boolean mask
+  (`tag_rule_mask` is a vectorised twin of `passes_tag_rules`, verified
+  equivalent — 0 violations on 20 results). The scan order is unchanged, so the
+  results are identical, but the size of the surviving pool becomes knowable.
+- The response carries `ceiling` (the best score the query could reach with no
+  filter — the seed's own), `pool` (how many tracks passed) and a per-row
+  `rank` in the full ranking.
+- `similar.js`: the bar is scaled against `ceiling`; the header says "100
+  najpodobnejších z 553, ktoré prešli filtrom · najlepší sedí na 46 % možnej
+  zhody"; each row shows its true rank when the filter skipped past others.
+
+Verified in the UI: unfiltered bars 73 % (top score 8.947 of ceiling 12.303);
+with the Sexy macro, bars 46/43/42 % and ranks 1333, 2081, 2327.

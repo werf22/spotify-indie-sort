@@ -497,10 +497,37 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
             bpm_rel[any_bpm] = np.nanmin(stack[:, any_bpm], axis=0)
     seed_set = set(seeds)
 
+    # EVERY hard filter as one mask. The ranking is untouched by it — the loop
+    # below still walks the library in score order and simply skips whatever the
+    # mask forbids, so what comes back is always the BEST of what survived.
+    allowed = np.ones(n, dtype=bool)
+    if tag_rules:
+        allowed &= tag_rule_mask(lib, tag_rules, n)
+    for ok in number_gates:
+        allowed &= ok
+    if bpm_window:
+        allowed &= ~(np.isfinite(bpm_rel) & (bpm_rel * 100 > bpm_window))
+    if bpm_tol:
+        allowed &= np.isfinite(bpm_abs) & (bpm_abs <= bpm_tol)
+    if same_key:
+        allowed &= keys >= 1.0
+    if key_rules:
+        allowed &= np.array([any(key_allowed(lib.key[r], k, key_rules) for r in rows)
+                             for k in lib.key], dtype=bool)
+
+    order = np.argsort(-score)
+    rank_of = np.empty(n, dtype=np.int32)
+    rank_of[order] = np.arange(n, dtype=np.int32)
+    # How good could this query possibly be, ignoring the filters? Showing the
+    # match against THAT instead of against the filtered winner is what makes a
+    # narrowed result look narrowed rather than look wrong.
+    ceiling = float(score[order[0]]) if n else 0.0
+    pool = int(allowed.sum() - sum(1 for sd in seeds if allowed[lib.pos[sd]]))
+
     db = sqlite3.connect(feat.DB, timeout=120)
     db.row_factory = sqlite3.Row
     out, seen = [], set()
-    for idx in np.argsort(-score):
+    for idx in order:
         sid = lib.ids[idx]
         if sid in seed_set:
             continue
@@ -508,20 +535,7 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
         # "local_c1e89649e0ddf452" — exactly 22 characters, same as a real one.
         if spotify_only and (len(sid) != 22 or sid.startswith("local_")):
             continue
-        if bpm_window and np.isfinite(bpm_rel[idx]) and bpm_rel[idx] * 100 > bpm_window:
-            continue
-        # A track with no known tempo cannot satisfy a tempo window, so it is
-        # excluded rather than quietly let through.
-        if bpm_tol:
-            if not np.isfinite(bpm_abs[idx]) or bpm_abs[idx] > bpm_tol:
-                continue
-        if same_key and not keys[idx] >= 1.0:
-            continue
-        if key_rules and not any(key_allowed(lib.key[r], lib.key[idx], key_rules) for r in rows):
-            continue
-        if tag_rules and not passes_tag_rules(lib, idx, tag_rules):
-            continue
-        if number_gates and not all(ok[idx] for ok in number_gates):
+        if not allowed[idx]:
             continue
         info = db.execute("""SELECT t.title, t.artist_names,
                                 (SELECT path FROM audio_files f WHERE f.spotify_id=t.spotify_id
@@ -559,11 +573,13 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
                     "bpm_diff": None if not np.isfinite(bpm_rel[idx]) else round(float(bpm_rel[idx] * 100), 1),
                     "key_match": None if not np.isfinite(keys[idx]) else float(keys[idx]),
                     "key_rel": key_relation(lib.key[best_row], lib.key[idx]),
+                    "rank": int(rank_of[idx]) + 1,
                     "why": [name for name, v in top if v > 0.5]})
         if len(out) >= limit:
             break
     db.close()
     return {"results": out, "signals_used": used, "seeds": seeds,
+            "ceiling": round(ceiling, 3), "pool": pool, "library": n,
             "seeds_missing": missing, "agreement": agreement,
             "common": common_ground(lib, seeds)}
 
@@ -742,6 +758,30 @@ def macros() -> list[dict]:
         out.append({"group": group["group"], "items": items})
     _macro_cache["out"] = out
     return out
+
+
+def tag_rule_mask(lib, rules: list[dict], n: int) -> np.ndarray:
+    """The same yes/no as passes_tag_rules, for the whole library at once.
+
+    Answering it in one pass is what lets the app say HOW MANY tracks survived a
+    filter. Without that number a narrowed result looks like the ranking was
+    thrown away, when in truth it was the best of a small pool.
+    """
+    mask = np.ones(n, dtype=bool)
+    for rule in rules or []:
+        ttype = (rule.get("type") or "").strip()
+        value = (rule.get("value") or "").strip().lower()
+        if not ttype or not value:
+            continue
+        types = [t.strip() for t in ttype.split("|") if t.strip()]
+        values = [v.strip() for v in value.split("|") if v.strip()]
+        hit = np.zeros(n, dtype=bool)
+        for t in types:
+            for tag, (rows, _w) in (lib.tag_index.get(t) or {}).items():
+                if any(v in tag for v in values):
+                    hit[rows] = True
+        mask &= hit if rule.get("mode", "must") == "must" else ~hit
+    return mask
 
 
 def passes_tag_rules(lib, idx: int, rules: list[dict]) -> bool:

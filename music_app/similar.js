@@ -410,13 +410,23 @@ async function runSeeds() {
         signal_weights: signalWeights(), signal_modes: signalModes(),
         key_rules: keyRules(), tag_rules: tagRules(), bpm_tol: bpmTol() }) });
     state.rows = res.results;
+    state.ceiling = res.ceiling;
     render();
     const used = Object.entries(res.signals_used || {}).map(([g, n]) => `${n} ${g}`).join(", ");
     // With several seeds, say what they actually had in common — otherwise the
     // owner has no way to tell whether the combination meant what he intended.
     const common = (res.common || []).slice(0, 4)
       .map(c => `${c.type}: ${c.tags.slice(0, 3).join(", ")}`).join(" · ");
+    // When a filter is on, the honest headline is not "100 results" but "the
+    // best 100 of the N that passed" — with how close the best one actually is.
+    const narrowed = res.pool != null && res.library && res.pool < res.library * 0.9;
+    const best = res.results[0];
+    const closeness = (best && res.ceiling)
+      ? ` · najlepší sedí na ${Math.round(best.score / res.ceiling * 100)} % možnej zhody`
+      : "";
     $("ref").innerHTML = `<b>${esc(names)}</b> — ${res.results.length} najpodobnejších`
+      + (narrowed ? `<span class="muted"> z <b>${res.pool.toLocaleString("sk")}</b>, `
+                  + `ktoré prešli filtrom${esc(closeness)}</span>` : "")
       + `<span class="muted"> · porovnané: ${esc(used)}</span>`
       + (common ? `<div class="muted" style="margin-top:3px">spoločné: ${esc(common)}</div>` : "");
     if ((res.seeds_missing || []).length)
@@ -427,7 +437,12 @@ const rerun = () => { if (state.seeds.length) runSeeds(); };
 
 /* ---------------- results table ---------------- */
 function render() {
-  const max = state.rows.length ? Math.max(...state.rows.map(r => r.score)) : 1;
+  // Scale against the best score the query could reach WITHOUT any filter, not
+  // against the best of what survived one. Measuring against the survivor made
+  // every filtered result look like a perfect match, which is exactly why
+  // narrowing by a macro felt as if the similarity had been thrown away — it
+  // never was, the pool was just smaller and further down the ranking.
+  const max = state.ceiling || (state.rows.length ? Math.max(...state.rows.map(r => r.score)) : 1);
   $("body").innerHTML = state.rows.map((r, i) => {
     const why = (r.why || []).filter(x => !["key", "bpm", "Tónina", "BPM"].includes(x)).slice(0, 3);
     if (r.key_rel && r.key_rel !== "rovnaká") why.unshift(r.key_rel);
@@ -439,7 +454,8 @@ function render() {
         <button class="pivot ghost" title="Nájdi podobné na tento track">⇄</button>
         <button class="rev ghost" title="Ukáž vo Finderi">⇱</button>
       </td>
-      <td class="c-num">${i + 1}</td>
+      <td class="c-num" title="${r.rank ? `V celom rebríčku podobnosti je tento track ${r.rank}. — filter len preskočil tie pred ním.` : ""}">${i + 1}${
+        r.rank && r.rank > i + 2 ? `<span class="rk">${r.rank}</span>` : ""}</td>
       <td class="c-art" title="${esc(r.artist)}">${esc(r.artist)}</td>
       <td class="c-tit" title="${esc(r.title)}">${esc(r.title)}</td>
       <td class="c-match"><span class="bar"><i style="width:${Math.max(4, Math.round(r.score / max * 100))}%"></i></span></td>
