@@ -102,7 +102,7 @@ function renderShift(signals, scope = "") {
             ${canTarget(g) ? `<input type="number" step="any" style="width:54px"
                 data-tg="${esc(s.id)}" placeholder="cieľ">
               <input type="number" step="any" style="width:48px"
-                data-tl="${esc(s.id)}" placeholder="±" value="${s.tol ?? ""}"
+                data-tl="${esc(s.id)}" placeholder="±" value="${s.tol ?? ""}" data-def="${s.tol ?? ""}"
                 title="Povolená odchýlka v skutočných jednotkách. Prázdne = len jemná preferencia.">` : ""}
           </label>`).join("")}
       </div>

@@ -288,6 +288,43 @@ $("bpmOn").onchange = () => { paintBpm(); rerun(); };
 $("bpmTol").onchange = () => { paintBpm(); if ($("bpmOn").checked) rerun(); };
 paintBpm();
 
+/* RESET — back to a clean slate WITHOUT losing the profile.
+ *
+ * It clears everything that sits ABOVE the profile: the whole META panel (its
+ * modes, targets, hard rules and macros), the Mixed in Key switch and the BPM
+ * window. The profile's own panels are deliberately left alone — that is what
+ * "everything except the profile" means, and re-clicking a profile or a mode is
+ * how you reset those.
+ * HOW TO TWEAK: add anything new that lives above profiles to this function,
+ * otherwise it quietly survives a reset and looks like a bug later. */
+function resetMeta() {
+  const meta = document.getElementById("shiftBodyMeta");
+  if (meta) {
+    meta.querySelectorAll("[data-md]").forEach(sel => sel.value = "same");
+    meta.querySelectorAll("[data-tg]").forEach(t => t.value = "");
+    meta.querySelectorAll("[data-tl]").forEach(t => { t.value = t.dataset.def ?? t.value; });
+  }
+  const rules = document.getElementById("rulesMeta");
+  if (rules) rules.innerHTML = "";
+  state.macros.Meta.clear();
+  renderMacros("Meta");
+
+  $("mikOn").checked = false; paintMik({ keep: true });
+  $("bpmOn").checked = false; paintBpm();
+
+  localStorage.removeItem("metaShift");
+  saveMetaShift();
+  paintMetaBadge();
+  toast("Vyresetované — META panel, Mixed in Key aj BPM okno. Profil zostal.");
+  rerun();
+}
+$("btnReset").onclick = () => {
+  const n = Object.keys(readShift("Meta")).length + readRules("Meta").length
+          + state.macros.Meta.size + (mikOn() ? 1 : 0) + ($("bpmOn").checked ? 1 : 0);
+  if (!n) return toast("Niet čo resetovať — nad profilom nič nastavené nie je.");
+  resetMeta();
+};
+
 $("mikOn").checked = localStorage.getItem("mikOn") === "1";
 $("mikOn").onchange = () => {
   // Going ON must not adopt the forced set as "the profile's own"; going OFF
