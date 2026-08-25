@@ -159,7 +159,7 @@
     </select>
     <label class="muted"><input type="checkbox" id="spotifyOnly" checked> len zo Spotify</label>
     <label class="muted mik" title="Nad všetkými profilmi: pustí len tracky, ktoré sú v Mixed In Key mixovateľné (rovnaká, ±1, ±2, ±7 poltón)"><input type="checkbox" id="mikOn"> <b>Mixed in Key</b></label>
-    <label class="muted mik" title="Nad všetkými profilmi: pustí len tracky do zadaného rozsahu BPM od zvoleného tracku"><input type="checkbox" id="bpmOn"> <b>BPM</b> ±<input type="number" id="bpmTol" min="0" step="0.5" value="3" style="width:46px"></label>
+    <label class="muted mik" title="Nad všetkými profilmi: pustí len tracky do zadaného rozsahu BPM od zvoleného tracku"><input type="checkbox" id="bpmOn"> <b>BPM</b> ±<input type="text" inputmode="decimal" id="bpmTol" value="3" style="width:46px" title="Desatinná čiarka aj bodka fungujú."></label>
     <span class="muted">🎧<select id="sink" title="Kam ide zvuk z tejto appky"><option value="">predvolený</option></select></span>
     <button id="btnAddSeed" class="ghost" title="Ďalší klik na výsledok hľadania pridá track k seedom (alebo ⌘/Shift-klik)">＋ pridať track</button>
     <button id="btnCompare">Čo porovnávať</button>

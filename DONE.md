@@ -272,3 +272,24 @@ far down the ranking. That is what "it forgot the similarity" was.
 
 Verified in the UI: unfiltered bars 73 % (top score 8.947 of ceiling 12.303);
 with the Sexy macro, bars 46/43/42 % and ranks 1333, 2081, 2327.
+
+
+## 2026-08-25 — D-080 · the decimal comma was silently discarding every typed target
+
+"Valence = 0,2 nezmenilo nič" was real, and the cause was small and total: the
+target and tolerance boxes were `<input type="number">`, and a number input
+**rejects the comma decimal separator outright** — `tg.value` came back as an
+empty string, so `readShift` emitted no target and the query ran unfiltered. A
+Slovak keyboard types a comma by default, so effectively every decimal target
+the owner typed was thrown away before it left the page.
+
+- The boxes are now `type="text" inputmode="decimal"`, and a `dec()` helper
+  accepts both separators. Same for the BPM ± box.
+- They also react to TYPING now, debounced 600 ms, not only to losing focus.
+  Choosing "→" and typing a value used to do nothing until you clicked
+  somewhere else, which looked exactly like the feature not working.
+
+Verified in the UI: "0,2" with tolerance "0,15" is sent as
+`{target: 0.2, tol: 0.15}` and the header reports 18 769 tracks past the
+filter. Engine side, every returned track is inside the window — 0/15 outside
+at ±0.15, ±0.0583 and at target 1.0.

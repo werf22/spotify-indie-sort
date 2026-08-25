@@ -99,20 +99,27 @@ function renderShift(signals, scope = "") {
               <option value="same">=</option><option value="diff">≠</option>
               ${canTarget(g) ? '<option value="target">→</option>' : ""}
             </select>
-            ${canTarget(g) ? `<input type="number" step="any" style="width:54px"
-                data-tg="${esc(s.id)}" placeholder="cieľ">
-              <input type="number" step="any" style="width:48px"
+            ${canTarget(g) ? `<input type="text" inputmode="decimal" style="width:54px"
+                data-tg="${esc(s.id)}" placeholder="cieľ"
+                title="Cieľová hodnota v skutočných jednotkách. Desatinná čiarka aj bodka fungujú.">
+              <input type="text" inputmode="decimal" style="width:48px"
                 data-tl="${esc(s.id)}" placeholder="±" value="${s.tol ?? ""}" data-def="${s.tol ?? ""}"
-                title="Povolená odchýlka v skutočných jednotkách. Prázdne = len jemná preferencia.">` : ""}
+                title="Povolená odchýlka v skutočných jednotkách. Prázdne = použije sa rozumná predvolená.">` : ""}
           </label>`).join("")}
       </div>
     </div>`).join("");
-  body.addEventListener("change", e => {
-    if (e.target.dataset.md || e.target.dataset.tg || e.target.dataset.tl
-        || e.target.classList.contains("kr")) {
-      if (scope) { saveMetaShift(); paintMetaBadge(); }
-      rerun();
-    }
+  const touched = e => e.target.dataset.md || e.target.dataset.tg
+                    || e.target.dataset.tl || e.target.classList.contains("kr");
+  const react = () => {
+    if (scope) { saveMetaShift(); paintMetaBadge(); }
+    rerun();
+  };
+  body.addEventListener("change", e => { if (touched(e)) react(); });
+  let typing;
+  body.addEventListener("input", e => {
+    if (!touched(e)) return;
+    clearTimeout(typing);
+    typing = setTimeout(react, 600);      // let the number be finished first
   });
 }
 

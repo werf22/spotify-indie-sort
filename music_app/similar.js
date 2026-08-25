@@ -112,6 +112,15 @@ const signalWeights = () => Object.fromEntries(
 /* Read one shift panel. Two exist: the profile's own, and the META one that
  * survives a profile change. META is read LAST so it wins where both speak —
  * that is the whole point of it being "above" the profile. */
+/* Slovak keyboards type a decimal COMMA. An <input type="number"> refuses it
+ * outright — the value arrives as an empty string — which is why "valence 0,2"
+ * silently did nothing at all. The boxes are plain text now and both separators
+ * are accepted here. */
+const dec = v => {
+  const t = String(v ?? "").trim().replace(",", ".");
+  return t === "" || !isFinite(+t) ? null : +t;
+};
+
 function readShift(scope) {
   const out = {};
   const root = document.getElementById("shiftBody" + scope);
@@ -121,11 +130,13 @@ function readShift(scope) {
     const id = sel.dataset.md;
     const tg = root.querySelector(`[data-tg="${CSS.escape(id)}"]`);
     const tl = root.querySelector(`[data-tl="${CSS.escape(id)}"]`);
-    if (sel.value === "target" && tg && tg.value !== "") {
-      out[id] = { mode: "target", target: +tg.value };
-      // A tolerance turns the target into a hard filter. Empty leaves it as
-      // the old soft preference, which is almost never what someone means.
-      if (tl && tl.value !== "") out[id].tol = Math.abs(+tl.value);
+    const target = tg ? dec(tg.value) : null;
+    if (sel.value === "target" && target !== null) {
+      out[id] = { mode: "target", target };
+      // A tolerance turns the target into a hard filter. Left empty, the engine
+      // applies a sensible default rather than decaying into a preference.
+      const tol = tl ? dec(tl.value) : null;
+      if (tol !== null) out[id].tol = Math.abs(tol);
     } else if (sel.value !== "target") {
       out[id] = { mode: sel.value };
     }
@@ -274,7 +285,7 @@ function paintMik(opts = {}) {
  * a DJ says it ("± 3 BPM from the one I picked"), kept in the browser so it
  * survives every profile change. Absolute BPM, not a percentage: 3 % is a
  * different thing at 90 than at 174. */
-const bpmTol = () => ($("bpmOn").checked ? Math.abs(+$("bpmTol").value || 0) : 0);
+const bpmTol = () => ($("bpmOn").checked ? Math.abs(dec($("bpmTol").value) || 0) : 0);
 function paintBpm() {
   const on = $("bpmOn").checked;
   $("bpmOn").closest("label").classList.toggle("on", on);
