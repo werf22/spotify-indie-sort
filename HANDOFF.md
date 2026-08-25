@@ -6,6 +6,22 @@ or modifying Spotify playlists.
 
 **STATUS 2026-08-25 04:5x — analysis running overnight; file index cleaned.**
 
+**THE BINDING CONSTRAINT IS THE HOME UPLINK — not money, not GPUs.**
+Measured 25 Aug: 1.72 MB/s. Each shard ships a ~1.4 GB bundle, and a runner takes
+a pod only once it holds the single upload slot, so pods are never left idle
+paying for a queue. Remaining work ≈ 5,042 tracks ≈ 28 shards ≈ 42 GB,
+which is about 7 hours of pure upload. Adding pods or GPU types CANNOT beat this;
+only fewer bytes could, and the owner has ruled out lowering audio quality.
+
+Two supply fixes went in anyway, both real:
+- GPU pool widened from 4 cards to 8 (`runpod_pilot.GPU_CANDIDATES`), all
+  verified with `runpodctl get cloud -c`, all under the $0.40 cap, several
+  cheaper than the 3090. Cards under ~12 GB VRAM stay out: four stages share one
+  card, and an OOM costs more than a dearer card that finishes.
+- A slow uplink is no longer misread as a slow pod (see below).
+
+**STATUS: 61,661 of 66,703 tracks complete on all four stages.**
+
 **DO THIS NOW — check three things, in this order.**
 
 1. **Disk.** It hit 100 % during the night (465 MiB left) and a database backup
@@ -39,6 +55,15 @@ Copying the library onto the exFAT T7 made macOS write a 4 KB AppleDouble
 by filename — 169 real songs legitimately start with `._`. Removed rows are
 recoverable from `audio_files_backup_20260825034323`.
 `index_audio_files.py` now skips AppleDouble on every future scan.
+
+**FILE INDEX — 'matched' now means the file is really on the disk.**
+A full inventory of both disks (98,044 real audio files) against the index found
+15,668 rows pointing into ~/Music/Tidal Spotify Imports at files that had been
+deleted ('Local Library Blindspots 01-04' and siblings). 15,608 tracks counted as
+having a file that was not there. Pruned with `index_audio_files.py --prune`;
+15,474 of those tracks already had a second live file, so only 134 lost their
+last reference. Index now: 96,465 matched, 15,669 missing, 1,575 unmatched.
+Of 281 files on disk but not indexed, 279 are in ~/Library (mail, iCloud caches).
 
 **MATCHING CEILING — 16,903 tracks have no file, and no matching can change that.**
 66,837 of 83,740 tracks have a file. A full re-scan of ~/Music, ~/Downloads,

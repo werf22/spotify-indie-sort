@@ -125,6 +125,10 @@ const dec = v => {
   return t === "" || !isFinite(+t) ? null : +t;
 };
 
+/* The operators a number can carry. "target" is a window around a value; the
+ * rest are one-sided limits. Anything else means "no constraint". */
+const OPS = new Set(["target", "gt", "gte", "lt", "lte"]);
+
 function readShift(scope) {
   const out = {};
   const root = document.getElementById("shiftBody" + scope);
@@ -134,16 +138,18 @@ function readShift(scope) {
     const tg = root.querySelector(`[data-tg="${CSS.escape(id)}"]`);
     const tl = root.querySelector(`[data-tl="${CSS.escape(id)}"]`);
     const target = tg ? dec(tg.value) : null;
-    // A typed number wins: if something is in the target box, that is a target,
-    // whatever the dropdown happens to say.
-    if (target !== null && sel.value !== "diff") {
-      out[id] = { mode: "target", target };
-      // A tolerance turns the target into a hard filter. Left empty, the engine
-      // applies a sensible default rather than decaying into a preference.
-      const tol = tl ? dec(tl.value) : null;
-      if (tol !== null) out[id].tol = Math.abs(tol);
-    } else if (sel.value === "diff") {
-      out[id] = { mode: "diff" };
+    if (sel.value === "diff") { out[id] = { mode: "diff" }; return; }
+    // A typed number wins: something in the target box IS a demand, whatever
+    // the dropdown says. If no operator was chosen, "→" is what was meant.
+    if (target !== null) {
+      const mode = OPS.has(sel.value) ? sel.value : "target";
+      out[id] = { mode, target };
+      if (mode === "target") {
+        // A tolerance makes it a window. Left empty, the engine picks a
+        // sensible one rather than decaying into a preference that loses.
+        const tol = tl ? dec(tl.value) : null;
+        if (tol !== null) out[id].tol = Math.abs(tol);
+      }
     }
     // "=" with an empty target box says nothing at all, which is the default.
   });
@@ -606,6 +612,76 @@ const pickedIds = () => state.rows.filter(r => state.picked.has(r.spotify_id)).m
  * wins. Dragging an unselected row drags that row, otherwise the whole
  * selection — the same rule Finder uses.
  */
+/* ---------------- the ⓘ explainer ----------------
+ * One popover, reused. It asks the engine what a signal is: the prose comes
+ * from similarity_help.py, the value lists and number ranges straight from the
+ * library, so it can never describe data that is not there.
+ * HOW TO TWEAK the wording: similarity_help.py, not here. */
+const infoBox = document.createElement("div");
+infoBox.id = "infoPop";
+infoBox.hidden = true;
+document.body.appendChild(infoBox);
+
+const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+
+async function showInfo(id, anchor) {
+  infoBox.hidden = false;
+  infoBox.innerHTML = '<div class="muted">načítavam…</div>';
+  place(anchor);
+  try {
+    const d = await api("/api/similar/explain?id=" + encodeURIComponent(id));
+    if (d.error) throw new Error(d.error);
+    const cov = `<div class="cov">Pokrytie: <b>${d.coverage.toLocaleString("sk")}</b> `
+      + `z ${d.library.toLocaleString("sk")} trackov (${pct(d.coverage, d.library)} %)`
+      + `${d.default ? " · štandardne zapnuté" : ""}</div>`;
+    let body = "";
+    if (d.values) {
+      body = `<div class="lbl">Najčastejšie hodnoty (${d.distinct.toLocaleString("sk")} rôznych)</div>`
+        + `<div class="vals">${d.values.map(v =>
+            `<span><b>${esc(v.value)}</b> ${v.count.toLocaleString("sk")}</span>`).join("")}</div>`;
+    } else if (d.range) {
+      const r = d.range;
+      body = `<div class="lbl">Aké hodnoty tam sú</div>`
+        + `<table class="rng"><tr><td>najnižšia</td><td>${r.min}</td><td>medián</td><td><b>${r.median}</b></td><td>najvyššia</td><td>${r.max}</td></tr>`
+        + `<tr><td>5 %</td><td>${r.p5}</td><td>25 %</td><td>${r.p25}</td><td>75 %</td><td>${r.p75}</td></tr></table>`
+        + (d.suggest ? `<div class="lbl">Čo skúsiť zadať</div><div class="vals">`
+            + Object.entries(d.suggest).map(([k, v]) => `<span><b>${esc(k)}</b> ${v}</span>`).join("")
+            + `</div>` : "")
+        + (d.tol ? `<div class="cov">Predvolená tolerancia pri → je ± ${d.tol}</div>` : "");
+    }
+    infoBox.innerHTML = `<div class="hd">${esc(d.label)}<button class="x">✕</button></div>`
+      + `<p>${esc(d.what)}</p>`
+      + (d.how ? `<p class="how">${esc(d.how)}</p>` : "")
+      + cov + body
+      + `<p class="use">${esc(d.usage || "")}</p>`;
+    infoBox.querySelector(".x").onclick = hideInfo;
+    place(anchor);
+  } catch (e) {
+    infoBox.innerHTML = `<div class="hd">Nepodarilo sa<button class="x">✕</button></div>`
+      + `<p>${esc(e.message)}</p>`;
+    infoBox.querySelector(".x").onclick = hideInfo;
+  }
+}
+
+function place(anchor) {
+  const r = anchor.getBoundingClientRect();
+  const w = 340;
+  infoBox.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.left - w / 2 + r.width / 2)) + "px";
+  const below = window.innerHeight - r.bottom;
+  if (below > 260 || below > r.top) {
+    infoBox.style.top = (r.bottom + 8) + "px"; infoBox.style.bottom = "auto";
+  } else {
+    infoBox.style.bottom = (window.innerHeight - r.top + 8) + "px"; infoBox.style.top = "auto";
+  }
+}
+const hideInfo = () => { infoBox.hidden = true; };
+document.addEventListener("click", e => {
+  const btn = e.target.closest("[data-info]");
+  if (btn) { e.preventDefault(); e.stopPropagation(); return showInfo(btn.dataset.info, btn); }
+  if (!e.target.closest("#infoPop")) hideInfo();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") hideInfo(); });
+
 /* ---------------- native drag ----------------
  * Inside the macOS app the drag is done by the app itself: a real
  * NSDraggingSession carrying file URLs, which is what Finder puts on the

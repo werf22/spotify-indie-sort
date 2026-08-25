@@ -29,6 +29,7 @@ function renderCompare(signals) {
             <span class="cov">${Math.round(s.coverage / 1000)}k</span>
             <input type="number" step="0.1" min="0" max="9" data-sw="${esc(s.id)}"
                    value="${(s.weight ?? 1).toFixed(1)}" title="Váha tohto signálu">
+            <button class="info" data-info="${esc(s.id)}" title="Čo to je a ako to použiť">i</button>
           </label>`).join("")}
       </div>
     </div>`).join("");
@@ -66,6 +67,10 @@ function paintActive(body) {
   body.querySelectorAll("[data-md]").forEach(sel => {
     const row = sel.closest(".sig");
     if (row) row.classList.toggle("live", sel.value !== "same");
+    // The ± box belongs to "→" alone. Greying it out under > and < stops it
+    // from looking like it is doing something when it is not.
+    const tl = row && row.querySelector("[data-tl]");
+    if (tl) tl.classList.toggle("idle", sel.value !== "target");
   });
 }
 
@@ -104,16 +109,20 @@ function renderShift(signals, scope = "") {
       <div class="grid">
         ${list.map(s => `<label class="sig" title="${esc(s.note || "")}">
             <span class="nm">${esc(s.label)}</span>
-            <select data-md="${esc(s.id)}">
+            <select data-md="${esc(s.id)}" title="= rovnaké · ≠ odlišné · → mier na hodnotu · > < obmedz rozsah">
               <option value="same">=</option><option value="diff">≠</option>
-              ${canTarget(g) ? '<option value="target">→</option>' : ""}
+              ${canTarget(g) ? `<option value="target">→</option>
+                <option value="gt">&gt;</option><option value="gte">≥</option>
+                <option value="lt">&lt;</option><option value="lte">≤</option>` : ""}
             </select>
             ${canTarget(g) ? `<input type="text" inputmode="decimal" style="width:54px"
                 data-tg="${esc(s.id)}" placeholder="cieľ"
                 title="Cieľová hodnota v skutočných jednotkách. Desatinná čiarka aj bodka fungujú.">
               <input type="text" inputmode="decimal" style="width:48px"
                 data-tl="${esc(s.id)}" placeholder="±" value="${s.tol ?? ""}" data-def="${s.tol ?? ""}"
-                title="Povolená odchýlka v skutočných jednotkách. Prázdne = použije sa rozumná predvolená.">` : ""}
+                title="Povolená odchýlka v skutočných jednotkách. Platí len pri →. Prázdne = rozumná predvolená.">
+              <button class="info" data-info="${esc(s.id)}" title="Čo to je a ako to použiť">i</button>` : ""}
+            ${canTarget(g) ? "" : `<button class="info" data-info="${esc(s.id)}" title="Čo to je a ako to použiť">i</button>`}
           </label>`).join("")}
       </div>
     </div>`).join("");
@@ -130,7 +139,9 @@ function renderShift(signals, scope = "") {
     const sel = body.querySelector(`[data-md="${CSS.escape(id)}"]`);
     if (!sel) return;
     const typed = (body.querySelector(`[data-tg="${CSS.escape(id)}"]`) || {}).value;
-    if (String(typed ?? "").trim() !== "" && sel.value !== "target") sel.value = "target";
+    // Only fill in the mode when NONE was chosen. Overwriting a deliberate ">"
+    // with "→" the moment a number is typed would silently change the question.
+    if (String(typed ?? "").trim() !== "" && sel.value === "same") sel.value = "target";
   };
   const react = () => {
     paintActive(body);

@@ -126,6 +126,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"jobs": analyze_jobs.recent()})
             if url.path == "/api/profiles":
                 return self._send({"profiles": profiles.list_profiles()})
+            if url.path == "/api/similar/explain":
+                return self._send(similar_api.engine.explain(query.get("id", "")))
             if url.path == "/api/similar/presets":
                 return self._send({"presets": similar_api.engine.presets()})
             if url.path == "/api/similar/macros":

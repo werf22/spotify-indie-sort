@@ -397,10 +397,14 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
     # a tolerance comes with the target the number now FILTERS: anything outside
     # target ± tolerance cannot appear at all, and closeness still orders what
     # remains. Leaving the tolerance empty keeps the old soft behaviour.
+    # FILTERS ON A NUMBER: aim at a value (→), or demand more/less than one
+    # (> <). All three are hard — they decide what may appear at all, while the
+    # ranking stays whatever the enabled signals say.
     number_gates: list[np.ndarray] = []
     for sid, spec in modes.items():
         spec = spec or {}
-        if spec.get("mode") != "target":
+        op = spec.get("mode")
+        if op not in ("target", "gt", "lt", "gte", "lte"):
             continue
         if spec.get("target") in (None, ""):
             continue
@@ -423,14 +427,26 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
         # a preference is worth a fraction of one embedding and simply loses.
         if tol in (None, "", 0):
             tol = default_tol
+        want = float(spec["target"])
         with np.errstate(invalid="ignore"):
-            ok = present & (np.abs(raw - float(spec["target"])) <= abs(float(tol)))
+            if op == "target":
+                ok = present & (np.abs(raw - want) <= abs(float(tol)))
+            elif op == "gt":
+                ok = present & (raw > want)
+            elif op == "gte":
+                ok = present & (raw >= want)
+            elif op == "lt":
+                ok = present & (raw < want)
+            else:
+                ok = present & (raw <= want)
         number_gates.append(ok)
 
     for sid in enabled:
         spec = modes.get(sid) or {}
         mode = spec.get("mode", "same")
         target = spec.get("target") if mode == "target" else None
+        if mode in ("gt", "lt", "gte", "lte"):
+            mode = "same"      # they filter; the ranking stays similarity-based
         per_seed = []
         for seed, row in zip(seeds, rows):
             result = _signal_vector(lib, sid, seed, row, n, target=target)
@@ -963,6 +979,67 @@ PRESETS = [
         "embeddings": ["CLAP", "MAEST"], "musical": [],
     },
 ]
+
+
+def explain(sid: str) -> dict:
+    """Everything the ⓘ button shows for one signal.
+
+    The prose comes from similarity_help.py; the numbers and value lists are
+    read from the library itself, so the help can never describe data that is
+    not there. TWEAK the wording in similarity_help.py, never here.
+    """
+    import similarity_help as helptext
+    if not _state["ready"]:
+        warm()
+    lib = _state["lib"]
+    item = next((s for s in signals() if s["id"] == sid), None)
+    if not item:
+        return {"error": "taký signál neexistuje"}
+    out = {"id": sid, "label": item["label"], "group": item["group"],
+           "coverage": item["coverage"], "library": len(lib.ids),
+           "default": item["default"]}
+    key = sid.split(":", 1)[1] if ":" in sid else sid
+    what, how = helptext.prose(item["group"], item["label"] if item["group"] == "audio" else key)
+
+    if item["group"] == "tags":
+        index = lib.tag_index.get(key) or {}
+        top = sorted(((tag, len(rows)) for tag, (rows, _w) in index.items()),
+                     key=lambda kv: -kv[1])[:18]
+        out["values"] = [{"value": t, "count": c} for t, c in top]
+        out["distinct"] = len(index)
+        if not what:
+            what = f"Typ štítku s {len(index):,} rôznymi hodnotami."
+            how = "Vlastného popisu zatiaľ nemá — pozri najčastejšie hodnoty nižšie."
+        out["usage"] = ("V paneli „Čo posunúť“ sa dá použiť ako tvrdé pravidlo: "
+                        "musí / nesmie obsahovať jednu z hodnôt nižšie.")
+    elif item["group"] in ("numbers", "musical"):
+        if item["group"] == "musical":
+            raw = lib.bpm[np.isfinite(lib.bpm)]
+        else:
+            values, present = lib.numbers.get(key), lib.number_present.get(key)
+            mean, std = lib.number_stats.get(key, (0.0, 1.0))
+            raw = (values * (std or 1.0) + mean)[present]
+        if raw.size:
+            qs = np.percentile(raw, [5, 25, 50, 75, 95])
+            out["range"] = {"min": round(float(raw.min()), 3), "max": round(float(raw.max()), 3),
+                            "mean": round(float(raw.mean()), 3),
+                            "p5": round(float(qs[0]), 3), "p25": round(float(qs[1]), 3),
+                            "median": round(float(qs[2]), 3), "p75": round(float(qs[3]), 3),
+                            "p95": round(float(qs[4]), 3)}
+            out["suggest"] = {"nízke": round(float(qs[1]), 2), "stredné": round(float(qs[2]), 2),
+                              "vysoké": round(float(qs[3]), 2), "extrém": round(float(qs[4]), 2)}
+        out["tol"] = item.get("tol")
+        if not what:
+            what = "Číselná vlastnosť skladby."
+            how = "Vlastného popisu zatiaľ nemá — orientuj sa podľa rozsahu nižšie."
+        out["usage"] = ("Porovnáva sa vzdialenosťou: čím bližšie k hodnote zvoleného tracku, "
+                        "tým vyššie skóre. V paneli „Čo posunúť“ sa dá namieriť na hodnotu (→) "
+                        "alebo obmedziť operátormi > a <.")
+    else:
+        out["usage"] = ("Embedding — porovnáva sa kosínusovou podobnosťou celých odtlačkov zvuku. "
+                        "Nedá sa naň nastaviť cieľová hodnota, len zapnúť a zvážiť.")
+    out["what"], out["how"] = what, how
+    return out
 
 
 def presets() -> list[dict]:
