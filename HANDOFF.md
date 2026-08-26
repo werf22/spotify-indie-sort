@@ -22,6 +22,38 @@ Stav: `screen -ls`, `tail native/normalise.log`.
 
 **STATUS 2026-08-25 12:0x — analysis running unattended; funded to finish.**
 
+**27 Aug — LOCAL-ONLY FILES NOW HAVE IDENTITIES; EXPRESS SHARDS FIXED.**
+Tracks 84,361 (was 83,740), with a real file 67,325, analysed 4/4 62,254.
+
+Closing the "link everything" gap needed three steps, in this order:
+1. `backfill_durations.py` (new) — index_audio_files reads duration with mutagen,
+   which returns nothing for damaged tags, and that same population was the one
+   that never matched. ffprobe reads the stream instead: 262 files got a real
+   duration. The other 516 are broken downloads (median 147 KB, some 0 bytes,
+   all named "[SPOTIFY-DOWNLOADER.COM] …") and contain no audio at all.
+2. `promote_unmatched_local_tracks.py` — 622 files got synthetic local_ identities
+   and now flow through the normal pipeline. 443 were skipped as >900 s (the
+   owner's no-DJ-sets boundary) and 516 as unreadable.
+3. Unmatched files fell 1,575 -> 953.
+
+**EXPRESS SHARDS: the queue exemption is now size-limited.** analyze_now lets a
+shard skip the upload slot so a just-clicked track is not stuck behind the
+nightly backlog. That was written for ~5 tracks (~35 MB). An 87-track request
+built a 629 MB bundle, jumped the queue, fought the nightly upload for the same
+uplink, crawled at 0.12 MB/s — and analyze_now's flat 5400 s timeout then killed
+the healthy runner while the pod carried on billing alone. Now: express skips the
+queue only under EXPRESS_SLOT_FREE_MB (120 MB), and the timeout is computed from
+the workload (5 tracks 63 min, 87 tracks 112, 200 tracks 179).
+
+**THE POD REAPER WAS BLIND — it is the money guard, so check it first.**
+It listed pods with `runpodctl pod list`, which returned ONE pod while TWO were
+billing, and reported uptimeSeconds as 0 for a pod plainly up 20 minutes. Its age
+also came from OUR OWN state file, so a dead runner left age 0.0 and the hard time
+box could never fire. A pod billed 728 minutes against a 120 minute box on 25 Aug
+and the reaper logged nothing about it. It now lists via the REST endpoint and
+takes age from RunPod's own lastStartedAt/createdAt. The running instance had to
+be reloaded to pick this up — it had been running the 19 Aug code (box=75).
+
 **26 Aug 00:30 — THE PIPELINE WAS STUCK FOR EIGHT HOURS; THREE BUGS, ALL FIXED.**
 Analysis ran and results downloaded the whole time, but nothing reached the
 database: last import 15:42, results.jsonl rewritten at 19:28, 20:24, 20:33.
