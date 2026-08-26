@@ -535,3 +535,29 @@ hand. Verified in the app: "⚠ 13 z 24 zaškrtnutých signálov sa nedalo použ
 zvolený track pre ne nemá dáta … style, acousticness, average_loudness …", the
 button opens the editor on that track, and the red alarm still fires separately
 when a filter cannot be answered at all.
+
+## 2026-08-26 — D-088 · zoznam výsledkov: seed, Comment, triedenie, editácia
+
+- **Zvolený track je prvý** a označený (`seedrow`, „zvolený" namiesto pruhu zhody);
+  ostáva pripnutý navrchu pri akomkoľvek triedení.
+- **Stĺpec Energia** = Traktor „Comment". Nový `scan_comments.py` ho vyčítal zo
+  všetkých súborov do tabuľky `track_comment` (nikdy do súborov nezapisuje,
+  resumable podľa mtime).
+- **Triedenie** podľa Interpret / Názov / Zhoda / BPM / Tónina / Energia; `data-i`
+  ostáva indexom do `state.rows`, takže prehrávanie, drag a výber po zoradení
+  stále trafia správny track.
+- **Editácia polí** priamo v riadku (✎) — hodnoty idú do `user_overrides` a
+  komentár aj do samotného súboru.
+- **Zobrazenie energie zjednotené** (`energyText`/`energyTitle`): stĺpec vždy
+  ukazuje „07 Energy", tooltip presne to, čo je v súbore. Bez toho vyzeralo
+  správne číselné zoradenie ako náhodné, lebo ten istý stupeň je v knižnici
+  napísaný dvoma spôsobmi.
+- **`normalise_comments.py`** prepisuje „Energy 7" na „07 Energy" priamo v
+  súboroch. Používa `traktor_comment_pin.write_comment` (overené zaobchádzanie s
+  rámcami + záloha do `comment_pin_backup`), pred zápisom súbor znova prečíta
+  (zastaraný riadok v DB nesmie prepísať skutočnú zmenu) a po zápise overí, že
+  tam text naozaj je. 7 858 súborov; beží detachovane za skenerom.
+
+Overené: v appke po reštarte enginu — zostupne 07(seed)/08/07…, vzostupne
+monotónne bez výnimky, prázdne až na konci; 5 súborov skontrolovaných zvlášť
+proti súboru, databáze aj zálohe.

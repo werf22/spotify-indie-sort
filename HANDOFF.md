@@ -4,6 +4,15 @@ This is the canonical cold-start document for the next AI agent. Read it before
 changing code, restarting services, creating cloud resources, calling a paid API,
 or modifying Spotify playlists.
 
+**26 Aug (neskoro) — BEŽIA DVE ÚLOHY NA POZADÍ, obe detachovane v `screen`:**
+- `comments` — `scan_comments.py` číta Traktor „Comment" zo všetkých súborov do
+  `track_comment`. Iba číta. Resumable podľa mtime.
+- `normalise` — čaká na PID skenera, potom `normalise_comments.py` prepíše
+  „Energy 7" na „07 Energy" v ~7 858 súboroch. Zálohuje do `comment_pin_backup`,
+  overuje každý zápis znovuprečítaním. Log: `native/normalise.log`.
+  Vrátiť späť sa dá cez `traktor_comment_pin.py restore`.
+Stav: `screen -ls`, `tail native/normalise.log`.
+
 **STATUS 2026-08-25 12:0x — analysis running unattended; funded to finish.**
 
 **26 Aug 00:30 — THE PIPELINE WAS STUCK FOR EIGHT HOURS; THREE BUGS, ALL FIXED.**
