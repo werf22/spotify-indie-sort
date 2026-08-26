@@ -586,3 +586,14 @@ orientálneho setu Dua Lipu; CLAP detekcie „tabla" s istotou 0,56 (medián) sa
 brali ako dôkaz; tá istá nahrávka prešla dvakrát pod dvoma menami interpreta;
 „Caravan Palace" prešlo cez slovo „caravan"; tónina bola pôvodne vybraná z
 fondu, ktorý tématická brána až potom preriedila.
+
+## 2026-08-26 — normalizácia Comment dokončená
+
+4 124 súborov prepísaných z „Energy 7" na „07 Energy", 0 zlyhaní; každý zápis
+overený znovuprečítaním súboru, staré hodnoty v `comment_pin_backup`.
+Výsledok: 59 331 komentárov v jednotnom tvare, 0 v starom.
+
+Chyba nájdená pri dobehu: skript pri „súbor už je správny" iba preskočil, takže
+20 zastaraných riadkov v `track_comment` tvrdilo „Energy 7" o súboroch, ktoré
+mali „07 Energy" — appka by ukazovala starý text. „Netreba nič robiť" a
+„databáza klame" nie sú to isté; skript teraz riadok zosúladí.

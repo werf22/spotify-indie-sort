@@ -73,7 +73,7 @@ def main() -> int:
           + (" (NASUCHO — nič sa nezapíše)" if args.dry_run else ""), flush=True)
 
     stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
-    done = skipped = failed = 0
+    done = skipped = failed = resynced = 0
     changed_examples: list[str] = []
     started = time.time()
 
@@ -93,6 +93,15 @@ def main() -> int:
             continue
         want = WANT_FORM.format(n=n)
         if current == want:
+            # THE FILE IS RIGHT AND THE DATABASE IS WRONG. "Nothing to do" and
+            # "the record we hold is stale" are not the same thing; skipping
+            # both left 20 rows claiming "Energy 7" about files that had said
+            # "07 Energy" all along, and the app would have shown the old text.
+            if not args.dry_run and db_comment != want:
+                db.execute("""UPDATE track_comment
+                              SET comment=?, energy=?, scanned_at=datetime('now')
+                              WHERE path=?""", (want, n, path_s))
+                resynced += 1
             skipped += 1
             continue
 
@@ -133,7 +142,7 @@ def main() -> int:
 
     db.commit()
 
-    print(f"\nprepísaných {done:,} · preskočených {skipped:,} · zlyhalo {failed:,}")
+    print(f"\nprepísaných {done:,} · preskočených {skipped:,} · zosúladených v DB {resynced:,} · zlyhalo {failed:,}")
     if changed_examples:
         print("ukážka:")
         for line in changed_examples:
