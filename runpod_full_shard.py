@@ -303,6 +303,7 @@ CHUNK_RETRIES = 12               # consecutive chunk failures before giving up
 # costs ~2 minutes and pods are plentiful; an hour spent crawling is not.
 MIN_UPLOAD_MBPS = 0.40           # below this, the pod is not worth the wait
 SPEED_CHECK_AFTER_MB = 24        # judge only once there is enough to judge on  # a stalled consumer link should not scrap a paid pod
+GPU_PROBE_TRIES = 3               # driver warm-up allowance before a pod is condemned
 SPEED_REJECTS_BEFORE_ACCEPT = 2   # consecutive slow pods tolerated before the
                                   # runner concludes the LINE is slow, not the pod
 
@@ -321,13 +322,25 @@ def gpu_healthy(command: str) -> tuple[bool, str]:
              "x=torch.randn(64,64,device='cuda');"
              "assert float((x@x).sum().abs())>=0;"
              "print('gpu-ok',torch.cuda.get_device_name(0))\" 2>&1 | tail -2")
-    try:
-        proc = subprocess.run(rp.ssh_args(command) + [probe],
-                              text=True, cwd=ROOT, timeout=180, capture_output=True)
-    except subprocess.TimeoutExpired:
-        return False, "gpu probe timed out"
-    out = (proc.stdout or proc.stderr or "").strip()
-    return ("gpu-ok" in out), " ".join(out.split())[:200]
+    # RETRY BEFORE CONDEMNING. A pod that has just booted can answer ssh while
+    # its GPU driver is still coming up, and torch.cuda.is_available() is then
+    # False for a few seconds. Rejecting on the first miss threw away usable
+    # pods: on 26 Aug an express shard burned all three of its attempts, two of
+    # them on this check alone. TWEAK: GPU_PROBE_TRIES / the sleep below.
+    out = ""
+    for attempt in range(GPU_PROBE_TRIES):
+        try:
+            proc = subprocess.run(rp.ssh_args(command) + [probe],
+                                  text=True, cwd=ROOT, timeout=180, capture_output=True)
+        except subprocess.TimeoutExpired:
+            out = "gpu probe timed out"
+        else:
+            out = (proc.stdout or proc.stderr or "").strip()
+            if "gpu-ok" in out:
+                return True, " ".join(out.split())[:200]
+        if attempt < GPU_PROBE_TRIES - 1:
+            time.sleep(20)
+    return False, " ".join(out.split())[:200]
 
 
 # --- slow-line detector ---------------------------------------------------
@@ -937,7 +950,8 @@ def main() -> None:
         if needs_upload:
             healthy, detail = gpu_healthy(command)
             if not healthy:
-                raise RuntimeError(f"pod GPU unusable before upload: {detail}")
+                raise RuntimeError(f"pod GPU unusable before upload "
+                                   f"[{rp.read_state().get('gpu') or 'neznáma karta'}]: {detail}")
             if prewarm(command):
                 print("dependency install started; uploading bundle alongside it", flush=True)
             upload(command, bundle, results)

@@ -33,7 +33,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 SOURCE = ROOT / "data" / "cloud_full"
 SHARDS = ROOT / "data" / "cloud_full_shards"
-POD_ATTEMPTS = 3     # community hosts fail to boot often enough to matter
+POD_ATTEMPTS = 5     # community hosts fail to boot often enough to matter
 STAGES = ("rhythm_full", "maest_full", "essentia_full", "clap_full")
 
 
