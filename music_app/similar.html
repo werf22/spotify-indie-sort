@@ -190,6 +190,13 @@
   #editPop .pick i{color:var(--dim);font-style:normal;margin-left:5px;font-size:10px}
   #editPop .opts .pick{padding:2px 6px}
   #status.stale{color:#e07a6a;font-weight:600}
+  /* Signals that could not be used. Not fatal like .alarm, but never silent:
+     a data-poor seed can lose most of the comparison this way. */
+  .warn{margin-top:5px;background:rgba(224,163,62,.12);border:1px solid rgba(224,163,62,.5);
+      border-radius:8px;padding:6px 10px;font-size:12px;color:var(--dim);line-height:1.55}
+  .warn b{color:#e0a33e;font-weight:600}
+  .warn button{margin-left:6px;border-color:#e0a33e;color:#e0a33e;background:transparent;
+      font-size:11px;padding:2px 7px}
   td.empty{padding:34px 18px;text-align:center;color:var(--dim);line-height:1.7;font-size:13px}
   td.empty b{color:var(--ink);font-size:14.5px}
   .rule.incomplete{opacity:.55}

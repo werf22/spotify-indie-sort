@@ -421,6 +421,7 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
     diff_gates: list[np.ndarray] = []
     notes: list[str] = []
     missing_fields: list[dict] = []
+    skipped: list[dict] = []
     for sid, spec in modes.items():
         if (spec or {}).get("mode") != "diff":
             continue
@@ -524,6 +525,12 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
                 values = -values
             per_seed.append(_z(values, mask))
         if not per_seed:
+            # SILENTLY DROPPING A TICKED SIGNAL IS EXACTLY WHAT MUST NOT HAPPEN.
+            # A data-poor seed can lose most of the comparison this way — one
+            # track lost 27 of 45 — and the app used to report only how many
+            # signals were used, never how many were asked for and could not be.
+            skipped.append({"id": sid, "label": labels.get(sid, sid),
+                            "group": group_of.get(sid, "other")})
             continue
         z = per_seed[0] if len(per_seed) == 1 else np.mean(per_seed, axis=0)
         # How much the seeds agreed, purely for display: the length of the
@@ -694,7 +701,8 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
     db.close()
     return {"results": out, "signals_used": used, "seeds": seeds,
             "ceiling": round(ceiling, 3), "pool": pool, "library": n,
-            "notes": notes, "missing": missing_fields,
+            "notes": notes, "missing": missing_fields, "skipped": skipped,
+            "asked": len(enabled),
             "seeds_missing": missing, "agreement": agreement,
             "common": common_ground(lib, seeds)}
 

@@ -504,6 +504,14 @@ async function runSeeds() {
                   + `ktoré prešli filtrom${esc(closeness)}</span>` : "")
       + `<span class="muted"> · porovnané: ${esc(used)}</span>`
       + (common ? `<div class="muted" style="margin-top:3px">spoločné: ${esc(common)}</div>` : "")
+      + ((res.skipped || []).length
+          ? `<div class="warn">⚠ <b>${res.skipped.length} z ${res.asked} zaškrtnutých signálov `
+            + `sa nedalo použiť</b> — zvolený track pre ne nemá dáta, takže do porovnania nevstúpili: `
+            + esc(res.skipped.map(x => x.label).join(", "))
+            + (res.skipped.some(x => x.id === "key" || x.id === "bpm")
+                ? ` <button data-edit="${esc(res.seeds[0])}" data-field="key">✎ doplniť ručne</button>` : "")
+            + `</div>`
+          : "")
       + ((res.missing || []).length
           ? `<div class="alarm">` + res.missing.map(m =>
               `<b>Chýba ${esc(m.label)}.</b> ${esc(m.why)} `

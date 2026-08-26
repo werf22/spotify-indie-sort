@@ -517,3 +517,21 @@ code on disk is newer the footer turns red and a toast says to reopen the app.
 **Note for future sessions:** the app deliberately leaves the engine running on
 quit, so `pkill` on the app alone is NOT enough after changing Python. Kill
 `music_app/server.py` too.
+
+
+## 2026-08-26 — D-089 · the last silent failure: signals that drop out unannounced
+
+Asked whether the LOUD requirement was really met, the answer was no. Two cases
+were covered — a key filter with no key, a tempo window with no tempo — but a
+third was still silent and it is the largest: a ticked signal whose seed has no
+data simply vanishes from the comparison. Measured on "Calling The Spirits":
+**27 of 45 ticked signals dropped out**, and the app reported only "3 audio,
+8 tags, 6 numbers, 1 musical" — the count used, never the count asked for.
+
+`similar()` now returns `skipped` (which signals could not contribute) and
+`asked` (how many were ticked). The header shows an amber line naming them, with
+a button to the editor when one of them is a field that can be filled in by
+hand. Verified in the app: "⚠ 13 z 24 zaškrtnutých signálov sa nedalo použiť —
+zvolený track pre ne nemá dáta … style, acousticness, average_loudness …", the
+button opens the editor on that track, and the red alarm still fires separately
+when a filter cannot be answered at all.
