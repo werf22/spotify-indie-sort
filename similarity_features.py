@@ -244,4 +244,28 @@ class Library:
                 i = self.pos.get(sid)
                 if i is not None and key[i] is None:
                     key[i] = str(value)
+        # WHAT THE OWNER TYPED WINS, over every provider and over our own
+        # analysis. Detection misses things — the seed that started this had no
+        # key at all, which silently emptied every key-filtered profile — and a
+        # DJ who knows the key should be able to say so once and have it stick.
+        # Overrides live in their own table so re-analysis can never erase them.
+        try:
+            db.execute("""CREATE TABLE IF NOT EXISTS user_overrides (
+                              spotify_id TEXT NOT NULL,
+                              field      TEXT NOT NULL,
+                              value_text TEXT,
+                              value_num  REAL,
+                              updated_at TEXT DEFAULT (datetime('now')),
+                              PRIMARY KEY (spotify_id, field))""")
+        except Exception:
+            pass                       # a read-only connection cannot create it
+        for sid, field, vtext, vnum in db.execute(
+                "SELECT spotify_id, field, value_text, value_num FROM user_overrides"):
+            i = self.pos.get(sid)
+            if i is None:
+                continue
+            if field == "key" and vtext:
+                key[i] = str(vtext)
+            elif field == "bpm" and vnum:
+                bpm[i] = float(vnum)
         self.key = key

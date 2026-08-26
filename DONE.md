@@ -478,3 +478,42 @@ their own, directly under it, and behave as tabs: opening one closes the others,
 clicking the open one closes it, and the choice is remembered. This reverses the
 "all open, independent" behaviour from earlier today at the owner's request —
 four long panels stacked above the results left nothing to orient by.
+
+
+## 2026-08-26 — D-088 · nothing fails silently any more; values can be corrected by hand
+
+The owner's saved profiles returned nothing for "Calling The Spirits - Conjure
+Remix" while the built-in modes worked. All three profiles share one filter —
+the Mixed in Key set — and that track has **no detected key at all**, so
+`key_allowed(None, …)` was false for every candidate and the result was empty
+with no explanation.
+
+**Loud instead of silent.** `similar()` now returns `missing`: which value is
+absent, on which track, and why the filter could not be answered. The header
+shows it as a red alarm with a button that opens the editor on that field.
+Verified end to end: 0 results → alarm naming the track → editor → typing a key
+→ 100 results in mixable keys, alarm gone.
+
+**Values are editable, and what is typed wins.** A new `user_overrides` table
+(additive; nothing existing was migrated) is applied AFTER every provider and
+after our own analysis, so re-analysis can never overwrite it. The editor offers
+what other sources hold, the twenty-four keys as one-click choices, and free
+text; clearing a field hands control back to detection. `apply_override()`
+patches the loaded library in place so the correction takes effect on the very
+next query rather than after a restart.
+
+**Harmony against a key you choose.** `base_key` replaces the seed's key for the
+filter, the match score and the relation shown in the table — for building a set
+in a key the seed is not in. It sits in the Harmonicky block of BOTH shift
+panels, META winning when both name one, and it persists with META and inside a
+profile. Verified: seed E-Minor with base F-Major returns C-Major/E-Major/
+G-Major at "+1" and "-7", pool 13,612 against 19,451 for the seed's own key.
+
+**A stale server is now loud too.** Restarting only the app leaves the engine on
+old Python — that is exactly what happened while testing `base_key` and it cost
+a round. `/api/similar/status` reports `started` alongside `build`, and when the
+code on disk is newer the footer turns red and a toast says to reopen the app.
+
+**Note for future sessions:** the app deliberately leaves the engine running on
+quit, so `pkill` on the app alone is NOT enough after changing Python. Kill
+`music_app/server.py` too.

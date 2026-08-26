@@ -76,6 +76,15 @@ function paintActive(body) {
   });
 }
 
+/* The twenty-four keys, in Camelot order so neighbours on the wheel sit next to
+ * each other in the list. */
+const KEY_CHOICES = [
+  "A-Minor", "E-Minor", "B-Minor", "F#-Minor", "C#-Minor", "G#-Minor",
+  "Eb-Minor", "Bb-Minor", "F-Minor", "C-Minor", "G-Minor", "D-Minor",
+  "C-Major", "G-Major", "D-Major", "A-Major", "E-Major", "B-Major",
+  "F#-Major", "Db-Major", "Ab-Major", "Eb-Major", "Bb-Major", "F-Major",
+];
+
 function renderShift(signals, scope = "") {
   // BPM belongs here (it is targetable and it is the number the table shows);
   // the key does not, because the harmonic checkboxes above already own it.
@@ -95,16 +104,23 @@ function renderShift(signals, scope = "") {
     ([a], [b]) => (a === "musical" ? -1 : b === "musical" ? 1 : 0));
   const canTarget = g => g === "numbers" || g === "musical";
   const body = $("shiftBody" + scope);
-  body.innerHTML = (scope ? "" : `
+  body.innerHTML = `
     <div class="grp">
       <div class="grp-head"><span class="name">Harmonicky</span>
         <span class="muted">čo sa smie objaviť podľa tóniny (Camelot)</span></div>
+      <div class="row" style="margin-bottom:6px">
+        <span class="muted">voči tónine:</span>
+        <select data-basekey="${scope}" title="Normálne sa počíta voči tónine zvoleného tracku. Keď robíš set v inej tónine, zvoľ ju tu a všetko harmonické sa meria od nej.">
+          <option value="">tónina zvoleného tracku</option>
+          ${KEY_CHOICES.map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join("")}
+        </select>
+      </div>
       <div class="row">
         ${[["exact","rovnaká"],["relative","relatívna"],["step1","±1"],["step2","±2"],
            ["semitone","±7 (poltón)"]].map(([v, l]) =>
-          `<label class="muted"><input type="checkbox" class="kr" value="${v}"> ${l}</label>`).join("")}
+          `<label class="muted"><input type="checkbox" class="kr${scope}" value="${v}"> ${l}</label>`).join("")}
       </div>
-    </div>`) + ordered.map(([g, list]) => `
+    </div>` + ordered.map(([g, list]) => `
     <div class="grp">
       <div class="grp-head"><span class="name">${esc(GROUP_LABEL[g] || g)}</span>
         <span class="muted">= rovnaké · ≠ odlišné${canTarget(g) ? " · → mier na hodnotu — vyhodí LEN tracky v rozsahu ±" : ""}</span></div>
@@ -129,7 +145,8 @@ function renderShift(signals, scope = "") {
       </div>
     </div>`).join("");
   const touched = e => e.target.dataset.md || e.target.dataset.tg
-                    || e.target.dataset.tl || e.target.classList.contains("kr");
+                    || e.target.dataset.tl || e.target.dataset.basekey !== undefined
+                    || e.target.classList.contains("kr");
 
   /* TYPING A NUMBER INTO "Cieľ" MEANS "aim at this". It used to be ignored
    * unless the dropdown beside it had first been switched to "→", so a value
@@ -285,6 +302,7 @@ function currentSettings() {
            signal_weights: signalWeights(), signal_modes: readShift(""),
            filters: { key_rules: ownKeyRules.slice(), tag_rules: readRules(""),
                       macros: [...state.macros[""]],
+                      base_key: (document.querySelector('[data-basekey=""]') || {}).value || "",
                       limit: +$("limit").value, spotify_only: $("spotifyOnly").checked } };
 }
 function applySettings(s) {
@@ -314,6 +332,8 @@ function applySettings(s) {
   const f = s.filters || {};
   const kr = new Set(f.key_rules || []);
   document.querySelectorAll("#shiftBody .kr").forEach(c => c.checked = kr.has(c.value));
+  const ownBase = document.querySelector('[data-basekey=""]');
+  if (ownBase) ownBase.value = f.base_key || "";
   $("rules").innerHTML = "";
   (f.tag_rules || []).forEach(r => addRule(r));
   state.macros[""] = new Set(f.macros || []);

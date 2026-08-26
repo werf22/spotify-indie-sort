@@ -116,7 +116,8 @@ class Handler(BaseHTTPRequestHandler):
                                   content_type="text/html")
             if url.path == "/api/similar/status":
                 return self._send({**similar_api.engine.status(),
-                                   "build": similar_api.build_stamp()})
+                                   "build": similar_api.build_stamp(),
+                                   "started": STARTED})
             if url.path == "/api/similar/search":
                 return self._send({"results": similar_api.engine.search(
                     query.get("q", ""), limit=int(query.get("limit", 25)))})
@@ -126,6 +127,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"jobs": analyze_jobs.recent()})
             if url.path == "/api/profiles":
                 return self._send({"profiles": profiles.list_profiles()})
+            if url.path == "/api/track/fields":
+                return self._send(similar_api.track_fields(query.get("id", "")))
             if url.path == "/api/similar/explain":
                 return self._send(similar_api.engine.explain(query.get("id", "")))
             if url.path == "/api/similar/presets":
@@ -177,6 +180,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send({"ok": True, "queued": len(paths)})
             if url.path == "/api/traktor/paths":
                 return self._send(traktor_bridge.file_list(body.get("ids") or []))
+            if url.path == "/api/track/field":
+                return self._send(similar_api.set_track_field(
+                    body.get("id", ""), body.get("field", ""), body.get("value")))
             if url.path == "/api/spotify/play":
                 return self._send(similar_api.spotify_play(
                     body.get("id", ""), body.get("device_id", ""),
@@ -208,6 +214,7 @@ class Handler(BaseHTTPRequestHandler):
                     bpm_tol=float(body.get("bpm_tol") or 0),
                     same_key=bool(body.get("same_key")),
                     key_rules=body.get("key_rules"),
+                    base_key=body.get("base_key"),
                     enabled=body.get("enabled"),
                     group_weights=body.get("group_weights"),
                     signal_weights=body.get("signal_weights"),
@@ -245,6 +252,9 @@ def retire_when_idle() -> None:
 
 
 LAST_REQUEST = [time.time()]
+# When this process began. If the code on disk is newer, the running server is
+# stale and every change made since is invisible — the app says so out loud.
+STARTED = time.time()
 
 
 def main() -> None:

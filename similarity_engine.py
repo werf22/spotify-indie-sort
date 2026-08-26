@@ -281,6 +281,11 @@ def _signal_vector(lib, sid: str, ref: str, row: int, n: int, target=None):
     return None
 
 
+def _name_of(cache: dict, sid: str) -> str:
+    """Artist — title for a message, looked up once per call."""
+    return cache.get(sid) or sid
+
+
 def _seed_list(ref, refs) -> list[str]:
     """One reference or many — the rest of the engine does not care which."""
     if refs:
@@ -320,6 +325,7 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
             bpm_window: float = 0.0, bpm_tol: float = 0.0,
             same_key: bool = False, dedupe: bool = True,
             key_rules: list[str] | None = None,
+            base_key: str | None = None,
             enabled: list[str] | None = None,
             group_weights: dict | None = None,
             signal_weights: dict | None = None,
@@ -414,6 +420,7 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
     # heaviest weight.
     diff_gates: list[np.ndarray] = []
     notes: list[str] = []
+    missing_fields: list[dict] = []
     for sid, spec in modes.items():
         if (spec or {}).get("mode") != "diff":
             continue
@@ -540,8 +547,15 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
 
     # Against MANY seeds a candidate is judged by its BEST match among them:
     # in a set it only has to sit next to one of the records, not all of them.
-    key_cols = [np.array([key_score(lib.key[r], k) for k in lib.key], dtype=np.float32)
-                for r in rows]
+    # HARMONY AGAINST A KEY YOU CHOOSE. Normally the reference is the seed's own
+    # key, but a set is often built in a key the seed is not in — so `base_key`
+    # replaces it, and everything harmonic (the filter, the match score and the
+    # relation shown in the table) is measured from there instead.
+    if base_key:
+        key_cols = [np.array([key_score(base_key, k) for k in lib.key], dtype=np.float32)]
+    else:
+        key_cols = [np.array([key_score(lib.key[r], k) for k in lib.key], dtype=np.float32)
+                    for r in rows]
     keys = key_cols[0] if len(key_cols) == 1 else np.max(np.stack(key_cols), axis=0)
     bpm_cols, bpm_abs_cols = [], []
     for r in rows:
@@ -587,10 +601,33 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
         allowed &= ~(np.isfinite(bpm_rel) & (bpm_rel * 100 > bpm_window))
     if bpm_tol:
         allowed &= np.isfinite(bpm_abs) & (bpm_abs <= bpm_tol)
+    db = sqlite3.connect(feat.DB, timeout=120)
+    db.row_factory = sqlite3.Row
+    db_names = {}
+    for sd in seeds:
+        row = db.execute("SELECT title, artist_names FROM tracks WHERE spotify_id=?", (sd,)).fetchone()
+        if row:
+            db_names[sd] = f"{row['artist_names']} — {row['title']}"
+
+    # A FILTER THAT CANNOT BE ANSWERED MUST SAY SO. The seed that started this
+    # had no detected key at all, so every key-filtered profile came back empty
+    # with no explanation. Each of these records WHICH value is missing and on
+    # WHICH track, so the app can offer to fill it in instead of shrugging.
+    if (same_key or key_rules) and not base_key and not any(lib.key[r] for r in rows):
+        missing_fields.append({"field": "key", "label": "tónina",
+                        "tracks": [{"id": sd, "name": _name_of(db_names, sd)} for sd in seeds],
+                        "why": "Filter na tóninu sa nedá vyhodnotiť — zvolený track "
+                               "nemá rozpoznanú tóninu."})
+    if (bpm_tol or bpm_window) and not any(np.isfinite(lib.bpm[r]) and lib.bpm[r] > 0 for r in rows):
+        missing_fields.append({"field": "bpm", "label": "BPM",
+                        "tracks": [{"id": sd, "name": _name_of(db_names, sd)} for sd in seeds],
+                        "why": "Tempové okno sa nedá vyhodnotiť — zvolený track "
+                               "nemá rozpoznané BPM."})
     if same_key:
         allowed &= keys >= 1.0
     if key_rules:
-        allowed &= np.array([any(key_allowed(lib.key[r], k, key_rules) for r in rows)
+        bases = [base_key] if base_key else [lib.key[r] for r in rows]
+        allowed &= np.array([any(key_allowed(b, k, key_rules) for b in bases)
                              for k in lib.key], dtype=bool)
 
     order = np.argsort(-score)
@@ -602,8 +639,6 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
     ceiling = float(score[order[0]]) if n else 0.0
     pool = int(allowed.sum() - sum(1 for sd in seeds if allowed[lib.pos[sd]]))
 
-    db = sqlite3.connect(feat.DB, timeout=120)
-    db.row_factory = sqlite3.Row
     out, seen = [], set()
     for idx in order:
         sid = lib.ids[idx]
@@ -634,6 +669,7 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
         top = sorted(((labels.get(s, s), float(v[idx])) for s, v in contributions.items()),
                      key=lambda kv: -kv[1])[:4]
         best_row = max(rows, key=lambda r: key_score(lib.key[r], lib.key[idx]))
+        shown_base = base_key or lib.key[best_row]
         out.append({"spotify_id": sid, "title": title, "artist": artist,
                     "has_file": bool(info and info["path"]),
                     # The real file path travels with the row so the native app
@@ -650,7 +686,7 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
                     "key": lib.key[idx],
                     "bpm_diff": None if not np.isfinite(bpm_rel[idx]) else round(float(bpm_rel[idx] * 100), 1),
                     "key_match": None if not np.isfinite(keys[idx]) else float(keys[idx]),
-                    "key_rel": key_relation(lib.key[best_row], lib.key[idx]),
+                    "key_rel": key_relation(shown_base, lib.key[idx]),
                     "rank": int(rank_of[idx]) + 1,
                     "why": [name for name, v in top if v > 0.5]})
         if len(out) >= limit:
@@ -658,7 +694,7 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
     db.close()
     return {"results": out, "signals_used": used, "seeds": seeds,
             "ceiling": round(ceiling, 3), "pool": pool, "library": n,
-            "notes": notes,
+            "notes": notes, "missing": missing_fields,
             "seeds_missing": missing, "agreement": agreement,
             "common": common_ground(lib, seeds)}
 
@@ -1002,6 +1038,26 @@ PRESETS = [
         "embeddings": ["CLAP", "MAEST"], "musical": [],
     },
 ]
+
+
+def apply_override(track_id: str, field: str, value) -> bool:
+    """Put a corrected value into the loaded library immediately.
+
+    Without this the correction would only take effect after a restart, and the
+    owner would type the key, see nothing change, and reasonably conclude it did
+    not work.
+    """
+    if not _state["ready"]:
+        return False
+    lib = _state["lib"]
+    i = lib.pos.get(track_id)
+    if i is None:
+        return False
+    if field == "key":
+        lib.key[i] = str(value) if value else None
+    elif field == "bpm":
+        lib.bpm[i] = float(value) if value else np.nan
+    return True
 
 
 def explain(sid: str) -> dict:

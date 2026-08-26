@@ -233,6 +233,113 @@ def build_stamp() -> float:
     rounds of debugging once."""
     from pathlib import Path as _P
     here = _P(__file__).resolve().parent
-    return max((f.stat().st_mtime for f in
-                (here / "similar.js", here / "similar_panels.js", here / "similar.html")
-                if f.exists()), default=0.0)
+    root = here.parent
+    watched = [here / "similar.js", here / "similar_panels.js", here / "similar.html",
+               here / "similar_api.py", here / "server.py",
+               # The ENGINE counts too. Restarting only the app leaves the server
+               # on old Python, which looks exactly like a feature that does not
+               # work — it cost a round of debugging before this was added.
+               root / "similarity_engine.py", root / "similarity_macros.py",
+               root / "similarity_features.py", root / "similarity_help.py"]
+    return max((f.stat().st_mtime for f in watched if f.exists()), default=0.0)
+
+
+# ---------------------------------------------------------------------------
+# EDITING A TRACK'S VALUES
+#
+# Detection misses things. The track that exposed this had no key at all, which
+# silently emptied every key-filtered profile. A DJ who knows the key should be
+# able to type it once and have it stick — so overrides live in their own table
+# and are applied AFTER every provider and after our own analysis, which means
+# re-analysis can never overwrite them.
+#
+# HOW TO TWEAK: add a field to EDITABLE and teach similarity_features.Library to
+# apply it; nothing else needs to change.
+CAMELOT_KEYS = [
+    "C-Major", "G-Major", "D-Major", "A-Major", "E-Major", "B-Major",
+    "F#-Major", "Db-Major", "Ab-Major", "Eb-Major", "Bb-Major", "F-Major",
+    "A-Minor", "E-Minor", "B-Minor", "F#-Minor", "C#-Minor", "G#-Minor",
+    "Eb-Minor", "Bb-Minor", "F-Minor", "C-Minor", "G-Minor", "D-Minor",
+]
+EDITABLE = {
+    "key": {"label": "Tónina", "kind": "choice", "choices": CAMELOT_KEYS,
+            "note": "Zápis ako v tabuľke — napríklad A-Minor. Vlastnú hodnotu môžeš napísať tiež."},
+    "bpm": {"label": "BPM", "kind": "number",
+            "note": "Tempo skladby. Desatinná čiarka aj bodka fungujú."},
+}
+
+
+def track_fields(track_id: str) -> dict:
+    """What this track currently has, where it came from, and what can be typed.
+
+    Every candidate the database knows about is offered, so the usual answer is
+    one click rather than typing.
+    """
+    import sqlite3
+    from similarity_features import DB
+    db = sqlite3.connect(f"file:{DB}?mode=ro", uri=True)
+    db.row_factory = sqlite3.Row
+    row = db.execute("SELECT title, artist_names FROM tracks WHERE spotify_id=?",
+                     (track_id,)).fetchone()
+    if not row:
+        return {"error": "taký track v databáze nie je"}
+
+    override = {r["field"]: r for r in db.execute(
+        "SELECT field, value_text, value_num FROM user_overrides WHERE spotify_id=?",
+        (track_id,))}
+
+    fields = []
+    for name, spec in EDITABLE.items():
+        seen: list[dict] = []
+        if name == "key":
+            for r in db.execute("SELECT source, key FROM audio_features "
+                                "WHERE spotify_id=? AND key IS NOT NULL", (track_id,)):
+                seen.append({"source": r["source"], "value": str(r["key"])})
+        else:
+            for r in db.execute("SELECT source, bpm FROM audio_features "
+                                "WHERE spotify_id=? AND bpm IS NOT NULL", (track_id,)):
+                seen.append({"source": r["source"], "value": round(float(r["bpm"]), 1)})
+        o = override.get(name)
+        mine = (o["value_text"] if name == "key" else o["value_num"]) if o else None
+        fields.append({**spec, "field": name, "mine": mine,
+                       # Distinct values other sources hold — the shortlist.
+                       "found": seen,
+                       "suggest": sorted({str(s["value"]) for s in seen})})
+    db.close()
+    return {"id": track_id, "name": f"{row['artist_names']} — {row['title']}",
+            "fields": fields}
+
+
+def set_track_field(track_id: str, field: str, value) -> dict:
+    """Write one override. An empty value removes it and detection takes over."""
+    if field not in EDITABLE:
+        return {"error": f"pole {field} sa upravovať nedá"}
+    import sqlite3
+    from similarity_features import DB
+    db = sqlite3.connect(DB, timeout=60)
+    text = num = None
+    cleared = value in (None, "", [])
+    if not cleared:
+        if EDITABLE[field]["kind"] == "number":
+            try:
+                num = float(str(value).replace(",", "."))
+            except ValueError:
+                return {"error": "to nie je číslo"}
+            if not (20 <= num <= 300):
+                return {"error": "BPM mimo rozumného rozsahu (20-300)"}
+        else:
+            text = str(value).strip()
+    if cleared:
+        db.execute("DELETE FROM user_overrides WHERE spotify_id=? AND field=?", (track_id, field))
+    else:
+        db.execute("""INSERT INTO user_overrides (spotify_id, field, value_text, value_num)
+                      VALUES (?,?,?,?)
+                      ON CONFLICT(spotify_id, field) DO UPDATE
+                      SET value_text=excluded.value_text, value_num=excluded.value_num,
+                          updated_at=datetime('now')""", (track_id, field, text, num))
+    db.commit()
+    db.close()
+    # The library holds the old value in memory; update it in place so the very
+    # next query already sees the correction instead of needing a restart.
+    engine.apply_override(track_id, field, text if text is not None else num)
+    return {"ok": True, "cleared": cleared}

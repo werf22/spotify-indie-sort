@@ -57,8 +57,19 @@ async function pollReady() {
       $("status").textContent = `${s.tracks.toLocaleString()} zanalyzovaných`;
       // Which version of the app code this window is running. If this is older
       // than a change we just made, the window needs ⌘R (or a restart).
-      if (s.build) $("status").title = `Kód appky z ${new Date(s.build * 1000)
-        .toLocaleString("sk")} · ⌘R načíta najnovší`;
+      if (s.build) {
+        const stale = s.started && s.build > s.started + 2;
+        $("status").title = `Kód z ${new Date(s.build * 1000).toLocaleString("sk")}`
+          + (stale ? " · SERVER BEŽÍ SO STARŠÍM KÓDOM — reštartuj appku"
+                   : " · ⌘R načíta najnovší");
+        // Loud, not a tooltip: a stale server makes every recent change look
+        // broken, and that has happened twice.
+        $("status").classList.toggle("stale", !!stale);
+        if (stale && !window.__staleWarned) {
+          window.__staleWarned = true;
+          toast("Server beží so starším kódom než je na disku — zavri a znova otvor appku.", 15000);
+        }
+      }
       if (!restored) { restored = true; restoreSeeds(); }   // once the engine can answer
       // Keep asking, slowly. It refreshes the count as tracks finish analysing,
       // and it is what tells the engine the app is still open so it does not
@@ -248,6 +259,8 @@ function restoreMetaShift() {
     if (tg && spec.target !== undefined) tg.value = spec.target;
     if (tl) tl.value = spec.tol ?? "";
   });
+  const mb = document.querySelector('[data-basekey="Meta"]');
+  if (mb && saved.baseKey) mb.value = saved.baseKey;
   (saved.rules || []).forEach(r => addRule(r, "Meta"));
   state.macros.Meta = new Set(saved.macros || []);
   renderMacros("Meta");
@@ -278,8 +291,21 @@ function paintMetaBadge() {
 const MIK_RULES = ["exact", "step1", "step2", "semitone"];
 const mikOn = () => $("mikOn").checked;
 
-const keyRules = () => mikOn() ? MIK_RULES.slice()
-  : [...document.querySelectorAll("#shiftBody .kr:checked")].map(c => c.value);
+/* Which key the harmony is measured from. META wins when both name one; empty
+ * means "the key of the track you picked", which is the normal case. */
+const baseKey = () => {
+  const meta = document.querySelector('[data-basekey="Meta"]');
+  const own = document.querySelector('[data-basekey=""]');
+  return (meta && meta.value) || (own && own.value) || "";
+};
+
+const keyRules = () => {
+  if (mikOn()) return MIK_RULES.slice();
+  // META first: if it names any harmonic rule, that is the answer.
+  const meta = [...document.querySelectorAll("#shiftBodyMeta .krMeta:checked")].map(c => c.value);
+  if (meta.length) return meta;
+  return [...document.querySelectorAll("#shiftBody .kr:checked")].map(c => c.value);
+};
 
 /* Show the override in the panel too, so it is never a mystery why a profile's
  * own boxes are being ignored — and, just as important, give the profile its
@@ -293,6 +319,7 @@ let ownKeyRules = [];
 function paintMik(opts = {}) {
   const on = mikOn();
   const boxes = [...document.querySelectorAll("#shiftBody .kr")];
+  const metaBoxes = [...document.querySelectorAll("#shiftBodyMeta .krMeta")];
   if (opts.adopt || (!on && !opts.keep)) ownKeyRules = boxes.filter(c => c.checked).map(c => c.value);
   $("mikOn").closest("label").classList.toggle("on", on);
   localStorage.setItem("mikOn", on ? "1" : "0");
@@ -300,6 +327,13 @@ function paintMik(opts = {}) {
     c.disabled = on;
     c.title = on ? "Prepísané prepínačom „Mixed in Key“ hore" : "";
     c.checked = on ? MIK_RULES.includes(c.value) : ownKeyRules.includes(c.value);
+  });
+  // The META panel's harmonic boxes are overridden by the switch too — greying
+  // only one of the two would make the other look like it still had a say.
+  metaBoxes.forEach(c => {
+    c.disabled = on;
+    c.title = on ? "Prepísané prepínačom „Mixed in Key“ hore" : "";
+    if (on) c.checked = MIK_RULES.includes(c.value);
   });
 }
 /* BPM WINDOW — the second switch that sits above the profiles.
@@ -448,7 +482,8 @@ async function runSeeds() {
         spotify_only: $("spotifyOnly").checked,
         enabled: enabledSignals(), group_weights: groupWeights(),
         signal_weights: signalWeights(), signal_modes: signalModes(),
-        key_rules: keyRules(), tag_rules: tagRules(), bpm_tol: bpmTol() }) });
+        key_rules: keyRules(), base_key: baseKey(),
+        tag_rules: tagRules(), bpm_tol: bpmTol() }) });
     state.rows = res.results;
     state.ceiling = res.ceiling;
     render();
@@ -469,6 +504,14 @@ async function runSeeds() {
                   + `ktoré prešli filtrom${esc(closeness)}</span>` : "")
       + `<span class="muted"> · porovnané: ${esc(used)}</span>`
       + (common ? `<div class="muted" style="margin-top:3px">spoločné: ${esc(common)}</div>` : "")
+      + ((res.missing || []).length
+          ? `<div class="alarm">` + res.missing.map(m =>
+              `<b>Chýba ${esc(m.label)}.</b> ${esc(m.why)} `
+              + m.tracks.map(t =>
+                  `<button data-edit="${esc(t.id)}" data-field="${esc(m.field)}">`
+                  + `✎ doplniť ${esc(m.label)} — ${esc(t.name)}</button>`).join(" ")
+            ).join("<br>") + `</div>`
+          : "")
       + ((res.notes || []).length
           ? `<div style="margin-top:3px;color:#e0a33e">${res.notes.map(esc).join(" · ")}</div>` : "");
     if ((res.seeds_missing || []).length)
@@ -652,6 +695,86 @@ const pickedIds = () => state.rows.filter(r => state.picked.has(r.spotify_id)).m
  * wins. Dragging an unselected row drags that row, otherwise the whole
  * selection — the same rule Finder uses.
  */
+/* ---------------- editing a track's values ----------------
+ * Nothing may fail silently. When a filter cannot be answered because the seed
+ * is missing a value, the app says which value, on which track, and offers to
+ * fill it in right there. What is typed here outranks every provider and our
+ * own analysis, and survives re-analysis.
+ * HOW TO TWEAK the editable fields: EDITABLE in music_app/similar_api.py. */
+const editBox = document.createElement("div");
+editBox.id = "editPop";
+editBox.hidden = true;
+document.body.appendChild(editBox);
+
+const hideEdit = () => { editBox.hidden = true; };
+
+async function editTrack(id, focusField) {
+  editBox.hidden = false;
+  editBox.innerHTML = '<div class="muted">načítavam…</div>';
+  try {
+    const d = await api("/api/track/fields?id=" + encodeURIComponent(id));
+    if (d.error) throw new Error(d.error);
+    editBox.innerHTML = `<div class="hd">Upraviť hodnoty<button class="x">✕</button></div>`
+      + `<div class="who">${esc(d.name)}</div>`
+      + d.fields.map(f => {
+          const cur = f.mine ?? "";
+          const found = f.found.length
+            ? `<div class="src">Nájdené inde: ${f.found.map(s =>
+                `<button class="pick" data-f="${f.field}" data-v="${esc(String(s.value))}">`
+                + `${esc(String(s.value))}<i>${esc(s.source)}</i></button>`).join("")}</div>`
+            : `<div class="src none">Žiadny zdroj túto hodnotu nemá — napíš ju.</div>`;
+          const opts = (f.choices || []).map(c =>
+            `<button class="pick" data-f="${f.field}" data-v="${esc(c)}">${esc(c)}</button>`).join("");
+          return `<div class="fld${f.field === focusField ? " focus" : ""}">
+              <label>${esc(f.label)}${f.mine != null ? ' <em>vlastná hodnota</em>' : ""}</label>
+              <div class="row">
+                <input data-in="${f.field}" value="${esc(String(cur))}"
+                       placeholder="napíš vlastnú hodnotu" inputmode="${f.kind === "number" ? "decimal" : "text"}">
+                <button class="save" data-f="${f.field}">Ulož</button>
+                ${f.mine != null ? `<button class="ghost clr" data-f="${f.field}">Zruš</button>` : ""}
+              </div>
+              <div class="note">${esc(f.note || "")}</div>
+              ${found}
+              ${opts ? `<div class="src opts">Bežné hodnoty: ${opts}</div>` : ""}
+            </div>`;
+        }).join("");
+    editBox.querySelector(".x").onclick = hideEdit;
+    editBox.querySelectorAll(".pick").forEach(b => b.onclick = () => {
+      editBox.querySelector(`[data-in="${b.dataset.f}"]`).value = b.dataset.v;
+    });
+    editBox.querySelectorAll(".save").forEach(b => b.onclick = () =>
+      saveField(id, b.dataset.f, editBox.querySelector(`[data-in="${b.dataset.f}"]`).value, focusField));
+    editBox.querySelectorAll(".clr").forEach(b => b.onclick = () =>
+      saveField(id, b.dataset.f, "", focusField));
+    const first = editBox.querySelector(".fld.focus input") || editBox.querySelector("input");
+    if (first) first.focus();
+  } catch (e) {
+    editBox.innerHTML = `<div class="hd">Nepodarilo sa<button class="x">✕</button></div>`
+      + `<p>${esc(e.message)}</p>`;
+    editBox.querySelector(".x").onclick = hideEdit;
+  }
+}
+
+async function saveField(id, field, value, focusField) {
+  try {
+    const r = await api("/api/track/field", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, field, value }) });
+    if (r.error) return toast(esc(r.error));
+    toast(r.cleared ? "Vlastná hodnota zrušená — platí zase rozpoznaná."
+                    : "Uložené. Platí nad všetkými zdrojmi a prežije novú analýzu.");
+    await editTrack(id, focusField);
+    rerun();
+  } catch (e) { toast(esc(e.message)); }
+}
+
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-edit]");
+  if (b) { e.preventDefault(); e.stopPropagation(); return editTrack(b.dataset.edit, b.dataset.field); }
+  if (!e.target.closest("#editPop")) hideEdit();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") hideEdit(); });
+
 /* ---------------- the ⓘ explainer ----------------
  * One popover, reused. It asks the engine what a signal is: the prose comes
  * from similarity_help.py, the value lists and number ranges straight from the
