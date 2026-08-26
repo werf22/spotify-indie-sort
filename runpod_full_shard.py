@@ -303,6 +303,7 @@ CHUNK_RETRIES = 12               # consecutive chunk failures before giving up
 # costs ~2 minutes and pods are plentiful; an hour spent crawling is not.
 MIN_UPLOAD_MBPS = 0.40           # below this, the pod is not worth the wait
 SPEED_CHECK_AFTER_MB = 24        # judge only once there is enough to judge on  # a stalled consumer link should not scrap a paid pod
+EXPRESS_SLOT_FREE_MB = 120        # express bundles above this queue like any other
 GPU_PROBE_TRIES = 3               # driver warm-up allowance before a pod is condemned
 SPEED_REJECTS_BEFORE_ACCEPT = 2   # consecutive slow pods tolerated before the
                                   # runner concludes the LINE is slow, not the pod
@@ -925,7 +926,19 @@ def main() -> None:
     # tracks (~7 MB, seconds) and competes with nobody. Queueing it behind the
     # nightly backlog is what made "analyse this now" sit at "spúšťam pod…"
     # indefinitely — the slot is held for ~10 minutes at a time, continuously.
-    express = shard.name.startswith("express-")
+    # AN EXPRESS SHARD SKIPS THE QUEUE ONLY IF IT IS ACTUALLY SMALL. The
+    # exemption exists so "analyse this track now" is not stuck behind the
+    # nightly backlog - a few tracks are ~35 MB and compete with nobody. On
+    # 26 Aug the owner asked for 87 tracks at once: a 629 MB bundle jumped the
+    # queue, fought the nightly upload for the same uplink, and took 90 minutes
+    # to send at an effective 0.12 MB/s - starving both. Anything above the
+    # threshold now waits its turn like every other shard.
+    # TWEAK: EXPRESS_SLOT_FREE_MB - raise it to let bigger express shards jump.
+    bundle_mb = (bundle.stat().st_size / 1e6) if bundle.exists() else 0
+    express = shard.name.startswith("express-") and bundle_mb <= EXPRESS_SLOT_FREE_MB
+    if shard.name.startswith("express-") and not express:
+        print(f"expresný shard má {bundle_mb:.0f} MB (limit {EXPRESS_SLOT_FREE_MB}) — "
+              f"radím sa do frontu na upload", flush=True)
     slot = acquire_upload_slot() if (needs_upload and not express) else None
     try:
         if not pod_id or dead:

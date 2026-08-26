@@ -105,6 +105,27 @@ def build_express_shard(ids: list[str], machine: bool) -> Path:
     return shard
 
 
+def runner_timeout(track_count: int) -> int:
+    """Seconds to allow the shard runner, scaled to how much work was asked for.
+
+    This was a flat 5400 s, written when "analyse this now" meant a handful of
+    tracks. On 26 Aug the owner asked for 87 at once: the bundle was 629 MB, the
+    upload finished, and the timeout then killed a perfectly healthy run - while
+    the pod carried on billing because only the local runner had died.
+
+    The budget is the upload (bytes over the measured home uplink) plus the
+    analysis plus a fixed allowance for the dependency install.
+    TWEAK: UPLINK_MBPS if the connection changes; the rest are per-track costs.
+    """
+    UPLINK_MBPS = 0.7          # effective share once queued behind the nightly run
+    MB_PER_TRACK = 7.5         # observed bundle size per track
+    ANALYSIS_S_PER_TRACK = 25  # four stages run concurrently on the pod
+    SETUP_S = 3600             # pod boot, dependency install, and time spent waiting
+                               # for the upload slot when the nightly run holds it
+    upload_s = (track_count * MB_PER_TRACK) / UPLINK_MBPS
+    return int(SETUP_S + upload_s + track_count * ANALYSIS_S_PER_TRACK)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ids", required=True, help="comma-separated spotify ids")
@@ -136,7 +157,8 @@ def main() -> None:
         log(f"spúšťam pod… (pokus {attempt}/{POD_ATTEMPTS})", machine)
         proc = subprocess.run([str(ROOT / ".venv/bin/python"), "runpod_full_shard.py",
                                "--shard", str(shard)],
-                              cwd=ROOT, capture_output=True, text=True, timeout=5400)
+                              cwd=ROOT, capture_output=True, text=True,
+                              timeout=runner_timeout(len(ids)))
         if proc.returncode == 0:
             break
         tail = " ".join((proc.stderr or proc.stdout).split())[-220:]
