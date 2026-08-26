@@ -529,6 +529,64 @@ async function runSeeds() {
 const rerun = () => { if (state.seeds.length) runSeeds(); };
 
 /* ---------------- results table ---------------- */
+/* SORTING. The engine returns the list in similarity order; this only reorders
+ * what came back, so the set of rows never changes — sorting is a way to look at
+ * an answer, not a way to ask a different question. Clicking the same column
+ * again reverses it, and clicking "Zhoda" returns to the engine's own order.
+ * The reference track stays pinned at the top whatever the sort. */
+state.sort = { by: null, asc: false };
+
+/* THE COLUMN MUST READ THE WAY IT SORTS. The same energy is written two ways in
+ * the files — "07 Energy" and "Energy 7" — so a correct numeric sort looked
+ * random to the eye: 7, 7, 7 in three different spellings. The column therefore
+ * always shows the canonical "07 Energy"; the tooltip still shows exactly what
+ * is written in the file, so nothing is hidden.
+ * TWEAK: change the padStart(2,"0") if you ever want single-digit display. */
+function energyText(r) {
+  if (r.energy_rating != null) return String(r.energy_rating).padStart(2, "0") + " Energy";
+  return r.comment || "";
+}
+function energyTitle(r) {
+  const shown = energyText(r);
+  return r.comment && r.comment !== shown ? `${shown}  (v súbore: „${r.comment}“)` : shown;
+}
+
+function sortRows(rows) {
+  const { by, asc } = state.sort;
+  if (!by) return rows;
+  const seeds = rows.filter(r => r.seed);
+  const rest = rows.filter(r => !r.seed).slice();
+  const val = r => {
+    const v = r[by];
+    return v === null || v === undefined ? (asc ? Infinity : -Infinity) : v;
+  };
+  rest.sort((a, b) => {
+    const x = val(a), y = val(b);
+    const c = typeof x === "string" || typeof y === "string"
+      ? String(x).localeCompare(String(y), "sk")
+      : x - y;
+    return asc ? c : -c;
+  });
+  return seeds.concat(rest);
+}
+
+document.querySelectorAll("th[data-sort]").forEach(th => th.onclick = () => {
+  const by = th.dataset.sort;
+  // Same column again flips the direction; "Zhoda" twice clears the sort and
+  // hands the order back to the engine.
+  if (state.sort.by === by) {
+    if (state.sort.asc) state.sort = { by: null, asc: false };
+    else state.sort = { by, asc: true };
+  } else {
+    state.sort = { by, asc: false };
+  }
+  document.querySelectorAll("th[data-sort]").forEach(h => {
+    h.classList.toggle("sorted", h.dataset.sort === state.sort.by);
+    h.classList.toggle("asc", h.dataset.sort === state.sort.by && state.sort.asc);
+  });
+  render();
+});
+
 function render() {
   // AN EMPTY TABLE MUST EXPLAIN ITSELF. A filter that nothing satisfies looked
   // identical to a broken app: a blank list and no reason given.
@@ -557,25 +615,34 @@ function render() {
   // narrowing by a macro felt as if the similarity had been thrown away — it
   // never was, the pool was just smaller and further down the ranking.
   const max = state.ceiling || (state.rows.length ? Math.max(...state.rows.map(r => r.score)) : 1);
-  $("body").innerHTML = state.rows.map((r, i) => {
+  // `data-i` must stay an index into state.rows, NOT into the sorted view —
+  // every row handler looks the track up by it, so sorting would otherwise make
+  // play, drag and select act on the wrong track.
+  const order = new Map(state.rows.map((r, i) => [r, i]));
+  const view = sortRows(state.rows);
+  $("body").innerHTML = view.map((r, pos) => {
+    const i = order.get(r);
     const why = (r.why || []).filter(x => !["key", "bpm", "Tónina", "BPM"].includes(x)).slice(0, 3);
     if (r.key_rel && r.key_rel !== "rovnaká") why.unshift(r.key_rel);
     const label = r.has_file ? "▶" : (r.preview ? "▶" : "▶");
-    return `<tr data-i="${i}" draggable="true">
+    return `<tr data-i="${i}" draggable="true" class="${r.seed ? "seedrow" : ""}">
       <td class="c-pick"><input type="checkbox" class="rowsel"></td>
       <td class="c-act">
         <button class="play" title="Prehrať">${label}</button>
         <button class="pivot ghost" title="Nájdi podobné na tento track">⇄</button>
         <button class="rev ghost" title="Ukáž vo Finderi">⇱</button>
+        <button class="edt ghost" title="Upraviť hodnoty tracku">✎</button>
       </td>
-      <td class="c-num" title="${r.rank ? `V celom rebríčku podobnosti je tento track ${r.rank}. — filter len preskočil tie pred ním.` : ""}">${i + 1}${
-        r.rank && r.rank > i + 2 ? `<span class="rk">${r.rank}</span>` : ""}</td>
+      <td class="c-num" title="${r.rank ? `V celom rebríčku podobnosti je tento track ${r.rank}. — filter len preskočil tie pred ním.` : ""}">${r.seed ? "▶" : pos}${
+        r.rank && r.rank > pos + 1 ? `<span class="rk">${r.rank}</span>` : ""}</td>
       <td class="c-art" title="${esc(r.artist)}">${esc(r.artist)}</td>
       <td class="c-tit" title="${esc(r.title)}">${esc(r.title)}</td>
-      <td class="c-match"><span class="bar"><i style="width:${Math.max(4, Math.round(r.score / max * 100))}%"></i></span></td>
+      <td class="c-match">${r.seed ? '<span class="muted" style="font-size:10px">zvolený</span>'
+        : `<span class="bar"><i style="width:${Math.max(4, Math.round(r.score / max * 100))}%"></i></span>`}</td>
       <td class="c-why" title="${esc(why.join(" · "))}">${esc(why.join(" · "))}</td>
       <td class="c-bpm">${r.bpm ?? ""}</td>
       <td class="c-key">${esc(r.key || "")}</td>
+      <td class="c-com" title="${esc(energyTitle(r))}">${esc(energyText(r))}</td>
     </tr>`;
   }).join("");
   wireRows();
@@ -588,6 +655,8 @@ function wireRows() {
     tr.querySelector(".play").onclick = e => { e.stopPropagation(); playIndex(i); };
     tr.querySelector(".pivot").onclick = e => { e.stopPropagation(); pivotTo(row); };
     tr.querySelector(".rev").onclick = e => { e.stopPropagation(); reveal([row.spotify_id]); };
+    const ed = tr.querySelector(".edt");
+    if (ed) ed.onclick = e => { e.stopPropagation(); editTrack(row.spotify_id); };
     const box = tr.querySelector(".rowsel");
     box.checked = state.picked.has(row.spotify_id);
     box.onclick = e => e.stopPropagation();

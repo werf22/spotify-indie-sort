@@ -84,6 +84,16 @@
   .c-art{width:26%}.c-tit{width:34%}
   .c-match{width:70px}.c-why{width:170px;color:var(--dim);font-size:11.5px}
   .c-bpm{width:50px;color:var(--dim)}.c-key{width:104px;color:var(--dim)}
+  .c-com{width:86px;color:var(--dim)}
+  /* Sortable headers say so, and the active one shows which way. */
+  th[data-sort]{cursor:pointer;user-select:none}
+  th[data-sort]:hover{color:var(--ink)}
+  th[data-sort].sorted{color:var(--accent)}
+  th[data-sort].sorted::after{content:" ▼";font-size:8px}
+  th[data-sort].sorted.asc::after{content:" ▲"}
+  /* The reference track sits at the top of its own result list. */
+  tr.seedrow{background:rgba(90,140,255,.12);box-shadow:inset 2px 0 0 var(--accent)}
+  tr.seedrow .c-num{color:var(--accent);font-weight:600}
   /* On a narrow window drop the explanation rather than squeeze the names. */
   @media (max-width:1100px){ .c-why{display:none} }
   @media (max-width:860px){ .c-match{display:none} }
@@ -322,12 +332,13 @@
       <th class="c-pick"><input type="checkbox" id="selAll" title="označiť všetko"></th>
       <th class="c-act"></th>
       <th class="c-num">#</th>
-      <th class="c-art">Interpret</th>
-      <th class="c-tit">Track</th>
-      <th class="c-match">Zhoda</th>
+      <th class="c-art" data-sort="artist">Interpret</th>
+      <th class="c-tit" data-sort="title">Track</th>
+      <th class="c-match" data-sort="score">Zhoda</th>
       <th class="c-why">Prečo</th>
-      <th class="c-bpm">BPM</th>
-      <th class="c-key">Tónina</th>
+      <th class="c-bpm" data-sort="bpm">BPM</th>
+      <th class="c-key" data-sort="key">Tónina</th>
+      <th class="c-com" data-sort="energy_rating" title="Tvoje hodnotenie z Traktora (Comment)">Energia</th>
     </tr></thead>
     <tbody id="body"></tbody>
   </table>

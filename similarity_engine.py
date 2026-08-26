@@ -658,6 +658,12 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
         if not allowed[idx]:
             continue
         info = db.execute("""SELECT t.title, t.artist_names,
+                                (SELECT comment FROM track_comment c
+                                 WHERE c.spotify_id=t.spotify_id AND c.comment IS NOT NULL
+                                 LIMIT 1) comment,
+                                (SELECT energy FROM track_comment c
+                                 WHERE c.spotify_id=t.spotify_id AND c.energy IS NOT NULL
+                                 LIMIT 1) energy,
                                 (SELECT path FROM audio_files f WHERE f.spotify_id=t.spotify_id
                                  AND f.path IS NOT NULL LIMIT 1) path,
                                 (SELECT value_text FROM track_attributes a
@@ -691,6 +697,10 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
                     "score": round(float(score[idx]), 3),
                     "bpm": round(float(lib.bpm[idx]), 1) if np.isfinite(lib.bpm[idx]) else None,
                     "key": lib.key[idx],
+                    # The owner's own energy rating, kept in Traktor's Comment.
+                    # It is the one human judgement in the whole library.
+                    "comment": (info["comment"] if info else None),
+                    "energy_rating": (info["energy"] if info else None),
                     "bpm_diff": None if not np.isfinite(bpm_rel[idx]) else round(float(bpm_rel[idx] * 100), 1),
                     "key_match": None if not np.isfinite(keys[idx]) else float(keys[idx]),
                     "key_rel": key_relation(shown_base, lib.key[idx]),
@@ -698,8 +708,41 @@ def similar(ref: str = "", limit: int = 100, spotify_only: bool = True,
                     "why": [name for name, v in top if v > 0.5]})
         if len(out) >= limit:
             break
+    # THE SEED ITSELF, FIRST. It was invisible in its own result list, so there
+    # was no way to click it — to play it, to edit its values, or to send it for
+    # analysis. It is marked so the table can show it as the reference rather
+    # than as a match.
+    head = []
+    for sd in seeds:
+        i = lib.pos.get(sd)
+        if i is None:
+            continue
+        row = db.execute("""SELECT t.title, t.artist_names,
+                               (SELECT path FROM audio_files f WHERE f.spotify_id=t.spotify_id
+                                AND f.path IS NOT NULL LIMIT 1) path,
+                               (SELECT comment FROM track_comment c
+                                WHERE c.spotify_id=t.spotify_id AND c.comment IS NOT NULL
+                                LIMIT 1) comment,
+                               (SELECT energy FROM track_comment c
+                                WHERE c.spotify_id=t.spotify_id AND c.energy IS NOT NULL
+                                LIMIT 1) energy,
+                               (SELECT value_text FROM track_attributes a
+                                WHERE a.spotify_id=t.spotify_id AND a.attribute='track.preview'
+                                AND a.value_text LIKE 'http%' LIMIT 1) preview
+                            FROM tracks t WHERE t.spotify_id=?""", (sd,)).fetchone()
+        head.append({"spotify_id": sd, "seed": True,
+                     "title": row["title"] if row else "", "artist": row["artist_names"] if row else "",
+                     "has_file": bool(row and row["path"]), "path": (row["path"] if row else None),
+                     "preview": (row["preview"] if row else None),
+                     "comment": (row["comment"] if row else None),
+                     "energy_rating": (row["energy"] if row else None),
+                     "score": None, "rank": None,
+                     "bpm": round(float(lib.bpm[i]), 1) if np.isfinite(lib.bpm[i]) else None,
+                     "key": lib.key[i], "bpm_diff": None, "key_match": None,
+                     "key_rel": None, "why": []})
+
     db.close()
-    return {"results": out, "signals_used": used, "seeds": seeds,
+    return {"results": head + out, "signals_used": used, "seeds": seeds,
             "ceiling": round(ceiling, 3), "pool": pool, "library": n,
             "notes": notes, "missing": missing_fields, "skipped": skipped,
             "asked": len(enabled),

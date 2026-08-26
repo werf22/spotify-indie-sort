@@ -16,10 +16,13 @@ WHAT EACH PIECE DOES
 """
 from __future__ import annotations
 
+import datetime as _dt
+import json as _json
 import mimetypes
 import os
 import sqlite3
 import sys
+from pathlib import Path as _P
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -261,12 +264,71 @@ CAMELOT_KEYS = [
     "A-Minor", "E-Minor", "B-Minor", "F#-Minor", "C#-Minor", "G#-Minor",
     "Eb-Minor", "Bb-Minor", "F-Minor", "C-Minor", "G-Minor", "D-Minor",
 ]
+ENERGY_CHOICES = [f"{i:02d} Energy" for i in range(1, 11)]
 EDITABLE = {
+    "comment": {"label": "Comment (energia z Traktora)", "kind": "text",
+                "choices": ENERGY_CHOICES, "writes_file": True,
+                "note": "Zapíše sa AJ do súboru, takže to uvidí Traktor. "
+                        "Pôvodná hodnota sa odloží do zálohy."},
     "key": {"label": "Tónina", "kind": "choice", "choices": CAMELOT_KEYS,
             "note": "Zápis ako v tabuľke — napríklad A-Minor. Vlastnú hodnotu môžeš napísať tiež."},
     "bpm": {"label": "BPM", "kind": "number",
             "note": "Tempo skladby. Desatinná čiarka aj bodka fungujú."},
 }
+
+
+def _write_comment_to_file(track_id: str, value: str) -> dict:
+    """Put a comment into the actual audio file, so Traktor sees it.
+
+    Reuses the frame handling from traktor_comment_pin.py, which was written
+    after the hard lessons about which comment frames are the owner's note and
+    which are player data. The previous value is recorded in file_frame_backup
+    before anything is written, so any change can be undone.
+    """
+    import sqlite3
+    import mutagen
+    import traktor_comment_pin as pin
+    from similarity_features import DB
+
+    db = sqlite3.connect(DB, timeout=60)
+    row = db.execute("""SELECT path FROM audio_files
+                        WHERE spotify_id=? AND path IS NOT NULL LIMIT 1""",
+                     (track_id,)).fetchone()
+    if not row:
+        db.close()
+        return {"file": "žiadny súbor na disku — uložené len v databáze"}
+    path = _P(row[0])
+    if not path.exists():
+        db.close()
+        return {"file": "súbor na disku nie je — uložené len v databáze"}
+    try:
+        handle = mutagen.File(path)
+        if handle is None:
+            raise RuntimeError("neznámy formát")
+        if handle.tags is None:
+            handle.add_tags()
+        frames = pin.comment_frames(handle) or (
+            ["©cmt"] if path.suffix.lower() in (".m4a", ".mp4") else ["COMM::eng"])
+        stamp = _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds")
+        for frame in frames:
+            old = pin.read_value(handle, frame)
+            db.execute("""INSERT INTO file_frame_backup (path, frame, old_value, new_value, written_at)
+                          VALUES (?,?,?,?,?)""",
+                       (str(path), frame, _json.dumps(old), value, stamp))
+            if frame.startswith("COMM"):
+                from mutagen.id3 import COMM
+                desc = frame.split(":")[1] if ":" in frame else ""
+                lang = frame.split(":")[2] if frame.count(":") >= 2 else "eng"
+                handle.tags.setall("COMM", [COMM(encoding=3, lang=lang, desc=desc, text=[value])])
+            else:
+                handle[frame] = [value]
+        handle.save()
+        db.commit()
+        db.close()
+        return {"file": f"zapísané do súboru ({len(frames)} pole)"}
+    except Exception as exc:
+        db.close()
+        return {"file": f"do súboru sa zapísať nepodarilo: {type(exc).__name__}"}
 
 
 def track_fields(track_id: str) -> dict:
@@ -291,7 +353,11 @@ def track_fields(track_id: str) -> dict:
     fields = []
     for name, spec in EDITABLE.items():
         seen: list[dict] = []
-        if name == "key":
+        if name == "comment":
+            for r in db.execute("SELECT comment FROM track_comment "
+                                "WHERE spotify_id=? AND comment IS NOT NULL LIMIT 3", (track_id,)):
+                seen.append({"source": "súbor", "value": r["comment"]})
+        elif name == "key":
             for r in db.execute("SELECT source, key FROM audio_features "
                                 "WHERE spotify_id=? AND key IS NOT NULL", (track_id,)):
                 seen.append({"source": r["source"], "value": str(r["key"])})
@@ -300,7 +366,9 @@ def track_fields(track_id: str) -> dict:
                                 "WHERE spotify_id=? AND bpm IS NOT NULL", (track_id,)):
                 seen.append({"source": r["source"], "value": round(float(r["bpm"]), 1)})
         o = override.get(name)
-        mine = (o["value_text"] if name == "key" else o["value_num"]) if o else None
+        mine = (o["value_num"] if name == "bpm" else o["value_text"]) if o else None
+        if name == "comment" and mine is None and seen:
+            mine = seen[0]["value"]        # what the file already holds
         fields.append({**spec, "field": name, "mine": mine,
                        # Distinct values other sources hold — the shortlist.
                        "found": seen,
@@ -329,6 +397,16 @@ def set_track_field(track_id: str, field: str, value) -> dict:
                 return {"error": "BPM mimo rozumného rozsahu (20-300)"}
         else:
             text = str(value).strip()
+    extra = {}
+    if field == "comment" and not cleared:
+        # The comment is the owner's own note; it belongs in the file so Traktor
+        # shows it, and in track_comment so the table can display and sort by it.
+        extra = _write_comment_to_file(track_id, text)
+        import re as _re
+        m = _re.match(r"^\s*(?:(\d{1,2})\s*energy|energy\s*(\d{1,2}))\s*$", text, _re.I)
+        energy = int(m.group(1) or m.group(2)) if m else None
+        db.execute("""UPDATE track_comment SET comment=?, energy=?, scanned_at=datetime('now')
+                      WHERE spotify_id=?""", (text, energy, track_id))
     if cleared:
         db.execute("DELETE FROM user_overrides WHERE spotify_id=? AND field=?", (track_id, field))
     else:
@@ -342,4 +420,4 @@ def set_track_field(track_id: str, field: str, value) -> dict:
     # The library holds the old value in memory; update it in place so the very
     # next query already sees the correction instead of needing a restart.
     engine.apply_override(track_id, field, text if text is not None else num)
-    return {"ok": True, "cleared": cleared}
+    return {"ok": True, "cleared": cleared, **extra}
