@@ -4,6 +4,13 @@ This is the canonical cold-start document for the next AI agent. Read it before
 changing code, restarting services, creating cloud resources, calling a paid API,
 or modifying Spotify playlists.
 
+**26 Aug — NÁSTROJE NA STAVBU SETU** (`ecstatic_*.py`, `nml_write.py`).
+Postavia tématický DJ set z knižnice a zapíšu ho ako Traktor `.nml`.
+Spustenie: `./.venv/bin/python ecstatic_set.py --base 2A --out ~/Desktop/x.nml`.
+POZOR: `similarity_engine.camelot()` čísluje kruh o 7 krokov inak než Mixed In
+Key — jeho „2A" je E mol, čo Traktor volá 9A. Relácie (±1/±2/±7) sú správne,
+posunuté je len číslo, takže sa na ne nedá odvolávať navonok bez prepočtu.
+
 **26 Aug (neskoro) — BEŽIA DVE ÚLOHY NA POZADÍ, obe detachovane v `screen`:**
 - `comments` — `scan_comments.py` číta Traktor „Comment" zo všetkých súborov do
   `track_comment`. Iba číta. Resumable podľa mtime.

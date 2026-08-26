@@ -166,8 +166,7 @@ ORIENT_ARTISTS = {
 # Words in a TITLE that give the record away regardless of who made it.
 ORIENT_TITLE_WORDS = {
     "anatolia": 0.85, "bedouin": 0.80, "sahara": 0.75, "orient": 0.80, "arabia": 0.85,
-    "istanbul": 0.80, "marrakech": 0.85, "bosphorus": 0.80, "caravan": 0.65,
-    "nomad": 0.60, "oasis": 0.60, "desert": 0.55, "habibi": 0.85, "yalla": 0.80,
+    "istanbul": 0.80, "marrakech": 0.85, "bosphorus": 0.80, "nomad": 0.60, "oasis": 0.60, "desert": 0.55, "habibi": 0.85, "yalla": 0.80,
     "derwish": 0.85, "dervish": 0.85, "sufi": 0.85, "rumi": 0.80, "harem": 0.85,
     "bazaar": 0.75, "medina": 0.70, "casbah": 0.80, "damascus": 0.85, "beirut": 0.80,
     "tabla": 0.80, "darbuka": 0.90, "oud": 0.55, "duduk": 0.90, "kanun": 0.70,
@@ -186,3 +185,71 @@ FLAVOUR_TITLE_WORDS = {
     "dance": ("driving", 0.35), "groove": ("driving", 0.5), "rhythm": ("driving", 0.45),
     "drum": ("driving", 0.4), "voodoo": ("playful", 0.6), "magic": ("playful", 0.45),
 }
+
+
+# ---------------------------------------------------------------------------
+# THE CORE MARKERS — what makes a record UNMISTAKABLY of this theme.
+#
+# WHY A SECOND, STRICTER LIST: weighting "oriental" against everything else was
+# not enough. Percentiles saturate — once thousands of tracks look 90% oriental
+# because they have congas, the ranking can no longer tell an Anatolian melody
+# from an afro-house record, and mainstream pop rode in on a high mood score.
+# These markers are used as a GATE instead: a record must carry at least one, or
+# it is not in the set however well it scores otherwise.
+#
+# HOW TO TWEAK: this is the definition of the theme. Adding a loose marker here
+# widens the whole set, so add only things that are true on their own.
+CORE_TAGS = [
+    ("instrument_candidate", "tabla",          1.00),
+    ("label",                "desert trax",    1.00),
+    ("label",                "alt orient",     1.00),
+    ("genre",                "oriental",       0.95),
+    ("genre",                "middle eastern", 0.95),
+    ("genre",                "arabic",         0.90),
+    ("genre",                "arab",           0.90),
+    ("genre",                "turkish",        0.85),
+    ("subgenre",             "turkish pop",    0.85),
+    ("genre",                "persian",        0.85),
+    ("genre",                "egypt",          0.80),
+    ("genre",                "morocco",        0.80),
+    ("genre",                "balkan",         0.75),
+    ("genre",                "gypsy",          0.70),
+    ("voice_candidate",      "chanting",       0.55),
+]
+# An artist-level tag ("this Turkish artist") is much weaker evidence about one
+# record than a name or a title, so on its own it does NOT open the gate.
+CORE_FLOOR = 0.55
+
+# CLAP's confidences live on their own scale — of 627 "tabla" detections the
+# best is 0.81 and the median is 0.56, so judging them against an absolute 0.7
+# would throw the instrument away entirely. This threshold keeps the strongest
+# third. Below it a detection is a coin flip, and three coin flips walked into
+# the first set as "oriental" records.
+# TWEAK: raise for a stricter theme, lower to let more marginal detections in.
+MIN_CONF_BY_SOURCE = {
+    "audio-full:clap-candidates-v2": 0.60,
+    "local-audio:clap-v1": 0.60,
+}
+
+
+# ---------------------------------------------------------------------------
+# NOT ON THIS FLOOR, whatever else it scores.
+#
+# WHY A HARD LIST: "Rock the Casbah" is oriental, funny and famous — and a 1982
+# punk record dropped into the peak of a driving house set stops the room dead.
+# The theme gate cannot catch this, because thematically the record is perfect.
+# Only a genre exclusion can.
+#
+# Applied only to CONFIDENT, track-level tags: one "punk" from a last.fm artist
+# page must not disqualify a house record by an artist who once made punk.
+EXCLUDE_TAGS = [("genre", "rock"), ("genre", "punk"), ("genre", "punk rock"),
+                ("subgenre", "punk rock"), ("genre", "metal"), ("genre", "heavy metal"),
+                ("subgenre", "new wave"), ("genre", "new wave"), ("genre", "country"),
+                ("genre", "classical"), ("subgenre", "drum and bass"),
+                ("subgenre", "hardstyle"), ("subgenre", "hardcore"), ("genre", "grunge")]
+EXCLUDE_MIN_CONF = 0.85
+
+# A record has to bring at least ONE of the two flavours the night is about.
+# Without this a track scoring zero on sensual AND ordinary on playful rode in
+# on theme and tempo alone.
+FLAVOUR_FLOOR = 0.55

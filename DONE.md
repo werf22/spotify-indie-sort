@@ -561,3 +561,28 @@ when a filter cannot be answered at all.
 Overené: v appke po reštarte enginu — zostupne 07(seed)/08/07…, vzostupne
 monotónne bez výnimky, prázdne až na konci; 5 súborov skontrolovaných zvlášť
 proti súboru, databáze aj zálohe.
+
+## 2026-08-26 — D-089 · ⌘←/⌘→ a set „Ecstatic Masquerade"
+
+**Klávesnica:** ⌘→ ďalší track, ⌘← predošlý. Holé šípky naďalej pretáčajú ±10 s;
+v textovom poli sa nič neuchytáva, aby ⌘← ostalo „na začiatok riadku".
+
+**Staviteľ setu** — päť malých súborov, aby sa dala zmeniť téma bez prepisovania
+logiky: `ecstatic_signals.py` (ktoré tagy, mená a názvy znamenajú ktorý pocit),
+`ecstatic_pool.py` (hrateľný fond + skóre), `ecstatic_rank.py` (percentilové
+zloženie), `ecstatic_key.py` (výber tóniny podľa zásoby), `ecstatic_set.py`
+(oblúk večera + výber), `nml_write.py` (zápis Traktor playlistu).
+
+Výsledok: 27 skladieb, 2h31, základ **E mol (Camelot 9A)** — 18 v nej, 3× +2,
+3× −2, 2× +7, 1× −7. BPM 108→128, najväčší skok medzi susedmi 4 BPM.
+
+Overené: NML sa parsuje, 27/27 v kolekcii aj playliste, všetkých 27 súborov
+existuje na disku, kľúče playlistu sa párujú s kolekciou, tóniny zapísané presne
+tak, ako ich píše Traktor (`Em`, `F#m`, nie `Gbm`), a cesty fungujú pre oba
+zväzky (Macintosh HD 14, T7 13).
+
+Chyby chytené a opravené pri stavbe: podreťazec „oud" v „H-oud-ini" pustil do
+orientálneho setu Dua Lipu; CLAP detekcie „tabla" s istotou 0,56 (medián) sa
+brali ako dôkaz; tá istá nahrávka prešla dvakrát pod dvoma menami interpreta;
+„Caravan Palace" prešlo cez slovo „caravan"; tónina bola pôvodne vybraná z
+fondu, ktorý tématická brána až potom preriedila.

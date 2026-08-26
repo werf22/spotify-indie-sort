@@ -19,8 +19,9 @@ import math
 import sqlite3
 from pathlib import Path
 
-from ecstatic_signals import (ARTIST_LEVEL_DAMPING, ARTIST_LEVEL_SOURCES, FLAVOUR_TITLE_WORDS,
-                              ORIENT_ARTISTS, ORIENT_TITLE_WORDS, SIGNALS)
+from ecstatic_signals import (ARTIST_LEVEL_DAMPING, ARTIST_LEVEL_SOURCES, CORE_TAGS,
+                              EXCLUDE_MIN_CONF, EXCLUDE_TAGS, FLAVOUR_TITLE_WORDS, MIN_CONF_BY_SOURCE, ORIENT_ARTISTS,
+                              ORIENT_TITLE_WORDS, SIGNALS)
 
 ROOT = Path(__file__).resolve().parent
 DB = ROOT / "data" / "music.db"
@@ -114,22 +115,63 @@ def load(verbose: bool = True) -> dict:
                 if (source or "").startswith(ARTIST_LEVEL_SOURCES):
                     w *= ARTIST_LEVEL_DAMPING
                 t["raw"][name] = max(t["raw"][name], 0) + w
+    # --- the core markers, kept as their own number -----------------------
+    # Not squashed and not mixed with anything: this is used as a gate, so it
+    # must stay readable as "how strong is the evidence, in marker weight".
+    for t in pool.values():
+        t["core"] = 0.0
+    for tag_type, tag, weight in CORE_TAGS:
+        for sid, source, conf in db.execute(
+                "SELECT spotify_id, source, confidence FROM tags WHERE tag_type=? AND tag=?",
+                (tag_type, tag)):
+            t = pool.get(sid)
+            if t is None:
+                continue
+            floor = MIN_CONF_BY_SOURCE.get(source or "")
+            if floor is not None and (conf or 0) < floor:
+                continue                   # a coin-flip detection proves nothing
+            w = weight * (conf if conf is not None else 0.6)
+            if (source or "").startswith(ARTIST_LEVEL_SOURCES):
+                w *= ARTIST_LEVEL_DAMPING
+            t["core"] = max(t["core"], w)
+    # --- records that do not belong on a dance floor at all ---------------
+    for t in pool.values():
+        t["banned"] = None
+    for tag_type, tag in EXCLUDE_TAGS:
+        for sid, source, conf in db.execute(
+                "SELECT spotify_id, source, confidence FROM tags WHERE tag_type=? AND tag=?",
+                (tag_type, tag)):
+            t = pool.get(sid)
+            if t is None or (conf or 0) < EXCLUDE_MIN_CONF:
+                continue
+            if (source or "").startswith(ARTIST_LEVEL_SOURCES):
+                continue                   # the artist's past is not this record
+            t["banned"] = tag
     db.close()
 
     # --- who made it and what it is called --------------------------------
     # The strongest evidence for THIS theme is not a mood model but a name.
     # Applied after the tags so it adds to the same pot.
+    # WORD BOUNDARIES, NOT SUBSTRINGS. "Houdini" contains "oud", and that alone
+    # put a Eurodance single into an oriental set. A marker only counts where a
+    # word actually starts.
+    import re as _re
+    def _has(hay: str, word: str) -> bool:
+        return _re.search(r"\b" + _re.escape(word), hay) is not None
+
     for t in pool.values():
         hay = f"{t['artist']} {t['title']}".lower()
         for name, weight in ORIENT_ARTISTS.items():
-            if name in hay:
+            if _has(hay, name):
                 t["raw"]["orient"] += weight
+                t["core"] = max(t["core"], weight)
                 break                      # one artist, counted once
         for word, weight in ORIENT_TITLE_WORDS.items():
-            if word in hay:
+            if _has(hay, word):
                 t["raw"]["orient"] += weight * 0.8
+                t["core"] = max(t["core"], weight)
         for word, (signal, weight) in FLAVOUR_TITLE_WORDS.items():
-            if word in hay:
+            if _has(hay, word):
                 t["raw"][signal] += weight * 0.8
 
     # --- keep only what can actually be played ----------------------------

@@ -47,6 +47,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import runpod_pilot as rp
+import cloud_pod_guard as guard   # REST pod listing + authoritative pod age
 
 ROOT = Path(__file__).resolve().parent
 SHARDS = ROOT / "data" / "cloud_full_shards"
@@ -132,8 +133,21 @@ def results_progress(shard: Path) -> tuple[int, float]:
     return stat.st_size, age_min
 
 
-def pod_age_minutes(pod_id: str, state: dict) -> float:
-    """Minutes since the pod was created, from our own state file."""
+def pod_age_minutes(pod: dict, state: dict) -> float:
+    """Minutes since the pod started, preferring RUNPOD's own timestamps.
+
+    This used to read created_at from our own state file, which is written by
+    the runner. When a runner died without updating it - or a shard directory
+    had no state at all - the age came back 0.0 and the hard time box could
+    never fire. A pod billed for 728 minutes against a 120 minute box on 25 Aug
+    for exactly this reason, and the reaper logged nothing about it.
+
+    RunPod's lastStartedAt/createdAt are the authority; the state file is only
+    the fallback for a pod the API describes without a timestamp.
+    """
+    from_api = guard.age_minutes(pod)
+    if from_api is not None:
+        return from_api
     created = state.get("created_at")
     if not created:
         return 0.0
@@ -165,7 +179,7 @@ def judge(pod: dict, runners: set[str], runners_known: bool) -> tuple[str, str]:
     except (OSError, json.JSONDecodeError):
         state = {}
 
-    age = pod_age_minutes(str(pod.get("id") or ""), state)
+    age = pod_age_minutes(pod, state)
     if age > MAX_POD_MINUTES:
         return "KILL", f"past the {MAX_POD_MINUTES} min hard time box (age {age:.0f} min)"
 
@@ -205,7 +219,18 @@ def judge(pod: dict, runners: set[str], runners_known: bool) -> tuple[str, str]:
 
 
 def reap(dry_run: bool) -> int:
-    pods = rp.ctl("pod", "list", check=False)
+    # LIST VIA REST, NOT runpodctl. `runpodctl pod list` under-reports: on the
+    # night of 25 Aug it returned ONE pod while TWO were billing, so the second
+    # never appeared in this log and never got judged. It also reports
+    # uptimeSeconds as 0 for a pod that has plainly been up for 20 minutes.
+    # The REST endpoint reported both pods and their real ages.
+    pods = None
+    try:
+        pods = guard.call("GET", "/pods", guard.api_key())
+    except Exception as exc:
+        log(f"REST pod list failed ({type(exc).__name__}); falling back to runpodctl")
+    if not isinstance(pods, list):
+        pods = rp.ctl("pod", "list", check=False)
     if not isinstance(pods, list):
         log("could not list pods (API unreachable); will retry next pass")
         return 0
@@ -218,7 +243,7 @@ def reap(dry_run: bool) -> int:
     others = [p for p in pods if not str(p.get("name") or "").startswith("music-db-")]
     for pod in others:
         name, pod_id = str(pod.get("name") or ""), str(pod.get("id") or "")
-        uptime_min = float(pod.get("uptimeSeconds") or 0) / 60
+        uptime_min = guard.age_minutes(pod) or float(pod.get("uptimeSeconds") or 0) / 60
         if uptime_min > MAX_POD_MINUTES:
             log(f"KILL {name} ({pod_id}): non-shard pod past the "
                 f"{MAX_POD_MINUTES} min box (up {uptime_min:.0f} min)")
