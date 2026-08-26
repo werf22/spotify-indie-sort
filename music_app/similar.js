@@ -1113,9 +1113,18 @@ $("vol").oninput = () => {
   P.volume = v;
   if (sp.mode === "sdk" && sp.player) { try { sp.player.setVolume(v); } catch {} }
 };
+/* KEYBOARD. ⌘→ / ⌘← switch tracks — that pair is reserved for it everywhere in
+ * the app, because it is the one thing a DJ does with a hand off the mouse.
+ * The BARE arrows still scrub ±10 s, so seeking and skipping never collide.
+ * Inside a text field nothing is hijacked: there ⌘← / ⌘→ must keep meaning
+ * "jump to start/end of line", or typing a value becomes a fight with the app.
+ * TWEAK: change the 10 in T.nudge(±10) for a longer or shorter scrub step. */
 document.onkeydown = e => {
-  if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+  if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+  const step = e.metaKey || e.ctrlKey;          // ⌘ on the Mac, Ctrl elsewhere
   if (e.code === "Space") { e.preventDefault(); $("big").click(); }
+  else if (e.code === "ArrowRight" && step) { e.preventDefault(); playIndex(state.index + 1); }
+  else if (e.code === "ArrowLeft"  && step) { e.preventDefault(); playIndex(state.index - 1); }
   else if (e.code === "ArrowRight") T.nudge(10);
   else if (e.code === "ArrowLeft") T.nudge(-10);
   else if (e.code === "ArrowDown") { e.preventDefault(); playIndex(state.index + 1); }
