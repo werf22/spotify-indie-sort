@@ -532,8 +532,9 @@ const rerun = () => { if (state.seeds.length) runSeeds(); };
 /* SORTING. The engine returns the list in similarity order; this only reorders
  * what came back, so the set of rows never changes — sorting is a way to look at
  * an answer, not a way to ask a different question. Clicking the same column
- * again reverses it, and clicking "Zhoda" returns to the engine's own order.
- * The reference track stays pinned at the top whatever the sort. */
+ * again reverses it, and a third click clears the sort and returns to the
+ * engine's own order. The reference track stays pinned at the top whatever the
+ * sort, and next/previous always follow the order on screen (see state.view). */
 state.sort = { by: null, asc: false };
 
 /* THE COLUMN MUST READ THE WAY IT SORTS. The same energy is written two ways in
@@ -572,8 +573,8 @@ function sortRows(rows) {
 
 document.querySelectorAll("th[data-sort]").forEach(th => th.onclick = () => {
   const by = th.dataset.sort;
-  // Same column again flips the direction; "Zhoda" twice clears the sort and
-  // hands the order back to the engine.
+  // Same column again flips the direction, and a third click on it clears the
+  // sort and hands the order back to the engine: descending -> ascending -> off.
   if (state.sort.by === by) {
     if (state.sort.asc) state.sort = { by: null, asc: false };
     else state.sort = { by, asc: true };
@@ -591,6 +592,7 @@ function render() {
   // AN EMPTY TABLE MUST EXPLAIN ITSELF. A filter that nothing satisfies looked
   // identical to a broken app: a blank list and no reason given.
   if (!state.rows.length) {
+    state.view = [];            // no rows means nowhere to step to
     const constraints = [
       ...Object.entries(signalModes()).map(([id, m]) =>
         `${id.replace(/^(tag:|num:)/, "")} ${({ diff: "≠", target: "→", gt: ">", gte: "≥", lt: "<", lte: "≤" })[m.mode] || m.mode}`
@@ -620,6 +622,11 @@ function render() {
   // play, drag and select act on the wrong track.
   const order = new Map(state.rows.map((r, i) => [r, i]));
   const view = sortRows(state.rows);
+  // WHAT THE EYE SEES IS WHAT ⌘→ MUST FOLLOW. `state.index` is an index into
+  // state.rows, which after a sort has nothing to do with the order on screen —
+  // so "next track" walked the unsorted array and looked like shuffle. The
+  // visible order is kept here and every next/previous goes through it.
+  state.view = view.map(r => order.get(r));
   $("body").innerHTML = view.map((r, pos) => {
     const i = order.get(r);
     const why = (r.why || []).filter(x => !["key", "bpm", "Tónina", "BPM"].includes(x)).slice(0, 3);
@@ -963,8 +970,8 @@ function nowPlayingToHost() {
 }
 window.__reclaimMediaKeys = () => nowPlayingToHost();
 window.__mediaKey = key => {
-  if (key === "next") playIndex(state.index + 1);
-  else if (key === "prev") playIndex(state.index - 1);
+  if (key === "next") playIndex(stepTo(1));
+  else if (key === "prev") playIndex(stepTo(-1));
   else if (key === "play") { if (T.paused) T.toggle(); }
   else if (key === "pause") { if (!T.paused) T.toggle(); }
   else $("big").click();
@@ -1029,6 +1036,24 @@ function pivotTo(row) {
 }
 
 /* ---------------- player ---------------- */
+/* Move `delta` places in the order currently ON SCREEN and return the index
+ * into state.rows to play, or -1 when there is nowhere to go. With nothing
+ * playing yet, a step forward starts at the top of the visible list. */
+function stepTo(delta) {
+  const view = state.view && state.view.length ? state.view
+                                               : state.rows.map((_, i) => i);
+  if (!view.length) return -1;
+  const at = view.indexOf(state.index);
+  if (at === -1) return delta > 0 ? view[0] : view[view.length - 1];
+  const next = at + delta;
+  return next < 0 || next >= view.length ? -1 : view[next];
+}
+
+function firstIndex() {
+  const view = state.view && state.view.length ? state.view : [0];
+  return view[0];
+}
+
 function playIndex(i) {
   if (i < 0 || i >= state.rows.length) return;
   state.index = i;
@@ -1089,10 +1114,10 @@ function paintTransport() {
   $("cur").textContent = mmss(pos);
 }
 
-$("big").onclick = () => { if (backend === "audio" && !P.src) return playIndex(0); T.toggle(); };
-$("prev").onclick = () => playIndex(state.index - 1);
-$("next").onclick = () => playIndex(state.index + 1);
-P.onended = () => playIndex(state.index + 1);
+$("big").onclick = () => { if (backend === "audio" && !P.src) return playIndex(firstIndex()); T.toggle(); };
+$("prev").onclick = () => playIndex(stepTo(-1));
+$("next").onclick = () => playIndex(stepTo(1));
+P.onended = () => playIndex(stepTo(1));
 P.onplay = () => { paintTransport(); nowPlayingToHost(); };
 P.onpause = () => { paintTransport(); nowPlayingToHost(); };
 let seeking = false;
@@ -1123,12 +1148,12 @@ document.onkeydown = e => {
   if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) || e.target.isContentEditable) return;
   const step = e.metaKey || e.ctrlKey;          // ⌘ on the Mac, Ctrl elsewhere
   if (e.code === "Space") { e.preventDefault(); $("big").click(); }
-  else if (e.code === "ArrowRight" && step) { e.preventDefault(); playIndex(state.index + 1); }
-  else if (e.code === "ArrowLeft"  && step) { e.preventDefault(); playIndex(state.index - 1); }
+  else if (e.code === "ArrowRight" && step) { e.preventDefault(); playIndex(stepTo(1)); }
+  else if (e.code === "ArrowLeft"  && step) { e.preventDefault(); playIndex(stepTo(-1)); }
   else if (e.code === "ArrowRight") T.nudge(10);
   else if (e.code === "ArrowLeft") T.nudge(-10);
-  else if (e.code === "ArrowDown") { e.preventDefault(); playIndex(state.index + 1); }
-  else if (e.code === "ArrowUp") { e.preventDefault(); playIndex(state.index - 1); }
+  else if (e.code === "ArrowDown") { e.preventDefault(); playIndex(stepTo(1)); }
+  else if (e.code === "ArrowUp") { e.preventDefault(); playIndex(stepTo(-1)); }
 };
 
 /* ---------------- Spotify backend ----------------
