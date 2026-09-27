@@ -158,7 +158,6 @@ Hard-protected paths live in `.claude/protected-paths.txt` (hook-enforced — ed
 
 ## AI Layer (vendored)
 
-@.claude/fable5-system-prompt.md
 @.claude/rules/core-portable.md
 @.claude/rules/learned-rules.md
 
