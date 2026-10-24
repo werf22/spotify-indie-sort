@@ -17,6 +17,7 @@ Usage:  ./.venv/bin/python halloween_pools.py seeds
 from __future__ import annotations
 
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -134,5 +135,65 @@ def cmd_seeds() -> None:
         print(mood, [counts.get((mood, lvl), 0) for lvl in range(1, 6)], "(energy 1..5)")
 
 
+# Playlists of the owner's account whose NAME says they hold this night's atmosphere
+# (indie / synthpop / sensual / melancholic / melodic + euphoric techno / ritual / ED
+# atmosphere / neo-classical). Giant catalogue dumps (ARTISTS ALL, Traktor missing ...)
+# and party genres (afro, UK garage, trap, dancehall) are deliberately not listed.
+STRONG_PLAYLISTS = re.compile(
+    r"^(indie|new wave|synthpop|nostalgic|depeche|night traveling|dark & sexy|sensual|deep sensual|"
+    r"deep and sensual|extended deep|melancholic|melodic|euphoric|atmospheric|mainstream euphoric|"
+    r"ritual|moderat|puneet|laskamier|artist timeline: monolink|monolink|innelea|ben b|oliver koletzki|"
+    r"mose|alex banks|ed atmosfe|ecstatic nordic|ecstatic dreamy|ecstatic deep|lisa gerrard|act ii|"
+    r"space weaver|neo-classical|tir sensual|top dreamy|top electronic|love and hope|light stuff|"
+    r"emotional|obľúbené|oblubene|femme fatale|chill emotional|hommage|pretty proud)", re.I)
+MAX_SECONDS = 720          # longer than 12 min is a DJ-set recording, not a track (seeds exempt)
+
+
+def cmd_pool() -> None:
+    """Candidate pool = seeds + Liked Songs + tracks in STRONG_PLAYLISTS, weighted by evidence."""
+    import sqlite3
+    db = sqlite3.connect(f"file:{ROOT / 'data' / 'music.db'}?mode=ro", uri=True)
+    pool: dict[str, dict] = {}
+
+    def add(sid, artist, title, genres, isrc, ms, weight, why):
+        if not sid or sid.startswith("local_") or not title or not artist:
+            return
+        row = pool.setdefault(sid, {"id": sid, "artist": artist, "title": title, "genres": genres or "",
+                                    "isrc": isrc, "ms": ms or 0, "w": 0, "why": []})
+        row["w"] += weight
+        row["why"].append(why)
+
+    for r in seed_rows(refresh=False):
+        add(r["id"], r["artist"], r["title"], "", None, 0, 200, "seed")
+    for sid, title, artist, genres, isrc, ms in db.execute(
+            "SELECT spotify_id,title,artist_names,genres,isrc,duration_ms FROM tracks "
+            "WHERE library_sources LIKE '%spotify:saved-library%'"):
+        add(sid, artist, title, genres, isrc, ms, 50, "liked")
+    names = {pid: n for pid, n in db.execute("SELECT playlist_id,name FROM playlists")}
+    strong = {pid for pid, n in names.items() if STRONG_PLAYLISTS.match(n or "")}
+    for pid, sid, tn, an in db.execute("SELECT playlist_id,spotify_id,track_name,artist_name FROM playlist_tracks"):
+        if pid in strong:
+            meta = db.execute("SELECT title,artist_names,genres,isrc,duration_ms FROM tracks WHERE spotify_id=?", (sid,)).fetchone()
+            t, a, g, i, ms = meta if meta else (tn, an, "", None, 0)
+            add(sid, a, t, g, i, ms, 10, "pl:" + (names[pid] or "")[:24])
+    for sid, plays in db.execute("SELECT spotify_id,qualified_plays FROM track_play_stats WHERE qualified_plays>=2"):
+        if sid in pool:
+            pool[sid]["w"] += 10
+    # one recording once: drop same ISRC, then same normalised artist+title; seeds win ties
+    best: dict[str, dict] = {}
+    for row in sorted(pool.values(), key=lambda r: -r["w"]):
+        if row["ms"] > MAX_SECONDS * 1000 and "seed" not in row["why"]:
+            continue
+        key = row["isrc"] or re.sub(r"[^a-z0-9]", "", (row["artist"].split(",")[0] + row["title"].split(" - ")[0]).lower())
+        key2 = re.sub(r"[^a-z0-9]", "", (row["artist"].split(",")[0] + row["title"].split(" - ")[0]).lower())
+        if key not in best and key2 not in best:
+            best[key] = best[key2] = row
+    rows = sorted({id(r): r for r in best.values()}.values(), key=lambda r: (r["artist"].lower(), r["title"].lower()))
+    WORK.mkdir(parents=True, exist_ok=True)
+    (WORK / "pool.json").write_text(json.dumps(rows, ensure_ascii=False))
+    print(f"strong playlists: {len(strong)}  pool tracks: {len(rows)}  "
+          f"seeds: {sum('seed' in r['why'] for r in rows)}  liked: {sum('liked' in r['why'] for r in rows)}")
+
+
 if __name__ == "__main__":
-    {"seeds": cmd_seeds}.get(sys.argv[1] if len(sys.argv) > 1 else "", lambda: sys.exit(__doc__))()
+    {"seeds": cmd_seeds, "pool": cmd_pool}.get(sys.argv[1] if len(sys.argv) > 1 else "", lambda: sys.exit(__doc__))()

@@ -14,6 +14,16 @@ je Dark alebo Light. Postup: `halloween_build.py resolve|check|build` (pozri hla
 seed zaradenie `halloween_pools.py seeds` (69 seedov nemá features — zaradiť ručne).
 Spotify search drž na ~1 dopyt / 1,5 s (kedysi long ban); beh vždy v `screen`.
 
+**24 Oct 2026 — ECSTATIC HALLOWEEN: 10 PLAYLISTOV HOTOVÝCH** (energia 1–5 × Dark/Light, po 200, názvy
+„Ecstatic Halloween · E1 Dark" … „E5 Light"; ID v `~/Appky Claude/ecstatic-halloween-work/playlist_ids.json`).
+Zdroj: len jadro (4 playlisty + 1000 najpočúvanejších) + môj výber + Spotify — NIE music.db (výslovné zadanie
+majiteľa). Pracovný priečinok mimo repa: `~/Appky Claude/ecstatic-halloween-work/` (e*_*.txt = zoznamy
+„Interpret|Skladba", core_assign*.txt = zaradenie jadra, `resolve_lists.py` overí na Spotify do cache.json,
+`assemble.py [--check|--create]` poskladá/zapíše; idempotentné). ReccoBeats slúži len ako brána energie pre
+moje nové skladby; jeho valencia je nespoľahlivá, Dark/Light je moje posúdenie. Otvorené: „CC Promo · TOP · …"
+playlisty majú 350–400 skladieb namiesto 200 (200 pribudlo 28. 9. 13:47 nie touto session) — majiteľ povedal,
+že sa na ne teraz nemám sústrediť.
+
 **24 Oct 2026 — ČAKÁ SA NA SPOTIFY „EXTENDED STREAMING HISTORY" (celá história účtu).**
 Žiadosť podaná 24. 10. cez spotify.com/account/privacy (len „Rozšírená história
 streamovania"), stav „čaká sa na potvrdenie" — majiteľ musí kliknúť na odkaz v
