@@ -1,0 +1,46 @@
+# Dark 3 - beat, mid energy, people dance; nostalgic / melancholic / sensual / dark.
+# One "Artist | Title" per line. Pilot batch 1 (new tracks only; seeds are added at build time).
+Tinlicker | Because You Move Me
+Monolink | Father Ocean
+Monolink | Under Darkening Skies
+RÜFÜS DU SOL | Innerbloom
+RÜFÜS DU SOL | Alive
+Kiasmos | Looped
+Moderat | Bad Kingdom
+Moderat | Reminder
+The Blaze | Territory
+Röyksopp | What Else Is There?
+Bob Moses | Tearing Me Up
+Bob Moses | Back Down
+Moby | Porcelain
+Stromae | Alors on danse
+Kavinsky | Odd Look
+London Grammar | Strong
+Glass Animals | Heat Waves
+Daft Punk | Instant Crush
+Recondite | Caldera
+Mount Kimbie | Blue Train Lines
+The xx | Intro
+The xx | Crystalised
+Jamie xx | Loud Places
+Banks | Beggin for Thread
+Trentemøller | Moan
+Trentemøller | Miss You
+Trentemøller | Take Me Into Your Skin
+Depeche Mode | Never Let Me Down Again
+Depeche Mode | Walking in My Shoes
+New Order | Bizarre Love Triangle
+Joy Division | Love Will Tear Us Apart
+The Cure | A Forest
+Pet Shop Boys | West End Girls
+Soft Cell | Tainted Love
+Gary Numan | Cars
+Bonobo | Linked
+Massive Attack | Safe From Harm
+Massive Attack | Unfinished Sympathy
+Portishead | Sour Times
+Lana Del Rey | Doin' Time
+Sade | Smooth Operator
+Sade | No Ordinary Love
+Sade | By Your Side
+The Weeknd | Blinding Lights
