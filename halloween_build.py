@@ -137,11 +137,12 @@ def cmd_check(name: str) -> list:
     return res
 
 
-def cmd_build(name: str, limit: int) -> None:
+def cmd_build(name: str, limit: int, exact: bool) -> None:
     from spotify_client import SpotifyClient
     client = SpotifyClient()
     state = json.loads(PLAYLISTS.read_text()) if PLAYLISTS.exists() else {}
-    rows = [r for r in cmd_check(name) if r[4] and abs(r[4] - int(name.split("_")[1])) <= 1][:limit]
+    slack = 0 if exact else 1               # exact: only tracks MEASURED at this level
+    rows = [r for r in cmd_check(name) if r[4] and abs(r[4] - int(name.split("_")[1])) <= slack][:limit]
     if name not in state:
         mood, level = name.split("_")
         pl = client.create_playlist(client.current_user()["id"], f"ED Halloween - {mood.title()} {level}",
@@ -163,6 +164,6 @@ if __name__ == "__main__":
     elif cmd == "check":
         [cmd_check(n) for n in names]
     elif cmd == "build":
-        [cmd_build(n, lim) for n in names]
+        [cmd_build(n, lim, "--exact" in args) for n in names]
     else:
         sys.exit(__doc__)

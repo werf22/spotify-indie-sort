@@ -597,3 +597,22 @@ Chyba nájdená pri dobehu: skript pri „súbor už je správny" iba preskočil
 20 zastaraných riadkov v `track_comment` tvrdilo „Energy 7" o súboroch, ktoré
 mali „07 Energy" — appka by ukazovala starý text. „Netreba nič robiť" a
 „databáza klame" nie sú to isté; skript teraz riadok zosúladí.
+
+## 2026-10-24 — Halloween Ecstatic Dance: pilot Dark 3 + Light 3
+
+Úloha: 10 playlistov po 200 trackov (Dark/Light × energia 1–5) pre Ecstatic Dance
+na Halloween, podľa vkusu zo 4 seed playlistov (416 trackov). Zdroj = Spotify
+katalóg, knižnica sa nepoužíva (odpoveď majiteľa).
+
+Nové súbory: `halloween_pools.py` (index energie 1–5 + seed triedenie, ReccoBeats
+features cache), `halloween_build.py` (resolve → check → build), kandidáti v
+`halloween_ed/candidates/*.txt`, pracovné dáta v `data/halloween_ed/` (gitignored).
+Pilot: 90 kandidátov, 88 nájdených na Spotify (miss: Monolink – Under Darkening
+Skies, Bedouin – Hallucinate); ReccoBeats nepozná ~15 % nájdených. Vytvorené
+„ED Halloween - Dark 3" (20 trackov, 7C1clRWfSdDtgPmR56qruJ) a „… Light 3"
+(16 trackov, 2lMRQUFwFCMWbOk2Csog1J); počty overené cez Spotify.
+Známe: Spotify API drží oba playlisty ako verejné aj po PUT public=false
+(rovnako ako v docs/PLAYLISTS.md) — treba prepnúť v appke ručne.
+Kalibrácia energie: `ENERGY_CUTS=(0.33,0.55,0.70,0.82)` a zloženie tempa (>150 sa
+delí 2) overené na ~30 známych trackoch. Valencia je slabý proxy pre Dark/Light
+(Weeknd „Die For You" vyšiel Light) — nálada sa určuje podľa úmyslu kandidáta.
