@@ -71,3 +71,23 @@ is not ecstatic dance.” The user explicitly rejected that broad 43k result.
 - Deduplicate exact URI and same recording/version where appropriate.
 - Do not delete or replace user playlists unless explicitly requested.
 - Separate technical/acquisition playlists from taste evidence.
+
+## ED Halloween pools — 10 × 200 (created 2026-10-24)
+
+Ecstatic Dance Halloween set, energy 1–5 × Dark/Light (owner's scale: 1 slow no beat,
+2 slow with beat, 3 mid, 4 high, 5 peak; Dark = nostalgic/melancholic/sensual/aggressive,
+Light = love/hope/play/euphoria). 2,000 unique tracks, checked by reading every playlist
+back from Spotify (200 each, 0 ids in two playlists).
+
+| Playlist | URL id |
+|---|---|
+| ED Halloween - Dark 1 … Dark 5 | 63Q5EjFoLW5IAycAJsKn7p, 2rPO050eybTIMMDePzPR2t, 7C1clRWfSdDtgPmR56qruJ, 55MEepoHfPpQGL8XZUobzk, 6sLnvZBXbzsKXQWGmTLYAh |
+| ED Halloween - Light 1 … Light 5 | 5j0N2aq66Fx19ZTzhN2gVx, 6TqmF285NPa36gNadz0KYi, 2lMRQUFwFCMWbOk2Csog1J, 4oZHLVO6AHnZovEQizhkf3, 3gAyj3Y6m1XV11lWFuiLs2 |
+
+Sources, in priority order: the four seed playlists (391 of 392 tracks), the owner's Liked Songs
+and atmosphere-matching playlists (1,237), then 372 tracks Claude chose by artist/title and found
+on Spotify (mostly Light 5, Light 1–2, Dark 5). Bucket per track = Claude's judgement from artist,
+title and Spotify artist genres — NOT measured. Valence is a poor Dark/Light proxy here.
+Tools: `halloween_pools.py` (seeds, pool), `halloween_build.py` (resolve), `halloween_final.py`
+(plan | apply | verify); candidate lists in `halloween_ed/candidates/`, work data in
+`data/halloween_ed/` (gitignored). Spotify keeps all ten PUBLIC whatever `public=false` says.

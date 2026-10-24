@@ -616,3 +616,17 @@ Známe: Spotify API drží oba playlisty ako verejné aj po PUT public=false
 Kalibrácia energie: `ENERGY_CUTS=(0.33,0.55,0.70,0.82)` a zloženie tempa (>150 sa
 delí 2) overené na ~30 známych trackoch. Valencia je slabý proxy pre Dark/Light
 (Weeknd „Die For You" vyšiel Light) — nálada sa určuje podľa úmyslu kandidáta.
+
+## 2026-10-24 — Halloween Ecstatic Dance: všetkých 10 playlistov hotových
+
+Zmena zadania od majiteľa: zdroj má byť primárne jeho Spotify účet (seedy, lajky, playlisty),
+zvyšok doplniť podobnými trackmi; Dark/Light a energiu určuje Claude sám podľa artist + track,
+nie podľa merania. Postup: pool z účtu (7 575 trackov: 392 seedov, 2 712 lajkov, 120 playlistov
+podľa mena) → Claude prečítal 5 678 riadkov a zaradil 2 805 do 10 priehradiek →
+doplnok 372 trackov (L5 181, L1 74, L2 70, D5 34, L4 13) vyhľadaných na Spotify →
+`halloween_final.py plan/apply/verify`. Overené čítaním späť zo Spotify: 10 × 200,
+2 000 unikátnych, 0 duplicít medzi playlistami; 391 z 392 seedov (jeden „Love Me Not" je
+duplicitná nahrávka). Nové súbory: halloween_pools.py, halloween_build.py, halloween_final.py,
+halloween_ed/candidates/*.txt, docs/PLAYLISTS.md (sekcia ED Halloween).
+Problémy: Spotify vracal 503/timeouty (retry doplnené); `public=false` Spotify ignoruje;
+Spotify MCP po behu hlási „Failed to refresh token" (príčina neoverená).

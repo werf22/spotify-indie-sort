@@ -17,7 +17,10 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from collections import Counter
+
+import requests
 
 from halloween_build import MARKET, norm, read_candidates
 from halloween_pools import WORK
@@ -25,7 +28,7 @@ from halloween_pools import WORK
 TARGET = 200
 ARTIST_CAP = 9
 BUCKETS = [f"{m}{n}" for m in "DL" for n in range(1, 6)]
-FILL_FILES = {"L1": "light_1", "L2": "light_2", "L4": "light_4", "L5": "light_5"}
+FILL_FILES = {"L1": "light_1", "L2": "light_2", "L4": "light_4", "L5": "light_5", "D5": "dark_5"}
 PLAN = WORK / "plan.json"
 PLAYABLE = WORK / "playable.json"
 
@@ -56,12 +59,22 @@ def load_candidates() -> dict[str, list[dict]]:
 
 
 def check_playable(client, ids: list[str]) -> dict[str, bool]:
-    """Spotify availability in MARKET for every id (cached; 50 ids per request)."""
+    """Spotify availability in MARKET for every id (cached; 25 ids per request - 50 timed out)."""
     known = json.loads(PLAYABLE.read_text()) if PLAYABLE.exists() else {}
     todo = [i for i in dict.fromkeys(ids) if i not in known]
-    for s in range(0, len(todo), 50):
-        batch = todo[s:s + 50]
-        items = client.request("GET", "/tracks", params={"ids": ",".join(batch), "market": MARKET}).json()["tracks"]
+    for s in range(0, len(todo), 25):
+        batch = todo[s:s + 25]
+        for attempt in range(8):                   # Spotify answers 503 now and then; the cache keeps progress
+            try:
+                items = client.request("GET", "/tracks", params={"ids": ",".join(batch), "market": MARKET}).json()["tracks"]
+                break
+            except (requests.HTTPError, requests.ConnectionError, requests.Timeout) as exc:
+                code = getattr(getattr(exc, "response", None), "status_code", None)
+                if code is not None and code < 500:
+                    raise
+                time.sleep(4 * (attempt + 1))
+        else:
+            raise RuntimeError("Spotify /tracks kept returning 5xx - rerun to resume from the cache")
         for sid, item in zip(batch, items):
             known[sid] = bool(item) and item.get("is_playable", True) is not False
         PLAYABLE.write_text(json.dumps(known))
@@ -102,24 +115,47 @@ def report(plan: dict) -> None:
     print("total tracks:", sum(len(v) for v in plan.values()))
 
 
+def retry(fn, *args, **kwargs):
+    """Call a Spotify helper, retrying 5xx / timeouts (Spotify returned 503 on /me during this job)."""
+    for attempt in range(8):
+        try:
+            return fn(*args, **kwargs)
+        except (requests.HTTPError, requests.ConnectionError, requests.Timeout) as exc:
+            code = getattr(getattr(exc, "response", None), "status_code", None)
+            if code is not None and code < 500:
+                raise
+            time.sleep(4 * (attempt + 1))
+    raise RuntimeError(f"Spotify kept failing for {getattr(fn, '__name__', fn)}")
+
+
+def write_playlist(client, pid: str, uris: list[str]) -> None:
+    """Replace the playlist content: PUT the first 100 (replaces), then append the rest."""
+    retry(client.request, "PUT", f"/playlists/{pid}/tracks", json={"uris": uris[:100]})
+    for i in range(100, len(uris), 100):
+        retry(client.request, "POST", f"/playlists/{pid}/tracks", json={"uris": uris[i:i + 100]})
+
+
 def apply_plan(plan: dict) -> None:
     from spotify_client import SpotifyClient
     client = SpotifyClient()
     state = json.loads((WORK / "playlists.json").read_text()) if (WORK / "playlists.json").exists() else {}
-    uid = client.current_user()["id"]
+    uid = retry(client.current_user)["id"]
     for b in BUCKETS:
         key = ("dark_" if b[0] == "D" else "light_") + b[1]
         mood = "Dark" if b[0] == "D" else "Light"
         uris = [f"spotify:track:{c['id']}" for c in plan[b]]
         if key not in state:
-            pl = client.create_playlist(uid, f"ED Halloween - {mood} {b[1]}",
-                                        f"Ecstatic Dance Halloween pool - {mood.lower()}, energy {b[1]}/5", public=False)
+            pl = retry(client.create_playlist, uid, f"ED Halloween - {mood} {b[1]}",
+                       f"Ecstatic Dance Halloween pool - {mood.lower()}, energy {b[1]}/5", public=False)
             state[key] = pl["id"]
             (WORK / "playlists.json").write_text(json.dumps(state, indent=1))
-            client.add_tracks(state[key], uris)
-        else:                                      # existing (pilot) playlist: replace its whole content
-            client.request("PUT", f"/playlists/{state[key]}/tracks", json={"uris": uris[:100]})
-            client.add_tracks(state[key], uris[100:])
+        for attempt in range(3):               # a failed append restarts the whole playlist, so no duplicates
+            try:
+                write_playlist(client, state[key], uris)
+                break
+            except RuntimeError:
+                if attempt == 2:
+                    raise
         print(f"{b}: playlist {state[key]} written with {len(uris)} tracks")
 
 
@@ -130,7 +166,8 @@ def verify() -> None:
     seen: Counter = Counter()
     for b in BUCKETS:
         key = ("dark_" if b[0] == "D" else "light_") + b[1]
-        ids = [i["track"]["id"] for i in client.playlist_tracks(state[key]) if i.get("track") and i["track"].get("id")]
+        items = retry(lambda: list(client.playlist_tracks(state[key])))      # whole read retried on a 5xx
+        ids = [i["track"]["id"] for i in items if i.get("track") and i["track"].get("id")]
         seen.update(ids)
         print(f"{b}: {len(ids)} tracks, {len(set(ids))} unique   https://open.spotify.com/playlist/{state[key]}")
     dup = [i for i, n in seen.items() if n > 1]

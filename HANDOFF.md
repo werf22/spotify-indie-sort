@@ -4,25 +4,13 @@ This is the canonical cold-start document for the next AI agent. Read it before
 changing code, restarting services, creating cloud resources, calling a paid API,
 or modifying Spotify playlists.
 
-**24 Oct 2026 — HALLOWEEN ECSTATIC DANCE POOLS (10 playlistov × 200) — ROZPRACOVANÉ, ČAKÁ NA SCHVÁLENIE PILOTU.**
-Spec odsúhlasený: zdroj = Spotify katalóg (knižnica sa NEPOUŽÍVA), 416 seed trackov sa zaradí
-do vhodného playlistu, peak 4–5 = všetky štyri zvuky (melodic techno, progressive/melodic house,
-indie dance, organic/world), vokály bez obmedzení. Pilot hotový: „ED Halloween - Dark 3"
-(7C1clRWfSdDtgPmR56qruJ, 20) a „… Light 3" (2lMRQUFwFCMWbOk2Csog1J, 16). NEPOKRAČOVAŤ na ďalších
-8, kým majiteľ pilot neschváli a nerozhodne, či melanchol.-eufórické (Ben Böhmer, Rüfüs, Yotto)
-je Dark alebo Light. Postup: `halloween_build.py resolve|check|build` (pozri hlavičku súboru),
-seed zaradenie `halloween_pools.py seeds` (69 seedov nemá features — zaradiť ručne).
-Spotify search drž na ~1 dopyt / 1,5 s (kedysi long ban); beh vždy v `screen`.
-
-**24 Oct 2026 — ECSTATIC HALLOWEEN: 10 PLAYLISTOV HOTOVÝCH** (energia 1–5 × Dark/Light, po 200, názvy
-„Ecstatic Halloween · E1 Dark" … „E5 Light"; ID v `~/Appky Claude/ecstatic-halloween-work/playlist_ids.json`).
-Zdroj: len jadro (4 playlisty + 1000 najpočúvanejších) + môj výber + Spotify — NIE music.db (výslovné zadanie
-majiteľa). Pracovný priečinok mimo repa: `~/Appky Claude/ecstatic-halloween-work/` (e*_*.txt = zoznamy
-„Interpret|Skladba", core_assign*.txt = zaradenie jadra, `resolve_lists.py` overí na Spotify do cache.json,
-`assemble.py [--check|--create]` poskladá/zapíše; idempotentné). ReccoBeats slúži len ako brána energie pre
-moje nové skladby; jeho valencia je nespoľahlivá, Dark/Light je moje posúdenie. Otvorené: „CC Promo · TOP · …"
-playlisty majú 350–400 skladieb namiesto 200 (200 pribudlo 28. 9. 13:47 nie touto session) — majiteľ povedal,
-že sa na ne teraz nemám sústrediť.
+**24 Oct 2026 — HALLOWEEN ECSTATIC DANCE POOLS: HOTOVO (10 playlistov × 200, overené čítaním zo Spotify).**
+Odkazy a postup: docs/PLAYLISTS.md (sekcia „ED Halloween pools"), DONE.md 24. 10. Opakovanie / úprava:
+`./.venv/bin/python halloween_final.py plan|apply|verify` (apply je idempotentný — PUT prepíše obsah).
+Priraďovanie trackov je v `data/halloween_ed/assign_all.json` (gitignored; indexy do pool.json), zvyšok
+nezaradených D1–D3 kandidátov (~1 000) je rezerva. OTVORENÉ: majiteľ prepne playlisty na súkromné v appke
+(API to nedrží) a rozhodne, či chce vyradiť mainstreamový koniec Light 5; Spotify MCP hlási „Failed to refresh
+token" — ak by chýbal, znovu `npm run auth` v spotify-mcp-server.
 
 **24 Oct 2026 — ČAKÁ SA NA SPOTIFY „EXTENDED STREAMING HISTORY" (celá história účtu).**
 Žiadosť podaná 24. 10. cez spotify.com/account/privacy (len „Rozšírená história
