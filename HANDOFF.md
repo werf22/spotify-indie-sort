@@ -4,6 +4,16 @@ This is the canonical cold-start document for the next AI agent. Read it before
 changing code, restarting services, creating cloud resources, calling a paid API,
 or modifying Spotify playlists.
 
+**24 Oct 2026 — ČAKÁ SA NA SPOTIFY „EXTENDED STREAMING HISTORY" (celá história účtu).**
+Žiadosť podaná 24. 10. cez spotify.com/account/privacy (len „Rozšírená história
+streamovania"), stav „čaká sa na potvrdenie" — majiteľ musí kliknúť na odkaz v
+potvrdzovacom e-maile od Spotify (nie je v `jakubcerulik@gmail.com`; pozrieť adresu
+Spotify konta a spam). Spotify pripraví export do ~30 dní. Keď príde: `./.venv/bin/python
+import_streaming_history.py <zip>` a prepočítať playlist „Najviac počúvané · TOP 1000"
+(https://open.spotify.com/playlist/1K7b3QOMZyqHBZthd7hcL8, dnes len z júl 2025 – júl 2026;
+poradie = prehratia ≥30 s, remíza = celkový čas, jedna pieseň = všetky vydania).
+Existujúci export v `~/Downloads/Spotify Data` je len „Account data" (12 mesiacov).
+
 **26 Aug — NÁSTROJE NA STAVBU SETU** (`ecstatic_*.py`, `nml_write.py`).
 Postavia tématický DJ set z knižnice a zapíšu ho ako Traktor `.nml`.
 Spustenie: `./.venv/bin/python ecstatic_set.py --base 2A --out ~/Desktop/x.nml`.
